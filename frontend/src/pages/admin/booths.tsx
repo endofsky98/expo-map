@@ -10,12 +10,14 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import BoothEditor from '@/components/BoothEditor';
-import { Booth, Company, Category } from '@/types';
+import { Booth, Company, Category, Floor, Hall } from '@/types';
 import { useI18n } from '@/lib/i18n';
 import {
   fetchBooths,
   fetchCompanies,
   fetchCategories,
+  fetchFloors,
+  fetchHalls,
   createBooth,
   updateBooth,
   deleteBooth,
@@ -28,6 +30,10 @@ export default function BoothsPage() {
   const [booths, setBooths] = useState<Booth[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [floors, setFloors] = useState<Floor[]>([]);
+  const [halls, setHalls] = useState<Hall[]>([]);
+  const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
+  const [selectedHallId, setSelectedHallId] = useState<number | null>(null);
   const [editing, setEditing] = useState<Booth | null>(null);
   const [creating, setCreating] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -37,23 +43,45 @@ export default function BoothsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    loadData();
+    loadInitial();
   }, []);
 
-  async function loadData() {
+  async function loadInitial() {
     setLoading(true);
     try {
-      const [b, co, ca] = await Promise.all([
-        fetchBooths(),
+      const [co, ca, fl, ha] = await Promise.all([
         fetchCompanies(),
         fetchCategories(),
+        fetchFloors(),
+        fetchHalls(),
       ]);
-      setBooths(b);
       setCompanies(co);
       setCategories(ca);
+      setFloors(fl);
+      setHalls(ha);
+      if (fl.length > 0 && !selectedFloorId) {
+        setSelectedFloorId(fl[0].id);
+      }
     } catch (err) {
       console.error(err);
       setMessage('Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (selectedFloorId) loadBooths();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFloorId, selectedHallId]);
+
+  async function loadBooths() {
+    setLoading(true);
+    try {
+      const b = await fetchBooths(selectedFloorId || undefined, selectedHallId || undefined);
+      setBooths(b);
+    } catch (err) {
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -72,7 +100,7 @@ export default function BoothsPage() {
       }
       setEditing(null);
       setCreating(false);
-      await loadData();
+      await loadBooths();
     } catch (err) {
       setMessage('Failed to save booth');
       console.error(err);
@@ -86,7 +114,7 @@ export default function BoothsPage() {
     try {
       await deleteBooth(id);
       setMessage('Booth deleted');
-      await loadData();
+      await loadBooths();
     } catch (err) {
       setMessage('Failed to delete booth');
       console.error(err);
@@ -101,7 +129,7 @@ export default function BoothsPage() {
     try {
       const result = await uploadBoothCSV(file);
       setMessage(result.message || `Uploaded ${result.count} booths`);
-      await loadData();
+      await loadBooths();
     } catch (err) {
       setMessage('CSV upload failed');
       console.error(err);
@@ -111,11 +139,41 @@ export default function BoothsPage() {
     }
   }
 
+  const currentFloorHalls = halls.filter((h) => h.floor_id === selectedFloorId);
+
   const showForm = creating || editing !== null;
 
   return (
     <AdminLayout title={t('nav.booths')}>
       <div className="max-w-6xl mx-auto space-y-6">
+        {/* Floor / Hall filter */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <select
+            value={selectedFloorId ?? ''}
+            onChange={(e) => {
+              const fid = e.target.value ? Number(e.target.value) : null;
+              setSelectedFloorId(fid);
+              setSelectedHallId(null);
+            }}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+          >
+            <option value="">{t('filter.all')} {t('admin.floor')}</option>
+            {floors.map((f) => (
+              <option key={f.id} value={f.id}>{ln(f.name)}</option>
+            ))}
+          </select>
+          <select
+            value={selectedHallId ?? ''}
+            onChange={(e) => setSelectedHallId(e.target.value ? Number(e.target.value) : null)}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+          >
+            <option value="">{t('filter.all')} {t('admin.hall')}</option>
+            {currentFloorHalls.map((h) => (
+              <option key={h.id} value={h.id}>{ln(h.name)}</option>
+            ))}
+          </select>
+        </div>
+
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-3">
           {!showForm && (
@@ -176,6 +234,10 @@ export default function BoothsPage() {
               booth={editing}
               companies={companies}
               categories={categories}
+              floors={floors}
+              halls={halls}
+              selectedFloorId={selectedFloorId}
+              selectedHallId={selectedHallId}
               onSave={handleSave}
               onCancel={() => {
                 setEditing(null);
@@ -213,6 +275,9 @@ export default function BoothsPage() {
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
                       {t('admin.boothNumber')}
                     </th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 hidden sm:table-cell">
+                      {t('admin.floor')}
+                    </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
                       {t('admin.company')}
                     </th>
@@ -238,6 +303,10 @@ export default function BoothsPage() {
                     >
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
                         {booth.booth_number}
+                      </td>
+                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-xs hidden sm:table-cell">
+                        {booth.floor ? ln(booth.floor.name) : '-'}
+                        {booth.hall ? ` / ${ln(booth.hall.name)}` : ''}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
                         {ln(booth.company?.name) || '-'}

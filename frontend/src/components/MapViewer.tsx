@@ -31,7 +31,7 @@ interface MapViewerProps {
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 5.0;
 const VIEWPORT_PADDING = 200;
-const MIN_BOOTH_SCREEN_SIZE = 10; // pixels
+const MIN_BOOTH_SCREEN_SIZE = 20; // pixels — hides most booths at zoom ≤ 0.3
 
 const FACILITY_STYLES: Record<string, { color: string; label: string }> = {
   restroom: { color: '#3b82f6', label: 'WC' },
@@ -78,6 +78,9 @@ export default function MapViewer({
   const [viewportBounds, setViewportBounds] = useState({ x: 0, y: 0, width: 800, height: 600 });
   const crossfadeTimerRef = useRef<number | null>(null);
   const currentZoomLevelRef = useRef<number>(-1);
+  // Pinch zoom refs
+  const lastPinchDistRef = useRef<number>(0);
+  const lastPinchCenterRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     function updateSize() {
@@ -186,7 +189,7 @@ export default function MapViewer({
       // Minimum screen size check
       const screenWidth = booth.width * scale;
       const screenHeight = booth.height * scale;
-      if (screenWidth < MIN_BOOTH_SCREEN_SIZE && screenHeight < MIN_BOOTH_SCREEN_SIZE) return false;
+      if (screenWidth < MIN_BOOTH_SCREEN_SIZE || screenHeight < MIN_BOOTH_SCREEN_SIZE) return false;
       return true;
     });
   }, [booths, viewportBounds, scale]);
@@ -215,6 +218,65 @@ export default function MapViewer({
     }
     return points.length >= 4 ? points : null;
   }, [routePath, currentFloorId, currentHallId]);
+
+  function getTouchDistance(t1: Touch, t2: Touch): number {
+    return Math.sqrt(Math.pow(t2.clientX - t1.clientX, 2) + Math.pow(t2.clientY - t1.clientY, 2));
+  }
+
+  function getTouchCenter(t1: Touch, t2: Touch): { x: number; y: number } {
+    return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
+  }
+
+  function handleTouchMove(e: Konva.KonvaEventObject<TouchEvent>) {
+    const touches = e.evt.touches;
+    if (touches.length !== 2) return;
+    e.evt.preventDefault();
+
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    // Stop drag if stage is being dragged during multi-touch
+    if (stage.isDragging()) {
+      stage.stopDrag();
+    }
+
+    const t1 = touches[0];
+    const t2 = touches[1];
+    const newDist = getTouchDistance(t1, t2);
+    const newCenter = getTouchCenter(t1, t2);
+
+    if (!lastPinchDistRef.current) {
+      lastPinchDistRef.current = newDist;
+      lastPinchCenterRef.current = newCenter;
+      return;
+    }
+
+    const oldScale = stage.scaleX();
+    const pointTo = {
+      x: (newCenter.x - stage.x()) / oldScale,
+      y: (newCenter.y - stage.y()) / oldScale,
+    };
+
+    let newScale = oldScale * (newDist / lastPinchDistRef.current);
+    newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
+
+    const newPos = {
+      x: newCenter.x - pointTo.x * newScale,
+      y: newCenter.y - pointTo.y * newScale,
+    };
+
+    setScale(newScale);
+    setPosition(newPos);
+    onZoomChange?.(newScale);
+
+    lastPinchDistRef.current = newDist;
+    lastPinchCenterRef.current = newCenter;
+  }
+
+  function handleTouchEnd() {
+    lastPinchDistRef.current = 0;
+    lastPinchCenterRef.current = null;
+  }
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
     e.evt.preventDefault();
@@ -327,6 +389,8 @@ export default function MapViewer({
         y={position.y}
         draggable
         onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
         onDragEnd={handleDragEnd}
         onDragMove={() => {
           const stage = stageRef.current;

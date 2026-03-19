@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react';
-import { Booth, Company, Category } from '@/types';
+import { Booth, Company, Category, Floor, Hall } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
 interface BoothEditorProps {
   booth?: Booth | null;
   companies: Company[];
   categories: Category[];
+  floors: Floor[];
+  halls: Hall[];
+  selectedFloorId?: number | null;
+  selectedHallId?: number | null;
   onSave: (data: Partial<Booth>) => void;
   onCancel: () => void;
   loading?: boolean;
@@ -15,6 +19,10 @@ export default function BoothEditor({
   booth,
   companies,
   categories,
+  floors,
+  halls,
+  selectedFloorId,
+  selectedHallId,
   onSave,
   onCancel,
   loading,
@@ -26,6 +34,8 @@ export default function BoothEditor({
     y: 0,
     width: 100,
     height: 60,
+    floor_id: undefined as number | undefined,
+    hall_id: undefined as number | undefined,
     company_id: undefined as number | undefined,
     category_id: undefined as number | undefined,
     color: '#94a3b8',
@@ -40,18 +50,30 @@ export default function BoothEditor({
         y: booth.y,
         width: booth.width,
         height: booth.height,
+        floor_id: booth.floor_id ?? undefined,
+        hall_id: booth.hall_id ?? undefined,
         company_id: booth.company_id ?? undefined,
         category_id: booth.category_id ?? undefined,
         color: booth.color || '#94a3b8',
         is_active: booth.is_active,
       });
+    } else {
+      setForm((prev) => ({
+        ...prev,
+        floor_id: selectedFloorId ?? undefined,
+        hall_id: selectedHallId ?? undefined,
+      }));
     }
-  }, [booth]);
+  }, [booth, selectedFloorId, selectedHallId]);
+
+  const filteredHalls = halls.filter((h) => h.floor_id === form.floor_id);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     onSave({
       ...form,
+      floor_id: form.floor_id || undefined,
+      hall_id: form.hall_id || undefined,
       company_id: form.company_id || undefined,
       category_id: form.category_id || undefined,
     });
@@ -112,6 +134,40 @@ export default function BoothEditor({
             onChange={(e) => setForm({ ...form, height: Number(e.target.value) })}
             className={inputClass}
           />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className={labelClass}>Floor *</label>
+          <select
+            value={form.floor_id ?? ''}
+            onChange={(e) => {
+              const fid = e.target.value ? Number(e.target.value) : undefined;
+              setForm({ ...form, floor_id: fid, hall_id: undefined });
+            }}
+            className={inputClass}
+          >
+            <option value="">-- Select --</option>
+            {floors.map((f) => (
+              <option key={f.id} value={f.id}>{ln(f.name)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Hall</label>
+          <select
+            value={form.hall_id ?? ''}
+            onChange={(e) =>
+              setForm({ ...form, hall_id: e.target.value ? Number(e.target.value) : undefined })
+            }
+            className={inputClass}
+          >
+            <option value="">-- None --</option>
+            {filteredHalls.map((h) => (
+              <option key={h.id} value={h.id}>{ln(h.name)}</option>
+            ))}
+          </select>
         </div>
       </div>
 
