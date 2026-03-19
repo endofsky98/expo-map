@@ -204,6 +204,11 @@ export async function setCurrentImage(id: number): Promise<MapImage> {
   return request<MapImage>(`/api/images/${id}/set-current`, { method: 'PUT' });
 }
 
+export async function updateImageFloor(id: number, floorId: number | null): Promise<MapImage> {
+  const params = floorId != null ? `?floor_id=${floorId}` : '';
+  return request<MapImage>(`/api/images/${id}/update-floor${params}`, { method: 'PUT' });
+}
+
 export async function deleteImage(id: number): Promise<void> {
   await request<void>(`/api/images/${id}`, { method: 'DELETE' });
 }

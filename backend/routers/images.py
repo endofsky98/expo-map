@@ -198,6 +198,18 @@ def set_current_image(image_id: int, db: Session = Depends(get_db)):
     return img
 
 
+@router.put("/{image_id}/update-floor", response_model=MapImageResponse, dependencies=[Depends(get_current_admin)])
+def update_image_floor(image_id: int, floor_id: Optional[int] = None, hall_id: Optional[int] = None, db: Session = Depends(get_db)):
+    img = db.query(MapImage).filter(MapImage.id == image_id).first()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    img.floor_id = floor_id
+    img.hall_id = hall_id
+    db.commit()
+    db.refresh(img)
+    return img
+
+
 @router.delete("/{image_id}", dependencies=[Depends(get_current_admin)])
 def delete_image(image_id: int, db: Session = Depends(get_db)):
     img = db.query(MapImage).filter(MapImage.id == image_id).first()

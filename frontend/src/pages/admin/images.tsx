@@ -10,7 +10,7 @@ import {
 import AdminLayout from '@/components/AdminLayout';
 import { MapImage } from '@/types';
 import { useI18n } from '@/lib/i18n';
-import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage } from '@/lib/api';
+import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage, updateImageFloor } from '@/lib/api';
 import { Floor } from '@/types';
 
 export default function ImagesPage() {
@@ -80,6 +80,17 @@ export default function ImagesPage() {
       await loadImages();
     } catch (err) {
       setMessage('Failed to set current image');
+      console.error(err);
+    }
+  }
+
+  async function handleUpdateFloor(id: number, floorId: number | null) {
+    try {
+      await updateImageFloor(id, floorId);
+      setMessage('Floor updated');
+      await loadImages();
+    } catch (err) {
+      setMessage('Failed to update floor');
       console.error(err);
     }
   }
@@ -254,6 +265,21 @@ export default function ImagesPage() {
                     <p className="text-xs text-gray-400 mt-0.5">
                       {img.width}x{img.height} &middot; zoom step: {img.zoom_step_pixels || 512}px
                     </p>
+                    {/* 층 지정 */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <select
+                        value={img.floor_id ?? ''}
+                        onChange={(e) => handleUpdateFloor(img.id, e.target.value ? Number(e.target.value) : null)}
+                        className="flex-1 px-2 py-1.5 rounded-lg border border-gray-200 text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+                      >
+                        <option value="">{t('filter.all')} {t('admin.floor')}</option>
+                        {floors.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {typeof f.name === 'string' ? f.name : (f.name as Record<string,string>).ko || (f.name as Record<string,string>).en}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="flex items-center gap-2 mt-2">
                       {!img.is_current && (
                         <button
