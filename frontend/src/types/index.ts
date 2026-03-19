@@ -1,3 +1,19 @@
+export interface Floor {
+  id: number;
+  name: string | Record<string, string>;
+  order: number;
+  created_at?: string;
+}
+
+export interface Hall {
+  id: number;
+  floor_id: number;
+  name: string | Record<string, string>;
+  order: number;
+  created_at?: string;
+  floor?: Floor;
+}
+
 export interface Category {
   id: number;
   name: string | Record<string, string>;
@@ -26,8 +42,13 @@ export interface Booth {
   company?: Company;
   category_id?: number;
   category?: Category;
+  floor_id?: number;
+  floor?: Floor;
+  hall_id?: number;
+  hall?: Hall;
   color?: string;
   is_active: boolean;
+  corridor_node_id?: number;
   created_at?: string;
 }
 
@@ -40,11 +61,63 @@ export interface MapImage {
   width: number;
   height: number;
   is_current: boolean;
+  floor_id?: number;
+  hall_id?: number;
   created_at?: string;
+}
+
+export interface Facility {
+  id: number;
+  type: string;
+  subtype?: string;
+  x: number;
+  y: number;
+  floor_id?: number;
+  hall_id?: number;
+  connected_floors?: number[];
+  name?: string | Record<string, string>;
+  is_active: boolean;
+  created_at?: string;
+}
+
+export interface CorridorNode {
+  id: number;
+  x: number;
+  y: number;
+  floor_id?: number;
+  hall_id?: number;
+  node_type: string;
+  connected_node_id?: number;
+  created_at?: string;
+}
+
+export interface CorridorEdge {
+  id: number;
+  from_node_id: number;
+  to_node_id: number;
+  distance: number;
+  is_open: boolean;
+  created_at?: string;
+}
+
+export interface RoutePoint {
+  x: number;
+  y: number;
+  floor_id?: number;
+  hall_id?: number;
+}
+
+export interface RouteResult {
+  path: RoutePoint[];
+  total_distance: number;
+  floors_visited: number[];
+  facilities_used: Facility[];
 }
 
 declare global {
   interface Window {
     onBoothClick?: (boothId: number, boothData: Booth) => void;
+    onRouteReady?: (route: RouteResult) => void;
+    setCurrentPosition?: (x: number, y: number, floorId: number, hallId: number) => void;
   }
 }

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Category
 from schemas import CategoryCreate, CategoryUpdate, CategoryResponse
+from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/categories", tags=["categories"])
 
@@ -25,7 +26,7 @@ def list_categories(db: Session = Depends(get_db)):
     return [_parse_category(c) for c in categories]
 
 
-@router.post("", response_model=CategoryResponse, status_code=201)
+@router.post("", response_model=CategoryResponse, status_code=201, dependencies=[Depends(get_current_admin)])
 def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     cat = Category(
         name=json.dumps(data.name, ensure_ascii=False),
@@ -37,7 +38,7 @@ def create_category(data: CategoryCreate, db: Session = Depends(get_db)):
     return _parse_category(cat)
 
 
-@router.put("/{category_id}", response_model=CategoryResponse)
+@router.put("/{category_id}", response_model=CategoryResponse, dependencies=[Depends(get_current_admin)])
 def update_category(category_id: int, data: CategoryUpdate, db: Session = Depends(get_db)):
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:
@@ -51,7 +52,7 @@ def update_category(category_id: int, data: CategoryUpdate, db: Session = Depend
     return _parse_category(cat)
 
 
-@router.delete("/{category_id}")
+@router.delete("/{category_id}", dependencies=[Depends(get_current_admin)])
 def delete_category(category_id: int, db: Session = Depends(get_db)):
     cat = db.query(Category).filter(Category.id == category_id).first()
     if not cat:

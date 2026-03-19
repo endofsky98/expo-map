@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from database import get_db
 from models import Company
 from schemas import CompanyCreate, CompanyUpdate, CompanyResponse
+from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/companies", tags=["companies"])
 
@@ -36,7 +37,7 @@ def list_companies(db: Session = Depends(get_db)):
     return [_parse_company(c) for c in companies]
 
 
-@router.post("", response_model=CompanyResponse, status_code=201)
+@router.post("", response_model=CompanyResponse, status_code=201, dependencies=[Depends(get_current_admin)])
 def create_company(data: CompanyCreate, db: Session = Depends(get_db)):
     comp = Company(
         name=json.dumps(data.name, ensure_ascii=False),
@@ -50,7 +51,7 @@ def create_company(data: CompanyCreate, db: Session = Depends(get_db)):
     return _parse_company(comp)
 
 
-@router.put("/{company_id}", response_model=CompanyResponse)
+@router.put("/{company_id}", response_model=CompanyResponse, dependencies=[Depends(get_current_admin)])
 def update_company(company_id: int, data: CompanyUpdate, db: Session = Depends(get_db)):
     comp = db.query(Company).options(joinedload(Company.category)).filter(Company.id == company_id).first()
     if not comp:
@@ -68,7 +69,7 @@ def update_company(company_id: int, data: CompanyUpdate, db: Session = Depends(g
     return _parse_company(comp)
 
 
-@router.delete("/{company_id}")
+@router.delete("/{company_id}", dependencies=[Depends(get_current_admin)])
 def delete_company(company_id: int, db: Session = Depends(get_db)):
     comp = db.query(Company).filter(Company.id == company_id).first()
     if not comp:

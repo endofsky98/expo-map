@@ -1,13 +1,14 @@
 import os
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from PIL import Image
 
 from database import get_db
 from models import MapImage
 from schemas import MapImageResponse
+from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/images", tags=["images"])
 
@@ -16,7 +17,6 @@ UPLOAD_DIR = os.path.join(os.path.dirname(BASE_DIR), "uploads", "images")
 
 
 def _resize_image(img: Image.Image, max_width: int) -> Image.Image:
-    """Resize image maintaining aspect ratio, only if wider than max_width."""
     if img.width <= max_width:
         return img.copy()
     ratio = max_width / img.width
@@ -25,29 +25,47 @@ def _resize_image(img: Image.Image, max_width: int) -> Image.Image:
 
 
 @router.get("/current", response_model=MapImageResponse)
-def get_current_image(db: Session = Depends(get_db)):
-    """Get the current active map image."""
-    img = db.query(MapImage).filter(MapImage.is_current == True).first()
+def get_current_image(
+    floor_id: Optional[int] = None,
+    hall_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(MapImage).filter(MapImage.is_current == True)
+    if floor_id is not None:
+        query = query.filter(MapImage.floor_id == floor_id)
+    if hall_id is not None:
+        query = query.filter(MapImage.hall_id == hall_id)
+    img = query.first()
     if not img:
         raise HTTPException(status_code=404, detail="No current map image set")
     return img
 
 
 @router.get("", response_model=List[MapImageResponse])
-def list_images(db: Session = Depends(get_db)):
-    return db.query(MapImage).order_by(MapImage.created_at.desc()).all()
+def list_images(
+    floor_id: Optional[int] = None,
+    hall_id: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    query = db.query(MapImage)
+    if floor_id is not None:
+        query = query.filter(MapImage.floor_id == floor_id)
+    if hall_id is not None:
+        query = query.filter(MapImage.hall_id == hall_id)
+    return query.order_by(MapImage.created_at.desc()).all()
 
 
-@router.post("/upload", response_model=MapImageResponse, status_code=201)
-def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """Upload image and auto-generate 3 resolutions."""
+@router.post("/upload", response_model=MapImageResponse, status_code=201, dependencies=[Depends(get_current_admin)])
+def upload_image(
+    file: UploadFile = File(...),
+    floor_id: Optional[int] = Form(None),
+    hall_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db),
+):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-    # Read uploaded file
     content = file.file.read()
     img = Image.open(__import__("io").BytesIO(content))
 
-    # Convert to RGB if needed (e.g. RGBA, palette)
     if img.mode in ("RGBA", "LA", "P"):
         background = Image.new("RGB", img.size, (255, 255, 255))
         if img.mode == "P":
@@ -59,19 +77,11 @@ def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
 
     original_width = img.width
     original_height = img.height
-
-    # Generate unique prefix
     prefix = uuid.uuid4().hex[:12]
     original_name = file.filename or "image.jpg"
     base_name = os.path.splitext(original_name)[0]
 
-    # Generate 3 resolutions
-    resolutions = {
-        "low": 800,
-        "medium": 2000,
-        "high": 4000,
-    }
-
+    resolutions = {"low": 800, "medium": 2000, "high": 4000}
     paths = {}
     for res_name, max_w in resolutions.items():
         resized = _resize_image(img, max_w)
@@ -80,7 +90,6 @@ def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
         resized.save(filepath, "JPEG", quality=85)
         paths[res_name] = f"/uploads/images/{filename}"
 
-    # Save to database
     map_image = MapImage(
         original_filename=original_name,
         low_path=paths["low"],
@@ -89,6 +98,8 @@ def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
         width=original_width,
         height=original_height,
         is_current=False,
+        floor_id=floor_id,
+        hall_id=hall_id,
     )
     db.add(map_image)
     db.commit()
@@ -96,35 +107,33 @@ def upload_image(file: UploadFile = File(...), db: Session = Depends(get_db)):
     return map_image
 
 
-@router.put("/{image_id}/set-current", response_model=MapImageResponse)
+@router.put("/{image_id}/set-current", response_model=MapImageResponse, dependencies=[Depends(get_current_admin)])
 def set_current_image(image_id: int, db: Session = Depends(get_db)):
-    """Set an image as the current map background."""
     img = db.query(MapImage).filter(MapImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
-
-    # Unset all current
-    db.query(MapImage).update({MapImage.is_current: False})
+    # Unset current for same floor/hall scope
+    scope = db.query(MapImage)
+    if img.floor_id is not None:
+        scope = scope.filter(MapImage.floor_id == img.floor_id)
+    if img.hall_id is not None:
+        scope = scope.filter(MapImage.hall_id == img.hall_id)
+    scope.update({MapImage.is_current: False})
     img.is_current = True
     db.commit()
     db.refresh(img)
     return img
 
 
-@router.delete("/{image_id}")
+@router.delete("/{image_id}", dependencies=[Depends(get_current_admin)])
 def delete_image(image_id: int, db: Session = Depends(get_db)):
-    """Delete image record and files from disk."""
     img = db.query(MapImage).filter(MapImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
-
-    # Delete files
     for path in [img.low_path, img.medium_path, img.high_path]:
-        # path is like /uploads/images/filename.jpg
         file_path = os.path.join(os.path.dirname(BASE_DIR), path.lstrip("/"))
         if os.path.exists(file_path):
             os.remove(file_path)
-
     db.delete(img)
     db.commit()
     return {"message": "Image deleted"}

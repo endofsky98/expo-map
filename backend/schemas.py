@@ -1,12 +1,56 @@
 from datetime import datetime
-from typing import Optional, Any
+from typing import Optional, Any, List
 from pydantic import BaseModel
+
+
+# ---------- Floor ----------
+
+class FloorCreate(BaseModel):
+    name: dict
+    order: int = 0
+
+class FloorUpdate(BaseModel):
+    name: Optional[dict] = None
+    order: Optional[int] = None
+
+class FloorResponse(BaseModel):
+    id: int
+    name: Any
+    order: int
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Hall ----------
+
+class HallCreate(BaseModel):
+    floor_id: int
+    name: dict
+    order: int = 0
+
+class HallUpdate(BaseModel):
+    floor_id: Optional[int] = None
+    name: Optional[dict] = None
+    order: Optional[int] = None
+
+class HallResponse(BaseModel):
+    id: int
+    floor_id: int
+    name: Any
+    order: int
+    created_at: Optional[datetime] = None
+    floor: Optional[FloorResponse] = None
+
+    class Config:
+        from_attributes = True
 
 
 # ---------- Category ----------
 
 class CategoryCreate(BaseModel):
-    name: dict  # {"ko": "...", "en": "..."}
+    name: dict
     color: str
 
 class CategoryUpdate(BaseModel):
@@ -56,38 +100,49 @@ class BoothCreate(BaseModel):
     booth_number: str
     company_id: Optional[int] = None
     category_id: Optional[int] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
     x: float = 0
     y: float = 0
     width: float = 80
     height: float = 60
     color: Optional[str] = None
     is_active: bool = True
+    corridor_node_id: Optional[int] = None
 
 class BoothUpdate(BaseModel):
     booth_number: Optional[str] = None
     company_id: Optional[int] = None
     category_id: Optional[int] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
     x: Optional[float] = None
     y: Optional[float] = None
     width: Optional[float] = None
     height: Optional[float] = None
     color: Optional[str] = None
     is_active: Optional[bool] = None
+    corridor_node_id: Optional[int] = None
 
 class BoothResponse(BaseModel):
     id: int
     booth_number: str
     company_id: Optional[int] = None
     category_id: Optional[int] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
     x: float
     y: float
     width: float
     height: float
     color: Optional[str] = None
     is_active: bool
+    corridor_node_id: Optional[int] = None
     created_at: Optional[datetime] = None
     company: Optional[CompanyResponse] = None
     category: Optional[CategoryResponse] = None
+    floor: Optional[FloorResponse] = None
+    hall: Optional[HallResponse] = None
 
     class Config:
         from_attributes = True
@@ -104,6 +159,107 @@ class MapImageResponse(BaseModel):
     width: int
     height: int
     is_current: bool
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Facility ----------
+
+class FacilityCreate(BaseModel):
+    type: str
+    subtype: Optional[str] = None
+    x: float = 0
+    y: float = 0
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    connected_floors: Optional[list] = None
+    name: Optional[dict] = None
+    is_active: bool = True
+
+class FacilityUpdate(BaseModel):
+    type: Optional[str] = None
+    subtype: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    connected_floors: Optional[list] = None
+    name: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+class FacilityResponse(BaseModel):
+    id: int
+    type: str
+    subtype: Optional[str] = None
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    connected_floors: Any = None
+    name: Any = None
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- CorridorNode ----------
+
+class CorridorNodeCreate(BaseModel):
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    node_type: str = "intersection"
+    connected_node_id: Optional[int] = None
+
+class CorridorNodeUpdate(BaseModel):
+    x: Optional[float] = None
+    y: Optional[float] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    node_type: Optional[str] = None
+    connected_node_id: Optional[int] = None
+
+class CorridorNodeResponse(BaseModel):
+    id: int
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    node_type: str
+    connected_node_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- CorridorEdge ----------
+
+class CorridorEdgeCreate(BaseModel):
+    from_node_id: int
+    to_node_id: int
+    distance: float
+    is_open: bool = True
+
+class CorridorEdgeUpdate(BaseModel):
+    from_node_id: Optional[int] = None
+    to_node_id: Optional[int] = None
+    distance: Optional[float] = None
+    is_open: Optional[bool] = None
+
+class CorridorEdgeResponse(BaseModel):
+    id: int
+    from_node_id: int
+    to_node_id: int
+    distance: float
+    is_open: bool
     created_at: Optional[datetime] = None
 
     class Config:
@@ -133,3 +289,37 @@ class LanguageResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ---------- Auth ----------
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+class AdminResponse(BaseModel):
+    id: int
+    username: str
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Route ----------
+
+class RoutePoint(BaseModel):
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+
+class RouteResponse(BaseModel):
+    path: List[RoutePoint]
+    total_distance: float
+    floors_visited: List[int]
+    facilities_used: List[FacilityResponse]

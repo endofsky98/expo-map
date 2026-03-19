@@ -35,31 +35,24 @@ export default function SearchBar({ booths, onSelect }: SearchBarProps) {
         return;
       }
       const keyword = q.toLowerCase();
-
-      // Client-side search from loaded booths
       const localResults = booths.filter(
         (b) =>
           b.booth_number.toLowerCase().includes(keyword) ||
           searchInName(b.company?.name, keyword) ||
           searchInName(b.category?.name, keyword)
       );
-
       if (localResults.length > 0) {
         setResults(localResults.slice(0, 20));
         setIsOpen(true);
         return;
       }
-
-      // Fallback to API search if no local results
       setApiSearching(true);
       searchBooths(q)
         .then((apiResults) => {
           setResults(apiResults.slice(0, 20));
           setIsOpen(true);
         })
-        .catch(() => {
-          setResults([]);
-        })
+        .catch(() => setResults([]))
         .finally(() => setApiSearching(false));
     },
     [booths]
@@ -68,16 +61,12 @@ export default function SearchBar({ booths, onSelect }: SearchBarProps) {
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => doSearch(query), 200);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -112,10 +101,7 @@ export default function SearchBar({ booths, onSelect }: SearchBarProps) {
             dark:focus:ring-indigo-400/30 dark:focus:border-indigo-400"
         />
         {query && (
-          <button
-            onClick={handleClear}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-          >
+          <button onClick={handleClear} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X className="h-4 w-4" />
           </button>
         )}
@@ -131,14 +117,18 @@ export default function SearchBar({ booths, onSelect }: SearchBarProps) {
               <span className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold">
                 {booth.booth_number}
               </span>
-              <span className="truncate text-gray-700 dark:text-gray-200">
-                {ln(booth.company?.name) || t('search.unassigned')}
-              </span>
+              <div className="flex-1 min-w-0">
+                <span className="truncate block text-gray-700 dark:text-gray-200">
+                  {ln(booth.company?.name) || t('search.unassigned')}
+                </span>
+                {(booth.floor || booth.hall) && (
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                    {booth.floor ? ln(booth.floor.name) : ''}{booth.hall ? ` / ${ln(booth.hall.name)}` : ''}
+                  </span>
+                )}
+              </div>
               {booth.category && (
-                <span
-                  className="ml-auto shrink-0 w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: booth.category.color }}
-                />
+                <span className="ml-auto shrink-0 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: booth.category.color }} />
               )}
             </button>
           ))}
@@ -146,9 +136,7 @@ export default function SearchBar({ booths, onSelect }: SearchBarProps) {
       )}
       {isOpen && query.trim() && results.length === 0 && !apiSearching && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-lg shadow-lg p-4 z-50">
-          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-            {t('search.noResults')}
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center">{t('search.noResults')}</p>
         </div>
       )}
     </div>
