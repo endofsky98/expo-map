@@ -389,6 +389,17 @@ export default function MapViewer({
         y={position.y}
         draggable
         onWheel={handleWheel}
+        onTouchStart={(e) => {
+          const touches = e.evt.touches;
+          if (touches.length === 2) {
+            const stage = stageRef.current;
+            if (stage && stage.isDragging()) stage.stopDrag();
+            const t1 = touches[0];
+            const t2 = touches[1];
+            lastPinchDistRef.current = getTouchDistance(t1, t2);
+            lastPinchCenterRef.current = getTouchCenter(t1, t2);
+          }
+        }}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onDragEnd={handleDragEnd}
