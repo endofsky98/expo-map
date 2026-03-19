@@ -12,6 +12,7 @@ import {
   MapPin,
   Network,
   LogOut,
+  Columns3,
 } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { isLoggedIn, clearToken } from '@/lib/auth';
@@ -56,6 +57,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     { href: '/admin/companies', label: t('nav.companies'), icon: Building2 },
     { href: '/admin/categories', label: t('nav.categories'), icon: Tag },
     { href: '/admin/facilities', label: t('nav.facilities'), icon: MapPin },
+    { href: '/admin/obstacles', label: t('nav.obstacles'), icon: Columns3 },
     { href: '/admin/corridors', label: t('nav.corridors'), icon: Network },
   ];
 

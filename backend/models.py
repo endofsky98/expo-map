@@ -17,6 +17,7 @@ class Floor(Base):
     facilities = relationship("Facility", back_populates="floor")
     corridor_nodes = relationship("CorridorNode", back_populates="floor")
     map_images = relationship("MapImage", back_populates="floor")
+    obstacles = relationship("Obstacle", back_populates="floor", cascade="all, delete-orphan")
 
 
 class Hall(Base):
@@ -26,6 +27,10 @@ class Hall(Base):
     floor_id = Column(Integer, ForeignKey("floors.id"), nullable=False)
     name = Column(Text, nullable=False)  # JSON i18n
     order = Column(Integer, default=0)
+    area_x = Column(Float, nullable=True)
+    area_y = Column(Float, nullable=True)
+    area_width = Column(Float, nullable=True)
+    area_height = Column(Float, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floor = relationship("Floor", back_populates="halls")
@@ -93,6 +98,8 @@ class MapImage(Base):
     low_path = Column(String(500), nullable=False)
     medium_path = Column(String(500), nullable=False)
     high_path = Column(String(500), nullable=False)
+    zoom_levels = Column(Text, nullable=True)  # JSON: [{"level":1,"path":"/..","width":800},...]
+    zoom_step_pixels = Column(Integer, default=512)
     width = Column(Integer, nullable=False)
     height = Column(Integer, nullable=False)
     is_current = Column(Boolean, default=False)
@@ -151,6 +158,22 @@ class CorridorEdge(Base):
 
     from_node = relationship("CorridorNode", foreign_keys=[from_node_id])
     to_node = relationship("CorridorNode", foreign_keys=[to_node_id])
+
+
+class Obstacle(Base):
+    __tablename__ = "obstacles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    floor_id = Column(Integer, ForeignKey("floors.id"), nullable=False)
+    shape = Column(String(20), nullable=False, default="rectangle")  # rectangle, circle
+    x = Column(Float, nullable=False, default=0)
+    y = Column(Float, nullable=False, default=0)
+    width = Column(Float, nullable=True, default=40)
+    height = Column(Float, nullable=True, default=40)
+    radius = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    floor = relationship("Floor", back_populates="obstacles")
 
 
 class Language(Base):

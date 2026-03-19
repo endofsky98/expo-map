@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Group, Circle, Line } from 'react-konva';
 import Konva from 'konva';
-import { Booth, Category, MapImage, Facility, RoutePoint } from '@/types';
+import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
 interface CurrentPosition {
@@ -19,6 +19,7 @@ interface MapViewerProps {
   activeCategories: Set<number>;
   facilities: Facility[];
   hiddenFacilityTypes: Set<string>;
+  obstacles: Obstacle[];
   routePath: RoutePoint[] | null;
   currentFloorId: number | null;
   currentHallId: number | null;
@@ -27,9 +28,10 @@ interface MapViewerProps {
   onZoomChange?: (zoom: number) => void;
 }
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 3.0;
+const MIN_ZOOM = 0.3;
+const MAX_ZOOM = 5.0;
 const VIEWPORT_PADDING = 200;
+const MIN_BOOTH_SCREEN_SIZE = 10; // pixels
 
 const FACILITY_STYLES: Record<string, { color: string; label: string }> = {
   restroom: { color: '#3b82f6', label: 'WC' },
@@ -39,6 +41,14 @@ const FACILITY_STYLES: Record<string, { color: string; label: string }> = {
   escalator: { color: '#f97316', label: 'ES' },
 };
 
+function parseZoomLevels(img: MapImage): ZoomLevel[] {
+  if (!img.zoom_levels) return [];
+  if (typeof img.zoom_levels === 'string') {
+    try { return JSON.parse(img.zoom_levels); } catch { return []; }
+  }
+  return img.zoom_levels;
+}
+
 export default function MapViewer({
   booths,
   categories,
@@ -47,6 +57,7 @@ export default function MapViewer({
   activeCategories,
   facilities,
   hiddenFacilityTypes,
+  obstacles,
   routePath,
   currentFloorId,
   currentHallId,
@@ -62,7 +73,11 @@ export default function MapViewer({
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [bgImage, setBgImage] = useState<HTMLImageElement | null>(null);
+  const [nextBgImage, setNextBgImage] = useState<HTMLImageElement | null>(null);
+  const [crossfadeOpacity, setCrossfadeOpacity] = useState(0);
   const [viewportBounds, setViewportBounds] = useState({ x: 0, y: 0, width: 800, height: 600 });
+  const crossfadeTimerRef = useRef<number | null>(null);
+  const currentZoomLevelRef = useRef<number>(-1);
 
   useEffect(() => {
     function updateSize() {
@@ -75,18 +90,72 @@ export default function MapViewer({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
+  // Crossfade zoom: pick the right zoom level image based on current scale
   useEffect(() => {
-    if (!currentImage) { setBgImage(null); return; }
+    if (!currentImage) { setBgImage(null); setNextBgImage(null); return; }
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+    const zoomLevels = parseZoomLevels(currentImage);
+
     let imageUrl: string;
-    if (scale < 0.8 && currentImage.low_path) imageUrl = currentImage.low_path;
-    else if (scale > 1.5 && currentImage.high_path) imageUrl = currentImage.high_path;
-    else imageUrl = currentImage.medium_path;
+    let targetLevel = -1;
+
+    if (zoomLevels.length > 0) {
+      // Map scale to zoom level
+      const scaleRange = MAX_ZOOM - MIN_ZOOM;
+      const normalizedScale = Math.max(0, Math.min(1, (scale - MIN_ZOOM) / scaleRange));
+      targetLevel = Math.min(zoomLevels.length - 1, Math.floor(normalizedScale * zoomLevels.length));
+      imageUrl = zoomLevels[targetLevel].path;
+    } else {
+      // Fallback to legacy 3-level system
+      if (scale < 0.8 && currentImage.low_path) imageUrl = currentImage.low_path;
+      else if (scale > 1.5 && currentImage.high_path) imageUrl = currentImage.high_path;
+      else imageUrl = currentImage.medium_path;
+    }
+
     if (imageUrl && !imageUrl.startsWith('http')) imageUrl = `${apiBase}${imageUrl}`;
+
+    // If same zoom level, skip
+    if (targetLevel === currentZoomLevelRef.current && bgImage) return;
+
+    // Preload new image in background
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.src = imageUrl;
-    img.onload = () => setBgImage(img);
+    img.onload = () => {
+      if (!bgImage) {
+        // First load - no crossfade needed
+        setBgImage(img);
+        currentZoomLevelRef.current = targetLevel;
+      } else {
+        // Crossfade: show new image on top with increasing opacity
+        setNextBgImage(img);
+        setCrossfadeOpacity(0);
+        if (crossfadeTimerRef.current) cancelAnimationFrame(crossfadeTimerRef.current);
+        let startTime: number | null = null;
+        const duration = 200; // ms
+        function animate(timestamp: number) {
+          if (!startTime) startTime = timestamp;
+          const elapsed = timestamp - startTime;
+          const progress = Math.min(1, elapsed / duration);
+          setCrossfadeOpacity(progress);
+          if (progress < 1) {
+            crossfadeTimerRef.current = requestAnimationFrame(animate);
+          } else {
+            // Crossfade complete
+            setBgImage(img);
+            setNextBgImage(null);
+            setCrossfadeOpacity(0);
+            currentZoomLevelRef.current = targetLevel;
+          }
+        }
+        crossfadeTimerRef.current = requestAnimationFrame(animate);
+      }
+    };
+
+    return () => {
+      if (crossfadeTimerRef.current) cancelAnimationFrame(crossfadeTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentImage, scale]);
 
   const updateViewport = useCallback(() => {
@@ -104,16 +173,23 @@ export default function MapViewer({
 
   useEffect(() => { updateViewport(); }, [dimensions, scale, position, updateViewport]);
 
+  // Filter visible booths: viewport + minimum screen size
   const visibleBooths = useMemo(() => {
     return booths.filter((booth) => {
-      return (
-        booth.x + booth.width > viewportBounds.x &&
-        booth.x < viewportBounds.x + viewportBounds.width &&
-        booth.y + booth.height > viewportBounds.y &&
-        booth.y < viewportBounds.y + viewportBounds.height
-      );
+      // Viewport check
+      if (
+        booth.x + booth.width < viewportBounds.x ||
+        booth.x > viewportBounds.x + viewportBounds.width ||
+        booth.y + booth.height < viewportBounds.y ||
+        booth.y > viewportBounds.y + viewportBounds.height
+      ) return false;
+      // Minimum screen size check
+      const screenWidth = booth.width * scale;
+      const screenHeight = booth.height * scale;
+      if (screenWidth < MIN_BOOTH_SCREEN_SIZE && screenHeight < MIN_BOOTH_SCREEN_SIZE) return false;
+      return true;
     });
-  }, [booths, viewportBounds]);
+  }, [booths, viewportBounds, scale]);
 
   const categoryColorMap = useMemo(() => {
     const map: Record<number, string> = {};
@@ -121,7 +197,6 @@ export default function MapViewer({
     return map;
   }, [categories]);
 
-  // Filter facilities for current floor/hall and visible types
   const visibleFacilities = useMemo(() => {
     return facilities.filter((f) => {
       if (!f.is_active) return false;
@@ -130,7 +205,6 @@ export default function MapViewer({
     });
   }, [facilities, hiddenFacilityTypes]);
 
-  // Filter route path for current floor/hall
   const currentRoutePoints = useMemo(() => {
     if (!routePath || !currentFloorId) return null;
     const points: number[] = [];
@@ -203,9 +277,22 @@ export default function MapViewer({
     setPosition({ x: dimensions.width / 2 - centerX * scale, y: dimensions.height / 2 - centerY * scale });
   }
 
+  function panToArea(x: number, y: number, width: number, height: number) {
+    const scaleX = dimensions.width / width;
+    const scaleY = dimensions.height / height;
+    const newScale = Math.min(scaleX, scaleY) * 0.85;
+    const clampedScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
+    setScale(clampedScale);
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    setPosition({ x: dimensions.width / 2 - centerX * clampedScale, y: dimensions.height / 2 - centerY * clampedScale });
+    onZoomChange?.(clampedScale);
+  }
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       (window as unknown as Record<string, unknown>).__mapViewerPanToBooth = panToBooth;
+      (window as unknown as Record<string, unknown>).__mapViewerPanToArea = panToArea;
       (window as unknown as Record<string, unknown>).__mapViewerZoomIn = zoomIn;
       (window as unknown as Record<string, unknown>).__mapViewerZoomOut = zoomOut;
     }
@@ -223,6 +310,10 @@ export default function MapViewer({
     if (booth.category_id && categoryColorMap[booth.category_id]) return categoryColorMap[booth.category_id];
     return '#94a3b8';
   }
+
+  // Determine image dimensions for rendering (use original image size)
+  const imgWidth = currentImage?.width || (bgImage?.naturalWidth ?? 800);
+  const imgHeight = currentImage?.height || (bgImage?.naturalHeight ?? 600);
 
   return (
     <div ref={containerRef} className="w-full h-full relative">
@@ -242,11 +333,50 @@ export default function MapViewer({
           if (stage) setPosition(stage.position());
         }}
       >
-        {/* Background image layer */}
+        {/* Background image layer with crossfade */}
         <Layer>
           {bgImage && (
-            <KonvaImage image={bgImage} x={0} y={0} width={bgImage.naturalWidth} height={bgImage.naturalHeight} />
+            <KonvaImage image={bgImage} x={0} y={0} width={imgWidth} height={imgHeight} />
           )}
+          {nextBgImage && (
+            <KonvaImage image={nextBgImage} x={0} y={0} width={imgWidth} height={imgHeight} opacity={crossfadeOpacity} />
+          )}
+        </Layer>
+
+        {/* Obstacles layer */}
+        <Layer>
+          {obstacles.map((obs) => {
+            if (obs.shape === 'circle' && obs.radius) {
+              return (
+                <Circle
+                  key={`obs-${obs.id}`}
+                  x={obs.x}
+                  y={obs.y}
+                  radius={obs.radius}
+                  fill="#9ca3af"
+                  opacity={0.5}
+                  stroke="#6b7280"
+                  strokeWidth={1 / scale}
+                  listening={false}
+                />
+              );
+            }
+            return (
+              <Rect
+                key={`obs-${obs.id}`}
+                x={obs.x}
+                y={obs.y}
+                width={obs.width || 40}
+                height={obs.height || 40}
+                fill="#9ca3af"
+                opacity={0.5}
+                stroke="#6b7280"
+                strokeWidth={1 / scale}
+                cornerRadius={2 / scale}
+                listening={false}
+              />
+            );
+          })}
         </Layer>
 
         {/* Route layer */}

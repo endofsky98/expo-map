@@ -10,6 +10,10 @@ export interface Hall {
   floor_id: number;
   name: string | Record<string, string>;
   order: number;
+  area_x?: number;
+  area_y?: number;
+  area_width?: number;
+  area_height?: number;
   created_at?: string;
   floor?: Floor;
 }
@@ -52,17 +56,38 @@ export interface Booth {
   created_at?: string;
 }
 
+export interface ZoomLevel {
+  level: number;
+  path: string;
+  width: number;
+  height: number;
+}
+
 export interface MapImage {
   id: number;
   original_filename: string;
   low_path: string;
   medium_path: string;
   high_path: string;
+  zoom_levels?: ZoomLevel[] | string;
+  zoom_step_pixels?: number;
   width: number;
   height: number;
   is_current: boolean;
   floor_id?: number;
   hall_id?: number;
+  created_at?: string;
+}
+
+export interface Obstacle {
+  id: number;
+  floor_id: number;
+  shape: 'rectangle' | 'circle';
+  x: number;
+  y: number;
+  width?: number;
+  height?: number;
+  radius?: number;
   created_at?: string;
 }
 

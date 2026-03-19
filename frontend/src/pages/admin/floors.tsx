@@ -17,6 +17,7 @@ export default function FloorsPage() {
   const [formName, setFormName] = useState({ ko: '', en: '' });
   const [formOrder, setFormOrder] = useState(0);
   const [formFloorId, setFormFloorId] = useState<number>(0);
+  const [formArea, setFormArea] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
   useEffect(() => { loadData(); }, []);
 
@@ -50,11 +51,13 @@ export default function FloorsPage() {
       setFormName({ ko: name?.ko || '', en: name?.en || '' });
       setFormOrder(hall.order);
       setFormFloorId(hall.floor_id);
+      setFormArea({ x: hall.area_x || 0, y: hall.area_y || 0, width: hall.area_width || 0, height: hall.area_height || 0 });
     } else {
       setEditHall(null);
       setFormName({ ko: '', en: '' });
       setFormOrder(0);
       setFormFloorId(floorId || floors[0]?.id || 0);
+      setFormArea({ x: 0, y: 0, width: 0, height: 0 });
     }
     setShowHallForm(true);
   }
@@ -70,10 +73,17 @@ export default function FloorsPage() {
   }
 
   async function saveHall() {
+    const hallData: Record<string, unknown> = { name: formName, order: formOrder, floor_id: formFloorId };
+    if (formArea.width > 0 && formArea.height > 0) {
+      hallData.area_x = formArea.x;
+      hallData.area_y = formArea.y;
+      hallData.area_width = formArea.width;
+      hallData.area_height = formArea.height;
+    }
     if (editHall) {
-      await updateHall(editHall.id, { name: formName, order: formOrder, floor_id: formFloorId });
+      await updateHall(editHall.id, hallData);
     } else {
-      await createHall({ name: formName, order: formOrder, floor_id: formFloorId });
+      await createHall(hallData);
     }
     setShowHallForm(false);
     loadData();
@@ -121,7 +131,10 @@ export default function FloorsPage() {
                     <div className="ml-4 space-y-1">
                       {floorHalls.map((hall) => (
                         <div key={hall.id} className="flex items-center justify-between py-1">
-                          <span className="text-sm text-gray-600 dark:text-gray-300">{ln(hall.name)} <span className="text-xs text-gray-400">#{hall.order}</span></span>
+                          <span className="text-sm text-gray-600 dark:text-gray-300">
+                            {ln(hall.name)} <span className="text-xs text-gray-400">#{hall.order}</span>
+                            {hall.area_width ? <span className="text-xs text-indigo-400 ml-2">area: ({hall.area_x},{hall.area_y}) {hall.area_width}x{hall.area_height}</span> : null}
+                          </span>
                           <div className="flex items-center gap-1">
                             <button onClick={() => openHallForm(hall)} className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"><Edit2 className="h-3 w-3" /></button>
                             <button onClick={() => handleDeleteHall(hall.id)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
@@ -167,6 +180,15 @@ export default function FloorsPage() {
                 <input value={formName.ko} onChange={(e) => setFormName({ ...formName, ko: e.target.value })} placeholder="한국어 이름" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
                 <input value={formName.en} onChange={(e) => setFormName({ ...formName, en: e.target.value })} placeholder="English name" className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
                 <input type="number" value={formOrder} onChange={(e) => setFormOrder(Number(e.target.value))} placeholder={t('admin.order')} className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 pt-1">{t('admin.hallArea')}</p>
+                <div className="flex gap-2">
+                  <input type="number" value={formArea.x} onChange={(e) => setFormArea({ ...formArea, x: Number(e.target.value) })} placeholder="X" className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
+                  <input type="number" value={formArea.y} onChange={(e) => setFormArea({ ...formArea, y: Number(e.target.value) })} placeholder="Y" className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
+                </div>
+                <div className="flex gap-2">
+                  <input type="number" value={formArea.width} onChange={(e) => setFormArea({ ...formArea, width: Number(e.target.value) })} placeholder="Width" className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
+                  <input type="number" value={formArea.height} onChange={(e) => setFormArea({ ...formArea, height: Number(e.target.value) })} placeholder="Height" className="flex-1 px-3 py-2 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 outline-none" />
+                </div>
                 <div className="flex gap-2">
                   <button onClick={saveHall} className="flex-1 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400">{t('admin.save')}</button>
                   <button onClick={() => setShowHallForm(false)} className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">{t('admin.cancel')}</button>

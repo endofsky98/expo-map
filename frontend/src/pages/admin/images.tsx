@@ -10,15 +10,19 @@ import {
 import AdminLayout from '@/components/AdminLayout';
 import { MapImage } from '@/types';
 import { useI18n } from '@/lib/i18n';
-import { fetchImages, uploadImage, setCurrentImage, deleteImage } from '@/lib/api';
+import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage } from '@/lib/api';
+import { Floor } from '@/types';
 
 export default function ImagesPage() {
   const { t } = useI18n();
   const [images, setImages] = useState<MapImage[]>([]);
+  const [floors, setFloors] = useState<Floor[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [uploadFloorId, setUploadFloorId] = useState<number | ''>('');
+  const [uploadZoomStep, setUploadZoomStep] = useState(512);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -28,8 +32,9 @@ export default function ImagesPage() {
   async function loadImages() {
     setLoading(true);
     try {
-      const data = await fetchImages();
+      const [data, floorData] = await Promise.all([fetchImages(), fetchFloors()]);
       setImages(data);
+      setFloors(floorData);
     } catch (err) {
       console.error(err);
       setMessage('Failed to load images');
@@ -42,7 +47,7 @@ export default function ImagesPage() {
     setUploading(true);
     setMessage('');
     try {
-      await uploadImage(file);
+      await uploadImage(file, uploadFloorId || undefined, undefined, uploadZoomStep);
       setMessage('Image uploaded successfully');
       await loadImages();
     } catch (err) {
@@ -50,6 +55,21 @@ export default function ImagesPage() {
       console.error(err);
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleReconfigure(id: number, currentStep: number) {
+    const input = prompt(`${t('admin.zoomStep')} (current: ${currentStep})`, String(currentStep));
+    if (!input) return;
+    const val = Number(input);
+    if (isNaN(val) || val < 100) { setMessage('Invalid zoom step'); return; }
+    try {
+      await reconfigureImage(id, val);
+      setMessage('Zoom levels reconfigured');
+      await loadImages();
+    } catch (err) {
+      setMessage('Reconfigure failed');
+      console.error(err);
     }
   }
 
@@ -122,6 +142,18 @@ export default function ImagesPage() {
             </button>
           </div>
         )}
+
+        {/* Upload settings */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <select value={uploadFloorId} onChange={(e) => setUploadFloorId(e.target.value ? Number(e.target.value) : '')} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none">
+            <option value="">{t('filter.all')} {t('admin.floor')}</option>
+            {floors.map((f) => <option key={f.id} value={f.id}>{typeof f.name === 'string' ? f.name : (f.name as Record<string,string>).ko || (f.name as Record<string,string>).en}</option>)}
+          </select>
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 dark:text-gray-400">{t('admin.zoomStep')}:</label>
+            <input type="number" value={uploadZoomStep} onChange={(e) => setUploadZoomStep(Number(e.target.value))} className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none" min={100} step={100} />
+          </div>
+        </div>
 
         {/* Upload area */}
         <div
@@ -219,6 +251,9 @@ export default function ImagesPage() {
                     <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
                       {img.original_filename}
                     </p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {img.width}x{img.height} &middot; zoom step: {img.zoom_step_pixels || 512}px
+                    </p>
                     <div className="flex items-center gap-2 mt-2">
                       {!img.is_current && (
                         <button
@@ -229,6 +264,12 @@ export default function ImagesPage() {
                           {t('admin.upload.setCurrent')}
                         </button>
                       )}
+                      <button
+                        onClick={() => handleReconfigure(img.id, img.zoom_step_pixels || 512)}
+                        className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-md hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 dark:border-gray-500/40 dark:text-gray-400 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400 transition-colors"
+                      >
+                        {t('admin.reconfigure')}
+                      </button>
                       <button
                         onClick={() => handleDelete(img.id)}
                         className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-md hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:border-gray-500/40 dark:text-gray-400 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"

@@ -29,17 +29,29 @@ class HallCreate(BaseModel):
     floor_id: int
     name: dict
     order: int = 0
+    area_x: Optional[float] = None
+    area_y: Optional[float] = None
+    area_width: Optional[float] = None
+    area_height: Optional[float] = None
 
 class HallUpdate(BaseModel):
     floor_id: Optional[int] = None
     name: Optional[dict] = None
     order: Optional[int] = None
+    area_x: Optional[float] = None
+    area_y: Optional[float] = None
+    area_width: Optional[float] = None
+    area_height: Optional[float] = None
 
 class HallResponse(BaseModel):
     id: int
     floor_id: int
     name: Any
     order: int
+    area_x: Optional[float] = None
+    area_y: Optional[float] = None
+    area_width: Optional[float] = None
+    area_height: Optional[float] = None
     created_at: Optional[datetime] = None
     floor: Optional[FloorResponse] = None
 
@@ -156,6 +168,8 @@ class MapImageResponse(BaseModel):
     low_path: str
     medium_path: str
     high_path: str
+    zoom_levels: Any = None
+    zoom_step_pixels: int = 512
     width: int
     height: int
     is_current: bool
@@ -260,6 +274,41 @@ class CorridorEdgeResponse(BaseModel):
     to_node_id: int
     distance: float
     is_open: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Obstacle ----------
+
+class ObstacleCreate(BaseModel):
+    floor_id: int
+    shape: str = "rectangle"
+    x: float = 0
+    y: float = 0
+    width: Optional[float] = 40
+    height: Optional[float] = 40
+    radius: Optional[float] = None
+
+class ObstacleUpdate(BaseModel):
+    floor_id: Optional[int] = None
+    shape: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    width: Optional[float] = None
+    height: Optional[float] = None
+    radius: Optional[float] = None
+
+class ObstacleResponse(BaseModel):
+    id: int
+    floor_id: int
+    shape: str
+    x: float
+    y: float
+    width: Optional[float] = None
+    height: Optional[float] = None
+    radius: Optional[float] = None
     created_at: Optional[datetime] = None
 
     class Config:

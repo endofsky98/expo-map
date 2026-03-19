@@ -3,9 +3,9 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle } from 'lucide-react';
-import { Booth, Category, MapImage, Floor, Hall, Facility, RouteResult } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchRoute } from '@/lib/api';
+import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin } from 'lucide-react';
+import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle, RouteResult } from '@/types';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchRoute } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
@@ -25,7 +25,6 @@ interface CurrentPosition {
 
 function parseBoothParam(value: string | string[] | undefined): number | null {
   if (!value || Array.isArray(value)) return null;
-  // Support both "booth_102" and "102" formats
   const cleaned = value.replace(/^booth_/i, '');
   const num = Number(cleaned);
   return isNaN(num) ? null : num;
@@ -41,6 +40,7 @@ export default function HomePage() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
   const [selectedHallId, setSelectedHallId] = useState<number | null>(null);
   const [selectedBoothId, setSelectedBoothId] = useState<number | null>(null);
@@ -52,6 +52,10 @@ export default function HomePage() {
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Booth popup for pathfinding
+  const [boothPopup, setBoothPopup] = useState<Booth | null>(null);
+  const [pathFrom, setPathFrom] = useState<number | null>(null);
+  const [pathTo, setPathTo] = useState<number | null>(null);
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -68,7 +72,6 @@ export default function HomePage() {
       setFloors(floorsData);
       setHalls(hallsData);
 
-      // Select first floor/hall by default
       if (floorsData.length > 0) {
         const firstFloor = floorsData[0];
         setSelectedFloorId(firstFloor.id);
@@ -94,19 +97,21 @@ export default function HomePage() {
   useEffect(() => {
     if (!selectedFloorId) return;
     async function loadFloorData() {
-      const [filteredBooths, img, facs] = await Promise.all([
+      const [filteredBooths, img, facs, obs] = await Promise.all([
         fetchBooths(selectedFloorId!, selectedHallId || undefined).catch(() => []),
         fetchCurrentImage(selectedFloorId!, selectedHallId || undefined).catch(() => null),
         fetchFacilities(selectedFloorId!, selectedHallId || undefined).catch(() => []),
+        fetchObstacles(selectedFloorId!).catch(() => []),
       ]);
       setBooths(filteredBooths);
       setCurrentImage(img);
       setFacilities(facs);
+      setObstacles(obs);
     }
     loadFloorData();
   }, [selectedFloorId, selectedHallId]);
 
-  // Handle URL params for pathfinding (?from=booth_102&to=booth_305)
+  // URL params for pathfinding
   useEffect(() => {
     const fromId = parseBoothParam(router.query.from as string);
     const toId = parseBoothParam(router.query.to as string);
@@ -118,7 +123,6 @@ export default function HomePage() {
           if (typeof window !== 'undefined' && window.onRouteReady) {
             window.onRouteReady(route);
           }
-          // Switch to the starting floor/hall
           if (route.path.length > 0) {
             const start = route.path[0];
             if (start.floor_id) setSelectedFloorId(start.floor_id);
@@ -132,7 +136,7 @@ export default function HomePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router.query.from, router.query.to]);
 
-  // Handle URL params for current position (?currentX=100&currentY=200&floor=2&hall=A)
+  // URL params for current position
   useEffect(() => {
     const { currentX, currentY, floor: floorParam, hall: hallParam } = router.query;
     if (currentX && currentY) {
@@ -168,14 +172,22 @@ export default function HomePage() {
 
   const handleHallChange = useCallback((hallId: number) => {
     setSelectedHallId(hallId);
-  }, []);
+    // Auto-focus on hall area
+    const hall = halls.find((h) => h.id === hallId);
+    if (hall && hall.area_x != null && hall.area_y != null && hall.area_width && hall.area_height) {
+      setTimeout(() => {
+        const panFn = (window as unknown as Record<string, (x: number, y: number, w: number, h: number) => void>).__mapViewerPanToArea;
+        if (panFn) panFn(hall.area_x!, hall.area_y!, hall.area_width!, hall.area_height!);
+      }, 100);
+    }
+  }, [halls]);
 
   const handleBoothClick = useCallback((booth: Booth) => {
     setSelectedBoothId(booth.id);
+    setBoothPopup(booth);
   }, []);
 
   const handleSearchSelect = useCallback((booth: Booth) => {
-    // Switch to the booth's floor/hall
     if (booth.floor_id && booth.floor_id !== selectedFloorId) {
       setSelectedFloorId(booth.floor_id);
     }
@@ -207,6 +219,38 @@ export default function HomePage() {
     });
   }, []);
 
+  // Set as start/destination from booth popup
+  function setAsStart(boothId: number) {
+    setPathFrom(boothId);
+    setBoothPopup(null);
+    if (pathTo) doPathfinding(boothId, pathTo);
+  }
+
+  function setAsDestination(boothId: number) {
+    setPathTo(boothId);
+    setBoothPopup(null);
+    if (pathFrom) doPathfinding(pathFrom, boothId);
+  }
+
+  async function doPathfinding(from: number, to: number) {
+    setRouteError(null);
+    try {
+      const route = await fetchRoute(from, to);
+      setRouteResult(route);
+      if (typeof window !== 'undefined' && window.onRouteReady) {
+        window.onRouteReady(route);
+      }
+      if (route.path.length > 0) {
+        const start = route.path[0];
+        if (start.floor_id) setSelectedFloorId(start.floor_id);
+        if (start.hall_id) setSelectedHallId(start.hall_id);
+      }
+    } catch {
+      setRouteError(t('route.notFound'));
+      setRouteResult(null);
+    }
+  }
+
   function handleZoomIn() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerZoomIn;
     if (fn) fn();
@@ -218,6 +262,8 @@ export default function HomePage() {
   }
 
   const showMap = !loading && (booths.length > 0 || currentImage !== null);
+  const fromBooth = allBooths.find((b) => b.id === pathFrom);
+  const toBooth = allBooths.find((b) => b.id === pathTo);
 
   return (
     <>
@@ -242,7 +288,6 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Floor/Hall selector */}
           {floors.length > 0 && (
             <div className="mt-2">
               <FloorHallSelector
@@ -256,7 +301,6 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Category + Facility filters */}
           <div className="mt-2 flex items-center gap-3 overflow-x-auto">
             {categories.length > 0 && (
               <CategoryFilter
@@ -273,6 +317,21 @@ export default function HomePage() {
               onShowAll={() => setHiddenFacilityTypes(new Set())}
             />
           </div>
+
+          {/* Pathfinding status bar */}
+          {(pathFrom || pathTo) && (
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <Navigation2 className="h-3.5 w-3.5 text-indigo-500" />
+              <span className="text-gray-600 dark:text-gray-400">
+                {t('route.from')}: <span className="font-medium text-gray-900 dark:text-gray-200">{fromBooth?.booth_number || '—'}</span>
+              </span>
+              <span className="text-gray-400">→</span>
+              <span className="text-gray-600 dark:text-gray-400">
+                {t('route.to')}: <span className="font-medium text-gray-900 dark:text-gray-200">{toBooth?.booth_number || '—'}</span>
+              </span>
+              <button onClick={() => { setPathFrom(null); setPathTo(null); setRouteResult(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+            </div>
+          )}
         </div>
 
         {/* Map area */}
@@ -317,6 +376,7 @@ export default function HomePage() {
               activeCategories={activeCategories}
               facilities={facilities}
               hiddenFacilityTypes={hiddenFacilityTypes}
+              obstacles={obstacles}
               routePath={routeResult?.path || null}
               currentFloorId={selectedFloorId}
               currentHallId={selectedHallId}
@@ -324,6 +384,39 @@ export default function HomePage() {
               onBoothClick={handleBoothClick}
               onZoomChange={setZoom}
             />
+          )}
+
+          {/* Booth popup with start/destination buttons */}
+          {boothPopup && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-4 w-64">
+              <button onClick={() => setBoothPopup(null)} className="absolute top-2 right-3 text-gray-400 hover:text-gray-600 text-sm">&times;</button>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{boothPopup.booth_number}</p>
+              {boothPopup.company && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{typeof boothPopup.company.name === 'string' ? boothPopup.company.name : Object.values(boothPopup.company.name)[0]}</p>}
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setAsStart(boothPopup.id)}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    pathFrom === boothPopup.id
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-green-50 hover:text-green-600 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-green-900/20 dark:hover:text-green-400'
+                  }`}
+                >
+                  <MapPin className="h-3 w-3" />
+                  {t('route.setStart')}
+                </button>
+                <button
+                  onClick={() => setAsDestination(boothPopup.id)}
+                  className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                    pathTo === boothPopup.id
+                      ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-red-900/20 dark:hover:text-red-400'
+                  }`}
+                >
+                  <Navigation2 className="h-3 w-3" />
+                  {t('route.setDest')}
+                </button>
+              </div>
+            </div>
           )}
 
           {/* Route error banner */}

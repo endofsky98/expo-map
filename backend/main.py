@@ -11,16 +11,16 @@ from sqlalchemy.orm import Session
 from database import Base, engine, get_db
 from models import (
     Floor, Hall, Category, Company, Booth, Language, Admin,
-    Facility, CorridorNode, CorridorEdge,
+    Facility, CorridorNode, CorridorEdge, Obstacle,
 )
 from routers import booths, images, categories, companies
-from routers import auth, floors, halls, facilities, corridors, route
+from routers import auth, floors, halls, facilities, corridors, route, obstacles
 from routers.auth import hash_password
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
-app = FastAPI(title="Expo Map API", version="2.0.0")
+app = FastAPI(title="Expo Map API", version="4.0.0")
 
 # CORS
 app.add_middleware(
@@ -46,10 +46,11 @@ app.include_router(companies.router)
 app.include_router(facilities.router)
 app.include_router(corridors.router)
 app.include_router(route.router)
+app.include_router(obstacles.router)
 
 
 def _create_seed_data(db: Session) -> dict | None:
-    """Create v2 seed data with floors, halls, facilities, corridors."""
+    """Create v4 seed data with floors, halls, facilities, corridors, obstacles."""
     existing = db.query(Category).count()
     if existing > 0:
         return None
@@ -60,11 +61,15 @@ def _create_seed_data(db: Session) -> dict | None:
     db.add_all([floor1, floor2])
     db.flush()
 
-    # --- Halls (4) ---
-    hall_1a = Hall(floor_id=floor1.id, name=json.dumps({"ko": "A홀", "en": "Hall A"}, ensure_ascii=False), order=1)
-    hall_1b = Hall(floor_id=floor1.id, name=json.dumps({"ko": "B홀", "en": "Hall B"}, ensure_ascii=False), order=2)
-    hall_2a = Hall(floor_id=floor2.id, name=json.dumps({"ko": "A홀", "en": "Hall A"}, ensure_ascii=False), order=1)
-    hall_2b = Hall(floor_id=floor2.id, name=json.dumps({"ko": "B홀", "en": "Hall B"}, ensure_ascii=False), order=2)
+    # --- Halls (4) with area data ---
+    hall_1a = Hall(floor_id=floor1.id, name=json.dumps({"ko": "A홀", "en": "Hall A"}, ensure_ascii=False), order=1,
+                   area_x=40, area_y=40, area_width=520, area_height=300)
+    hall_1b = Hall(floor_id=floor1.id, name=json.dumps({"ko": "B홀", "en": "Hall B"}, ensure_ascii=False), order=2,
+                   area_x=600, area_y=40, area_width=520, area_height=300)
+    hall_2a = Hall(floor_id=floor2.id, name=json.dumps({"ko": "A홀", "en": "Hall A"}, ensure_ascii=False), order=1,
+                   area_x=40, area_y=40, area_width=520, area_height=300)
+    hall_2b = Hall(floor_id=floor2.id, name=json.dumps({"ko": "B홀", "en": "Hall B"}, ensure_ascii=False), order=2,
+                   area_x=600, area_y=40, area_width=520, area_height=300)
     db.add_all([hall_1a, hall_1b, hall_2a, hall_2b])
     db.flush()
 
@@ -271,6 +276,25 @@ def _create_seed_data(db: Session) -> dict | None:
 
     db.commit()
 
+    # --- Obstacles (2-3 per hall = ~10 total) ---
+    obstacle_templates = [
+        {"shape": "rectangle", "x": 200, "y": 130, "width": 30, "height": 30},
+        {"shape": "rectangle", "x": 350, "y": 200, "width": 25, "height": 25},
+        {"shape": "circle", "x": 450, "y": 130, "radius": 15, "width": None, "height": None},
+    ]
+    for floor, hall in all_halls:
+        for ot in obstacle_templates:
+            obs = Obstacle(
+                floor_id=floor.id,
+                shape=ot["shape"],
+                x=ot["x"], y=ot["y"],
+                width=ot.get("width"),
+                height=ot.get("height"),
+                radius=ot.get("radius"),
+            )
+            db.add(obs)
+    db.commit()
+
     # --- Default Languages ---
     db.add(Language(code="ko", name="한국어", is_default=True, is_active=True))
     db.add(Language(code="en", name="English", is_default=False, is_active=True))
@@ -285,7 +309,7 @@ def _create_seed_data(db: Session) -> dict | None:
     db.commit()
 
     return {
-        "message": "v2 seed data created successfully",
+        "message": "v4 seed data created successfully",
         "floors": 2,
         "halls": 4,
         "categories": 5,
@@ -294,17 +318,18 @@ def _create_seed_data(db: Session) -> dict | None:
         "facilities": 24,
         "corridor_nodes": 40,
         "corridor_edges": len(edge_templates) * 4,
+        "obstacles": len(obstacle_templates) * 4,
         "admin": "admin / admin1234",
     }
 
 
 @app.on_event("startup")
 def on_startup():
-    # Check if schema migration needed (v1 -> v2)
+    # Check if schema migration needed (v2 -> v4)
     inspector = inspect(engine)
     existing_tables = inspector.get_table_names()
-    if "floors" not in existing_tables:
-        print("[startup] Schema migration: dropping old tables and recreating for v2...")
+    if "obstacles" not in existing_tables:
+        print("[startup] Schema migration: dropping old tables and recreating for v4...")
         Base.metadata.drop_all(bind=engine)
 
     Base.metadata.create_all(bind=engine)
@@ -328,7 +353,7 @@ app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.get("/")
 def root():
-    return {"message": "Expo Map API v2 is running", "docs": "/docs"}
+    return {"message": "Expo Map API v4 is running", "docs": "/docs"}
 
 
 @app.post("/api/seed")

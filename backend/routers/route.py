@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Booth, CorridorNode, CorridorEdge, Facility
+from models import Booth, CorridorNode, CorridorEdge, Facility, Obstacle
 from schemas import RouteResponse, RoutePoint, FacilityResponse
 
 router = APIRouter(prefix="/api/route", tags=["route"])
@@ -14,16 +14,56 @@ router = APIRouter(prefix="/api/route", tags=["route"])
 CROSS_FLOOR_DISTANCE = 50.0
 
 
+def _segment_intersects_obstacle(x1, y1, x2, y2, obs) -> bool:
+    """Check if a line segment (x1,y1)→(x2,y2) passes through an obstacle."""
+    if obs.shape == "circle" and obs.radius:
+        cx, cy, r = obs.x, obs.y, obs.radius
+        # Check if midpoint or any sample along the segment is within the circle
+        for t in [0.0, 0.25, 0.5, 0.75, 1.0]:
+            px = x1 + t * (x2 - x1)
+            py = y1 + t * (y2 - y1)
+            if math.sqrt((px - cx) ** 2 + (py - cy) ** 2) < r:
+                return True
+        return False
+    else:
+        # Rectangle: check if segment passes through the rectangle
+        ox, oy = obs.x, obs.y
+        ow = obs.width or 40
+        oh = obs.height or 40
+        for t in [0.0, 0.25, 0.5, 0.75, 1.0]:
+            px = x1 + t * (x2 - x1)
+            py = y1 + t * (y2 - y1)
+            if ox <= px <= ox + ow and oy <= py <= oy + oh:
+                return True
+        return False
+
+
 def _build_graph(db: Session):
     nodes = {n.id: n for n in db.query(CorridorNode).all()}
     edges = db.query(CorridorEdge).filter(CorridorEdge.is_open == True).all()
+    obstacles = db.query(Obstacle).all()
+
+    # Group obstacles by floor
+    obs_by_floor = {}
+    for obs in obstacles:
+        obs_by_floor.setdefault(obs.floor_id, []).append(obs)
 
     graph = {nid: [] for nid in nodes}
 
     for edge in edges:
         if edge.from_node_id in graph and edge.to_node_id in graph:
-            graph[edge.from_node_id].append((edge.to_node_id, edge.distance))
-            graph[edge.to_node_id].append((edge.from_node_id, edge.distance))
+            n1 = nodes[edge.from_node_id]
+            n2 = nodes[edge.to_node_id]
+            # Check if edge intersects any obstacle on the same floor
+            blocked = False
+            floor_obs = obs_by_floor.get(n1.floor_id, [])
+            for obs in floor_obs:
+                if _segment_intersects_obstacle(n1.x, n1.y, n2.x, n2.y, obs):
+                    blocked = True
+                    break
+            if not blocked:
+                graph[edge.from_node_id].append((edge.to_node_id, edge.distance))
+                graph[edge.to_node_id].append((edge.from_node_id, edge.distance))
 
     for nid, node in nodes.items():
         if node.connected_node_id and node.connected_node_id in nodes:

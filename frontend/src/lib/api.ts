@@ -1,4 +1,4 @@
-import { Booth, Category, Company, MapImage, Floor, Hall, Facility, CorridorNode, CorridorEdge, RouteResult } from '@/types';
+import { Booth, Category, Company, MapImage, Floor, Hall, Facility, CorridorNode, CorridorEdge, RouteResult, Obstacle } from '@/types';
 import { getToken } from '@/lib/auth';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
@@ -187,12 +187,17 @@ export async function fetchCurrentImage(floorId?: number, hallId?: number): Prom
   }
 }
 
-export async function uploadImage(file: File, floorId?: number, hallId?: number): Promise<MapImage> {
+export async function uploadImage(file: File, floorId?: number, hallId?: number, zoomStepPixels?: number): Promise<MapImage> {
   const formData = new FormData();
   formData.append('file', file);
   if (floorId) formData.append('floor_id', String(floorId));
   if (hallId) formData.append('hall_id', String(hallId));
+  if (zoomStepPixels) formData.append('zoom_step_pixels', String(zoomStepPixels));
   return request('/api/images/upload', { method: 'POST', body: formData });
+}
+
+export async function reconfigureImage(id: number, zoomStepPixels: number): Promise<MapImage> {
+  return request<MapImage>(`/api/images/${id}/reconfigure?zoom_step_pixels=${zoomStepPixels}`, { method: 'PUT' });
 }
 
 export async function setCurrentImage(id: number): Promise<MapImage> {
@@ -252,6 +257,24 @@ export async function createCorridorEdge(data: Partial<CorridorEdge>): Promise<C
 
 export async function deleteCorridorEdge(id: number): Promise<void> {
   await request(`/api/corridor-edges/${id}`, { method: 'DELETE' });
+}
+
+// Obstacles
+export async function fetchObstacles(floorId?: number): Promise<Obstacle[]> {
+  const params = floorId ? `?floor_id=${floorId}` : '';
+  return request<Obstacle[]>(`/api/obstacles${params}`);
+}
+
+export async function createObstacle(data: Partial<Obstacle>): Promise<Obstacle> {
+  return request<Obstacle>('/api/obstacles', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateObstacle(id: number, data: Partial<Obstacle>): Promise<Obstacle> {
+  return request<Obstacle>(`/api/obstacles/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteObstacle(id: number): Promise<void> {
+  await request(`/api/obstacles/${id}`, { method: 'DELETE' });
 }
 
 // Route

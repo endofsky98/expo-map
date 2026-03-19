@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
-import { fetchFloors, fetchHalls, fetchCorridorNodes, fetchCorridorEdges, createCorridorNode, deleteCorridorNode, createCorridorEdge, deleteCorridorEdge } from '@/lib/api';
+import { fetchFloors, fetchHalls, fetchCorridorNodes, fetchCorridorEdges, createCorridorNode, deleteCorridorNode, createCorridorEdge, deleteCorridorEdge, fetchBooths, fetchObstacles } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { Floor, Hall, CorridorNode, CorridorEdge } from '@/types';
+import { Floor, Hall, CorridorNode, CorridorEdge, Booth, Obstacle } from '@/types';
 
 export default function CorridorsPage() {
   const { t, ln } = useI18n();
@@ -11,6 +11,8 @@ export default function CorridorsPage() {
   const [halls, setHalls] = useState<Hall[]>([]);
   const [nodes, setNodes] = useState<CorridorNode[]>([]);
   const [edges, setEdges] = useState<CorridorEdge[]>([]);
+  const [allBooths, setAllBooths] = useState<Booth[]>([]);
+  const [allObstacles, setAllObstacles] = useState<Obstacle[]>([]);
   const [filterFloor, setFilterFloor] = useState<number | ''>('');
   const [filterHall, setFilterHall] = useState<number | ''>('');
   const [loading, setLoading] = useState(true);
@@ -23,11 +25,13 @@ export default function CorridorsPage() {
 
   async function loadData() {
     setLoading(true);
-    const [f, h, n, e] = await Promise.all([fetchFloors(), fetchHalls(), fetchCorridorNodes(), fetchCorridorEdges()]);
+    const [f, h, n, e, b, o] = await Promise.all([fetchFloors(), fetchHalls(), fetchCorridorNodes(), fetchCorridorEdges(), fetchBooths(), fetchObstacles()]);
     setFloors(f);
     setHalls(h);
     setNodes(n);
     setEdges(e);
+    setAllBooths(b);
+    setAllObstacles(o);
     setLoading(false);
   }
 
@@ -47,6 +51,41 @@ export default function CorridorsPage() {
     if (!confirm('Delete node and its edges?')) return;
     await deleteCorridorNode(id);
     loadData();
+  }
+
+  // Check if a line segment intersects a rectangle
+  function segmentIntersectsRect(x1: number, y1: number, x2: number, y2: number, rx: number, ry: number, rw: number, rh: number): boolean {
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const px = x1 + t * (x2 - x1);
+      const py = y1 + t * (y2 - y1);
+      if (px >= rx && px <= rx + rw && py >= ry && py <= ry + rh) return true;
+    }
+    return false;
+  }
+
+  function checkEdgeCollision(edge: CorridorEdge): boolean {
+    const fromNode = nodes.find((n) => n.id === edge.from_node_id);
+    const toNode = nodes.find((n) => n.id === edge.to_node_id);
+    if (!fromNode || !toNode) return false;
+    // Check against booths
+    for (const b of allBooths) {
+      if (b.floor_id === fromNode.floor_id && segmentIntersectsRect(fromNode.x, fromNode.y, toNode.x, toNode.y, b.x, b.y, b.width, b.height)) return true;
+    }
+    // Check against obstacles
+    for (const o of allObstacles) {
+      if (o.floor_id === fromNode.floor_id) {
+        if (o.shape === 'rectangle' && o.width && o.height) {
+          if (segmentIntersectsRect(fromNode.x, fromNode.y, toNode.x, toNode.y, o.x, o.y, o.width, o.height)) return true;
+        } else if (o.shape === 'circle' && o.radius) {
+          for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+            const px = fromNode.x + t * (toNode.x - fromNode.x);
+            const py = fromNode.y + t * (toNode.y - fromNode.y);
+            if (Math.sqrt((px - o.x) ** 2 + (py - o.y) ** 2) < o.radius) return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   async function handleCreateEdge() {
@@ -108,14 +147,18 @@ export default function CorridorsPage() {
             </button>
           </div>
           <div className="max-h-64 overflow-y-auto space-y-1">
-            {edges.map((e) => (
-              <div key={e.id} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-[#222] text-sm">
-                <span className="text-gray-600 dark:text-gray-300">
-                  #{e.from_node_id} → #{e.to_node_id} <span className="text-xs text-gray-400">({Math.round(e.distance)}px){!e.is_open && ' [closed]'}</span>
-                </span>
-                <button onClick={() => handleDeleteEdge(e.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
-              </div>
-            ))}
+            {edges.map((e) => {
+              const hasCollision = checkEdgeCollision(e);
+              return (
+                <div key={e.id} className={`flex items-center justify-between py-1.5 px-2 rounded hover:bg-gray-50 dark:hover:bg-[#222] text-sm ${hasCollision ? 'bg-red-50 dark:bg-red-900/20' : ''}`}>
+                  <span className={hasCollision ? 'text-red-600 dark:text-red-400' : 'text-gray-600 dark:text-gray-300'}>
+                    #{e.from_node_id} → #{e.to_node_id} <span className="text-xs text-gray-400">({Math.round(e.distance)}px){!e.is_open && ' [closed]'}</span>
+                    {hasCollision && <span className="text-xs text-red-500 ml-1 font-medium">COLLISION</span>}
+                  </span>
+                  <button onClick={() => handleDeleteEdge(e.id)} className="text-gray-400 hover:text-red-500"><Trash2 className="h-3.5 w-3.5" /></button>
+                </div>
+              );
+            })}
           </div>
         </div>
 
