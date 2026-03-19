@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Group, Circle, Line } from 'react-konva';
 import Konva from 'konva';
-import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel } from '@/types';
+import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
 interface CurrentPosition {
@@ -21,6 +21,7 @@ interface MapViewerProps {
   hiddenFacilityTypes: Set<string>;
   obstacles: Obstacle[];
   routePath: RoutePoint[] | null;
+  routeResult?: RouteResult | null;
   currentFloorId: number | null;
   currentPosition: CurrentPosition | null;
   onBoothClick: (booth: Booth) => void;
@@ -58,6 +59,7 @@ export default function MapViewer({
   hiddenFacilityTypes,
   obstacles,
   routePath,
+  routeResult,
   currentFloorId,
   currentPosition,
   onBoothClick,
@@ -227,6 +229,35 @@ export default function MapViewer({
     }
     return points.length >= 4 ? points : null;
   }, [routePath, currentFloorId]);
+
+  // Route transition markers: show where routes enter/exit this floor
+  const routeTransitionMarkers = useMemo(() => {
+    if (!routePath || !currentFloorId || routePath.length < 2) return [];
+    const markers: { x: number; y: number; type: 'start' | 'end' | 'transition'; label: string }[] = [];
+    for (let i = 0; i < routePath.length; i++) {
+      const p = routePath[i];
+      if (p.floor_id !== currentFloorId) continue;
+      // Check if this is a transition point (prev or next is on different floor)
+      const prev = i > 0 ? routePath[i - 1] : null;
+      const next = i < routePath.length - 1 ? routePath[i + 1] : null;
+      if (i === 0) {
+        markers.push({ x: p.x, y: p.y, type: 'start', label: 'S' });
+      } else if (i === routePath.length - 1) {
+        markers.push({ x: p.x, y: p.y, type: 'end', label: 'D' });
+      } else if (prev && prev.floor_id !== currentFloorId) {
+        markers.push({ x: p.x, y: p.y, type: 'transition', label: '▼' });
+      } else if (next && next.floor_id !== currentFloorId) {
+        markers.push({ x: p.x, y: p.y, type: 'transition', label: '▲' });
+      }
+    }
+    return markers;
+  }, [routePath, currentFloorId]);
+
+  // Facilities used in route (for showing transition icons)
+  const routeFacilityMarkers = useMemo(() => {
+    if (!routeResult?.facilities_used || !currentFloorId) return [];
+    return routeResult.facilities_used.filter((f) => f.floor_id === currentFloorId);
+  }, [routeResult, currentFloorId]);
 
   function getTouchDistance(t1: Touch, t2: Touch): number {
     return Math.sqrt(Math.pow(t2.clientX - t1.clientX, 2) + Math.pow(t2.clientY - t1.clientY, 2));
@@ -479,6 +510,17 @@ export default function MapViewer({
         {/* Route layer */}
         {currentRoutePoints && (
           <Layer>
+            {/* Route shadow */}
+            <Line
+              points={currentRoutePoints}
+              stroke="#1e1b4b"
+              strokeWidth={5 / scale}
+              lineCap="round"
+              lineJoin="round"
+              opacity={0.15}
+              listening={false}
+            />
+            {/* Route main line */}
             <Line
               points={currentRoutePoints}
               stroke="#4f46e5"
@@ -486,9 +528,41 @@ export default function MapViewer({
               dash={[8 / scale, 4 / scale]}
               lineCap="round"
               lineJoin="round"
-              opacity={0.8}
+              opacity={0.85}
               listening={false}
             />
+            {/* Route transition markers */}
+            {routeTransitionMarkers.map((m, i) => {
+              const r = Math.max(10, 14 / scale);
+              const color = m.type === 'start' ? '#22c55e' : m.type === 'end' ? '#ef4444' : '#f59e0b';
+              return (
+                <Group key={`rt-${i}`} x={m.x} y={m.y} listening={false}>
+                  <Circle radius={r} fill={color} stroke="white" strokeWidth={2 / scale} opacity={0.95} />
+                  <Text
+                    x={-r} y={-r / 2} width={r * 2}
+                    text={m.label} fontSize={Math.max(7, 9 / scale)}
+                    fontFamily="Inter, sans-serif" fontStyle="bold" fill="white"
+                    align="center" listening={false}
+                  />
+                </Group>
+              );
+            })}
+            {/* Route facility markers (stairs/elevator icons on route) */}
+            {routeFacilityMarkers.map((fac) => {
+              const r = Math.max(12, 16 / scale);
+              const label = fac.type === 'stairs' ? 'S' : fac.type === 'elevator' ? 'EV' : fac.type === 'escalator' ? 'ES' : '?';
+              return (
+                <Group key={`rf-${fac.id}`} x={fac.x} y={fac.y} listening={false}>
+                  <Circle radius={r} fill="#f97316" stroke="white" strokeWidth={2 / scale} opacity={0.9} />
+                  <Text
+                    x={-r} y={-r / 2} width={r * 2}
+                    text={label} fontSize={Math.max(6, 8 / scale)}
+                    fontFamily="Inter, sans-serif" fontStyle="bold" fill="white"
+                    align="center" listening={false}
+                  />
+                </Group>
+              );
+            })}
           </Layer>
         )}
 

@@ -344,6 +344,7 @@ export default function HomePage() {
               hiddenFacilityTypes={hiddenFacilityTypes}
               obstacles={obstacles}
               routePath={routeResult?.path || null}
+              routeResult={routeResult}
               currentFloorId={selectedFloorId}
               currentPosition={currentPosition}
               onBoothClick={handleBoothClick}
@@ -390,6 +391,43 @@ export default function HomePage() {
               <AlertTriangle className="h-4 w-4 text-red-500" />
               <span className="text-sm text-red-700 dark:text-red-300">{routeError}</span>
               <button onClick={() => setRouteError(null)} className="text-red-400 hover:text-red-600 text-xs ml-2">&times;</button>
+            </div>
+          )}
+
+          {/* Multi-floor route indicator */}
+          {routeResult && routeResult.floors_visited.length > 1 && (
+            <div className="absolute top-4 left-4 z-20 bg-white/95 dark:bg-[#1e1e1e]/95 backdrop-blur-sm border border-gray-200 dark:border-gray-500/40 rounded-lg shadow-sm p-3 max-w-52">
+              <p className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 uppercase mb-1.5">{t('route.floorsUsed')}</p>
+              <div className="flex flex-wrap gap-1">
+                {routeResult.floors_visited.map((fid) => {
+                  const fl = floors.find((f) => f.id === fid);
+                  const isCurrent = fid === selectedFloorId;
+                  return (
+                    <button
+                      key={fid}
+                      onClick={() => setSelectedFloorId(fid)}
+                      className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
+                        isCurrent
+                          ? 'bg-indigo-600 text-white dark:bg-indigo-500'
+                          : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:text-indigo-400'
+                      }`}
+                    >
+                      {fl ? (typeof fl.name === 'string' ? fl.name : Object.values(fl.name)[0]) : `F${fid}`}
+                    </button>
+                  );
+                })}
+              </div>
+              {routeResult.facilities_used.length > 0 && (
+                <div className="mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-700 space-y-0.5">
+                  {routeResult.facilities_used.map((fac, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                      {fac.type === 'stairs' ? 'Stairs' : fac.type === 'elevator' ? 'Elevator' : 'Escalator'}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <p className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500">{t('route.distance')}: {Math.round(routeResult.total_distance)}px</p>
             </div>
           )}
 

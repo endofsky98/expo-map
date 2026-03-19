@@ -248,6 +248,10 @@ export async function createCorridorNode(data: Partial<CorridorNode>): Promise<C
   return request<CorridorNode>('/api/corridor-nodes', { method: 'POST', body: JSON.stringify(data) });
 }
 
+export async function updateCorridorNode(id: number, data: Partial<CorridorNode>): Promise<CorridorNode> {
+  return request<CorridorNode>(`/api/corridor-nodes/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
 export async function deleteCorridorNode(id: number): Promise<void> {
   await request(`/api/corridor-nodes/${id}`, { method: 'DELETE' });
 }
