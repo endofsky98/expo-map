@@ -1,19 +1,18 @@
 export interface Category {
   id: number;
-  name: string;
+  name: string | Record<string, string>;
   color: string;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface Company {
   id: number;
-  name: string;
-  description?: string;
+  name: string | Record<string, string>;
+  description?: string | Record<string, string>;
   category_id?: number;
   category?: Category;
+  metadata_json?: Record<string, unknown>;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface Booth {
@@ -30,23 +29,18 @@ export interface Booth {
   color?: string;
   is_active: boolean;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface MapImage {
   id: number;
-  filename: string;
   original_filename: string;
-  url: string;
-  thumbnail_url?: string;
-  low_res_url?: string;
-  medium_res_url?: string;
-  high_res_url?: string;
+  low_path: string;
+  medium_path: string;
+  high_path: string;
+  width: number;
+  height: number;
   is_current: boolean;
-  width?: number;
-  height?: number;
   created_at?: string;
-  updated_at?: string;
 }
 
 declare global {

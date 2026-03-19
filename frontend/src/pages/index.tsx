@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { ZoomIn, ZoomOut, Settings, Map as MapIcon } from 'lucide-react';
 import { Booth, Category, MapImage } from '@/types';
 import { fetchBooths, fetchCategories, fetchCurrentImage } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
+import LanguageSelector from '@/components/LanguageSelector';
 
 const MapViewer = dynamic(() => import('@/components/MapViewer'), { ssr: false });
 
 export default function HomePage() {
+  const { t } = useI18n();
   const [booths, setBooths] = useState<Booth[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentImage, setCurrentImage] = useState<MapImage | null>(null);
@@ -20,27 +23,32 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
-        const [boothsData, categoriesData, imageData] = await Promise.all([
-          fetchBooths().catch(() => []),
-          fetchCategories().catch(() => []),
-          fetchCurrentImage().catch(() => null),
-        ]);
-        setBooths(boothsData);
-        setCategories(categoriesData);
-        setCurrentImage(imageData);
-      } catch (err) {
-        setError('Failed to load map data');
-        console.error(err);
-      } finally {
-        setLoading(false);
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [boothsData, categoriesData, imageData] = await Promise.all([
+        fetchBooths().catch(() => []),
+        fetchCategories().catch(() => []),
+        fetchCurrentImage().catch(() => null),
+      ]);
+      setBooths(boothsData);
+      setCategories(categoriesData);
+      setCurrentImage(imageData);
+
+      if (boothsData.length === 0 && categoriesData.length === 0 && !imageData) {
+        setError('api_down');
       }
+    } catch {
+      setError('api_down');
+    } finally {
+      setLoading(false);
     }
-    loadData();
   }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleBoothClick = useCallback((booth: Booth) => {
     setSelectedBoothId(booth.id);
@@ -84,10 +92,12 @@ export default function HomePage() {
     }
   }
 
+  const showMap = !loading && booths.length > 0;
+
   return (
     <>
       <Head>
-        <title>Expo Map - Interactive Exhibition Hall</title>
+        <title>{t('app.title')}</title>
       </Head>
       <div className="h-screen w-screen flex flex-col bg-gray-100 dark:bg-[#141414] overflow-hidden">
         {/* Top bar */}
@@ -95,13 +105,14 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 shrink-0">
               <MapIcon className="h-5 w-5" />
-              <span className="font-bold text-sm hidden sm:inline">Expo Map</span>
+              <span className="font-bold text-sm hidden sm:inline">{t('app.title')}</span>
             </div>
             <SearchBar booths={booths} onSelect={handleSearchSelect} />
+            <LanguageSelector />
             <Link
               href="/admin"
               className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-indigo-400 dark:hover:bg-[#2a2a2a] transition-colors"
-              title="Admin"
+              title={t('nav.admin')}
             >
               <Settings className="h-5 w-5" />
             </Link>
@@ -124,35 +135,39 @@ export default function HomePage() {
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-gray-500 dark:text-gray-400">Loading map...</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t('map.loading')}</p>
               </div>
             </div>
-          ) : error ? (
+          ) : error === 'api_down' && booths.length === 0 ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center px-4">
                 <MapIcon className="h-12 w-12 text-gray-300 dark:text-gray-600" />
-                <p className="text-gray-500 dark:text-gray-400">{error}</p>
+                <p className="text-gray-500 dark:text-gray-400">{t('map.error')}</p>
                 <button
-                  onClick={() => window.location.reload()}
+                  onClick={loadData}
                   className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
                 >
-                  Retry
+                  {t('map.retry')}
                 </button>
+                <Link
+                  href="/admin"
+                  className="text-sm text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition-colors"
+                >
+                  {t('map.goAdmin')}
+                </Link>
               </div>
             </div>
-          ) : booths.length === 0 && !currentImage ? (
+          ) : !showMap && !currentImage ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center px-4">
                 <MapIcon className="h-12 w-12 text-gray-300 dark:text-gray-600" />
-                <p className="text-gray-600 dark:text-gray-300 font-medium">No map data yet</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Upload a map image and add booths in the admin panel.
-                </p>
+                <p className="text-gray-600 dark:text-gray-300 font-medium">{t('map.noData')}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t('map.noDataDesc')}</p>
                 <Link
                   href="/admin"
                   className="px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
                 >
-                  Go to Admin
+                  {t('map.goAdmin')}
                 </Link>
               </div>
             </div>

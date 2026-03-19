@@ -9,22 +9,25 @@ import {
   Tag,
   Map,
 } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
+import LanguageSelector from '@/components/LanguageSelector';
 
 interface AdminLayoutProps {
   children: ReactNode;
   title: string;
 }
 
-const navItems = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/booths', label: 'Booths', icon: Grid3X3 },
-  { href: '/admin/images', label: 'Images', icon: ImageIcon },
-  { href: '/admin/companies', label: 'Companies', icon: Building2 },
-  { href: '/admin/categories', label: 'Categories', icon: Tag },
-];
-
 export default function AdminLayout({ children, title }: AdminLayoutProps) {
   const router = useRouter();
+  const { t } = useI18n();
+
+  const navItems = [
+    { href: '/admin', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { href: '/admin/booths', label: t('nav.booths'), icon: Grid3X3 },
+    { href: '/admin/images', label: t('nav.images'), icon: ImageIcon },
+    { href: '/admin/companies', label: t('nav.companies'), icon: Building2 },
+    { href: '/admin/categories', label: t('nav.categories'), icon: Tag },
+  ];
 
   function isActive(href: string) {
     if (href === '/admin') return router.pathname === '/admin';
@@ -38,9 +41,9 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
         <div className="p-6">
           <Link href="/" className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
             <Map className="h-6 w-6" />
-            <span className="font-bold text-lg">Expo Map</span>
+            <span className="font-bold text-lg">{t('app.title')}</span>
           </Link>
-          <p className="text-xs text-gray-400 mt-1">Admin Panel</p>
+          <p className="text-xs text-gray-400 mt-1">{t('admin.panel')}</p>
         </div>
         <nav className="flex-1 px-3 space-y-1">
           {navItems.map((item) => {
@@ -63,13 +66,14 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
             );
           })}
         </nav>
-        <div className="p-4 border-t border-gray-200 dark:border-gray-500/40">
+        <div className="p-4 border-t border-gray-200 dark:border-gray-500/40 space-y-3">
+          <LanguageSelector />
           <Link
             href="/"
             className="flex items-center gap-2 text-sm text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 transition-colors"
           >
             <Map className="h-4 w-4" />
-            View Map
+            {t('nav.viewMap')}
           </Link>
         </div>
       </aside>

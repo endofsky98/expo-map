@@ -1,4 +1,5 @@
 import { Category } from '@/types';
+import { useI18n } from '@/lib/i18n';
 
 interface CategoryFilterProps {
   categories: Category[];
@@ -13,6 +14,7 @@ export default function CategoryFilter({
   onToggle,
   onReset,
 }: CategoryFilterProps) {
+  const { t, ln } = useI18n();
   const allActive = activeCategories.size === 0;
 
   return (
@@ -26,7 +28,7 @@ export default function CategoryFilter({
               : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-[#333]'
           }`}
       >
-        All
+        {t('filter.all')}
       </button>
       {categories.map((cat) => {
         const isActive = activeCategories.has(cat.id);
@@ -45,7 +47,7 @@ export default function CategoryFilter({
               className="w-2 h-2 rounded-full shrink-0"
               style={{ backgroundColor: cat.color }}
             />
-            {cat.name}
+            {ln(cat.name)}
           </button>
         );
       })}

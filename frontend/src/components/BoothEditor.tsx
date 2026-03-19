@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Booth, Company, Category } from '@/types';
+import { useI18n } from '@/lib/i18n';
 
 interface BoothEditorProps {
   booth?: Booth | null;
@@ -18,6 +19,7 @@ export default function BoothEditor({
   onCancel,
   loading,
 }: BoothEditorProps) {
+  const { ln } = useI18n();
   const [form, setForm] = useState({
     booth_number: '',
     x: 0,
@@ -125,7 +127,7 @@ export default function BoothEditor({
           <option value="">-- None --</option>
           {companies.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {ln(c.name)}
             </option>
           ))}
         </select>
@@ -143,7 +145,7 @@ export default function BoothEditor({
           <option value="">-- None --</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name}
+              {ln(c.name)}
             </option>
           ))}
         </select>

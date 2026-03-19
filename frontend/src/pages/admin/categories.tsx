@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { Category } from '@/types';
+import { useI18n } from '@/lib/i18n';
 import {
   fetchCategories,
   createCategory,
@@ -16,6 +17,7 @@ import {
 } from '@/lib/api';
 
 export default function CategoriesPage() {
+  const { t, ln } = useI18n();
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -49,7 +51,7 @@ export default function CategoriesPage() {
 
   function openEdit(category: Category) {
     setEditing(category);
-    setForm({ name: category.name, color: category.color });
+    setForm({ name: ln(category.name), color: category.color });
     setShowModal(true);
   }
 
@@ -58,11 +60,15 @@ export default function CategoriesPage() {
     setSaving(true);
     setMessage('');
     try {
+      const data = {
+        name: { en: form.name, ko: form.name },
+        color: form.color,
+      };
       if (editing) {
-        await updateCategory(editing.id, form);
+        await updateCategory(editing.id, data);
         setMessage('Category updated');
       } else {
-        await createCategory(form);
+        await createCategory(data);
         setMessage('Category created');
       }
       setShowModal(false);
@@ -91,7 +97,7 @@ export default function CategoriesPage() {
     'w-full px-4 py-3 rounded-lg border border-gray-200 bg-transparent outline-none transition focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600 placeholder:text-gray-400 dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-100 dark:focus:ring-indigo-400/30 dark:focus:border-indigo-400 text-sm';
 
   return (
-    <AdminLayout title="Categories">
+    <AdminLayout title={t('nav.categories')}>
       <div className="max-w-5xl mx-auto space-y-6">
         <div className="flex items-center gap-3">
           <button
@@ -99,7 +105,7 @@ export default function CategoriesPage() {
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
           >
             <Plus className="h-4 w-4" />
-            Add Category
+            {t('admin.addCategory')}
           </button>
         </div>
 
@@ -121,15 +127,12 @@ export default function CategoriesPage() {
           ) : categories.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4">
               <Tag className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-gray-600 dark:text-gray-300 font-medium">No categories yet</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Categories help organize booths and companies.
-              </p>
+              <p className="text-gray-600 dark:text-gray-300 font-medium">{t('admin.noData')}</p>
               <button
                 onClick={openCreate}
                 className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
               >
-                Add Category
+                {t('admin.addCategory')}
               </button>
             </div>
           ) : (
@@ -138,16 +141,16 @@ export default function CategoriesPage() {
                 <thead className="bg-gray-50 dark:bg-[#1a1a1a]">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                      Color
+                      {t('admin.color')}
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                      Name
+                      {t('admin.name')}
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 hidden md:table-cell">
                       Hex
                     </th>
                     <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">
-                      Actions
+                      {t('admin.actions')}
                     </th>
                   </tr>
                 </thead>
@@ -164,7 +167,7 @@ export default function CategoriesPage() {
                         />
                       </td>
                       <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                        {category.name}
+                        {ln(category.name)}
                       </td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400 font-mono text-xs hidden md:table-cell">
                         {category.color}
@@ -174,14 +177,14 @@ export default function CategoriesPage() {
                           <button
                             onClick={() => openEdit(category)}
                             className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:text-indigo-400 dark:hover:bg-indigo-900/20 transition-colors"
-                            title="Edit"
+                            title={t('admin.edit')}
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(category.id)}
                             className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                            title="Delete"
+                            title={t('admin.delete')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -217,7 +220,7 @@ export default function CategoriesPage() {
               <form onSubmit={handleSave} className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Name *
+                    {t('admin.name')} *
                   </label>
                   <input
                     type="text"
@@ -230,7 +233,7 @@ export default function CategoriesPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Color *
+                    {t('admin.color')} *
                   </label>
                   <div className="flex items-center gap-3">
                     <input
@@ -247,14 +250,6 @@ export default function CategoriesPage() {
                       className={inputClass}
                       placeholder="#6366f1"
                     />
-                  </div>
-                  {/* Color preview */}
-                  <div className="mt-2 flex items-center gap-2">
-                    <div
-                      className="w-6 h-6 rounded-full border border-gray-200 dark:border-gray-500/40"
-                      style={{ backgroundColor: form.color }}
-                    />
-                    <span className="text-xs text-gray-500 dark:text-gray-400">Preview</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 pt-2">

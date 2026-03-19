@@ -1,21 +1,35 @@
 import { Booth, Category, Company, MapImage } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+const REQUEST_TIMEOUT = 5000;
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path}`;
-  const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
-  });
-  if (!res.ok) {
-    const errorBody = await res.text().catch(() => '');
-    throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+      ...options,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
+    }
+    return res.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw err;
   }
-  return res.json();
 }
 
 // Booths
@@ -49,15 +63,27 @@ export async function uploadBoothCSV(file: File): Promise<{ message: string; cou
   const formData = new FormData();
   formData.append('file', file);
   const url = `${BASE_URL}/api/booths/upload-csv`;
-  const res = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!res.ok) {
-    const errorBody = await res.text().catch(() => '');
-    throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
+    }
+    return res.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw err;
   }
-  return res.json();
 }
 
 export function getCSVTemplateURL(): string {
@@ -65,7 +91,7 @@ export function getCSVTemplateURL(): string {
 }
 
 export async function searchBooths(query: string): Promise<Booth[]> {
-  return request<Booth[]>(`/api/booths?search=${encodeURIComponent(query)}`);
+  return request<Booth[]>(`/api/booths/search?q=${encodeURIComponent(query)}`);
 }
 
 // Categories
@@ -131,20 +157,32 @@ export async function uploadImage(file: File): Promise<MapImage> {
   const formData = new FormData();
   formData.append('file', file);
   const url = `${BASE_URL}/api/images/upload`;
-  const res = await fetch(url, {
-    method: 'POST',
-    body: formData,
-  });
-  if (!res.ok) {
-    const errorBody = await res.text().catch(() => '');
-    throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      const errorBody = await res.text().catch(() => '');
+      throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
+    }
+    return res.json();
+  } catch (err) {
+    clearTimeout(timeoutId);
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    throw err;
   }
-  return res.json();
 }
 
 export async function setCurrentImage(id: number): Promise<MapImage> {
   return request<MapImage>(`/api/images/${id}/set-current`, {
-    method: 'POST',
+    method: 'PUT',
   });
 }
 

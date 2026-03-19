@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Stage, Layer, Rect, Text, Image as KonvaImage, Group } from 'react-konva';
 import Konva from 'konva';
 import { Booth, Category, MapImage } from '@/types';
+import { useI18n } from '@/lib/i18n';
 
 interface MapViewerProps {
   booths: Booth[];
@@ -26,6 +27,7 @@ export default function MapViewer({
   onBoothClick,
   onZoomChange,
 }: MapViewerProps) {
+  const { ln } = useI18n();
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -63,14 +65,12 @@ export default function MapViewer({
 
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
     let imageUrl: string;
-    if (scale < 0.8 && currentImage.low_res_url) {
-      imageUrl = currentImage.low_res_url;
-    } else if (scale > 1.5 && currentImage.high_res_url) {
-      imageUrl = currentImage.high_res_url;
-    } else if (currentImage.medium_res_url) {
-      imageUrl = currentImage.medium_res_url;
+    if (scale < 0.8 && currentImage.low_path) {
+      imageUrl = currentImage.low_path;
+    } else if (scale > 1.5 && currentImage.high_path) {
+      imageUrl = currentImage.high_path;
     } else {
-      imageUrl = currentImage.url;
+      imageUrl = currentImage.medium_path;
     }
 
     // Prepend API base if URL is relative
@@ -83,18 +83,6 @@ export default function MapViewer({
     img.src = imageUrl;
     img.onload = () => {
       setBgImage(img);
-    };
-    img.onerror = () => {
-      // fallback: try the main URL
-      if (currentImage.url) {
-        const fallbackUrl = currentImage.url.startsWith('http')
-          ? currentImage.url
-          : `${apiBase}${currentImage.url}`;
-        const fallbackImg = new window.Image();
-        fallbackImg.crossOrigin = 'anonymous';
-        fallbackImg.src = fallbackUrl;
-        fallbackImg.onload = () => setBgImage(fallbackImg);
-      }
     };
   }, [currentImage, scale]);
 
@@ -270,7 +258,8 @@ export default function MapViewer({
             const isSelected = booth.id === selectedBoothId;
             const opacity = getBoothOpacity(booth);
             const fill = getBoothFill(booth);
-            const fillWithAlpha = scale >= 2.0 ? fill : `${fill}66`;
+            const companyName = ln(booth.company?.name) || '';
+            const categoryName = ln(booth.category?.name) || '';
 
             return (
               <Group
@@ -317,9 +306,9 @@ export default function MapViewer({
                   listening={false}
                 />
                 {/* Company name - show at zoom >= 1.0 */}
-                {scale >= 1.0 && booth.company?.name && (
+                {scale >= 1.0 && companyName && (
                   <Text
-                    text={booth.company.name}
+                    text={companyName}
                     x={4 / scale}
                     y={18 / scale}
                     fontSize={9 / scale}
@@ -332,9 +321,9 @@ export default function MapViewer({
                   />
                 )}
                 {/* Category - show at zoom >= 2.0 */}
-                {scale >= 2.0 && booth.category?.name && (
+                {scale >= 2.0 && categoryName && (
                   <Text
-                    text={booth.category.name}
+                    text={categoryName}
                     x={4 / scale}
                     y={30 / scale}
                     fontSize={7 / scale}

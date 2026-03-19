@@ -11,6 +11,7 @@ import {
 import AdminLayout from '@/components/AdminLayout';
 import BoothEditor from '@/components/BoothEditor';
 import { Booth, Company, Category } from '@/types';
+import { useI18n } from '@/lib/i18n';
 import {
   fetchBooths,
   fetchCompanies,
@@ -23,6 +24,7 @@ import {
 } from '@/lib/api';
 
 export default function BoothsPage() {
+  const { t, ln } = useI18n();
   const [booths, setBooths] = useState<Booth[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -112,7 +114,7 @@ export default function BoothsPage() {
   const showForm = creating || editing !== null;
 
   return (
-    <AdminLayout title="Booths">
+    <AdminLayout title={t('nav.booths')}>
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-3">
@@ -125,7 +127,7 @@ export default function BoothsPage() {
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
             >
               <Plus className="h-4 w-4" />
-              Add Booth
+              {t('admin.addBooth')}
             </button>
           )}
           <div className="inline-flex items-center gap-2">
@@ -142,7 +144,7 @@ export default function BoothsPage() {
               className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-[#333] transition-colors disabled:opacity-50"
             >
               <Upload className="h-4 w-4" />
-              {uploading ? 'Uploading...' : 'Upload CSV'}
+              {uploading ? t('admin.loading') : t('admin.uploadCSV')}
             </button>
             <a
               href={getCSVTemplateURL()}
@@ -150,7 +152,7 @@ export default function BoothsPage() {
               className="inline-flex items-center gap-2 px-4 py-2.5 border border-gray-200 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-[#333] transition-colors"
             >
               <Download className="h-4 w-4" />
-              CSV Template
+              {t('admin.csvTemplate')}
             </a>
           </div>
         </div>
@@ -193,16 +195,13 @@ export default function BoothsPage() {
           ) : booths.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4">
               <Grid3X3 className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-gray-600 dark:text-gray-300 font-medium">No booths yet</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Create your first booth or upload a CSV file.
-              </p>
+              <p className="text-gray-600 dark:text-gray-300 font-medium">{t('admin.noData')}</p>
               {!showForm && (
                 <button
                   onClick={() => setCreating(true)}
                   className="mt-4 px-4 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
                 >
-                  Add Booth
+                  {t('admin.addBooth')}
                 </button>
               )}
             </div>
@@ -212,22 +211,22 @@ export default function BoothsPage() {
                 <thead className="bg-gray-50 dark:bg-[#1a1a1a]">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                      Booth #
+                      {t('admin.boothNumber')}
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                      Company
+                      {t('admin.company')}
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 hidden md:table-cell">
-                      Category
+                      {t('admin.category')}
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400 hidden lg:table-cell">
-                      Position
+                      {t('admin.position')}
                     </th>
                     <th className="px-4 py-3 text-left font-medium text-gray-500 dark:text-gray-400">
-                      Status
+                      {t('admin.active')}
                     </th>
                     <th className="px-4 py-3 text-right font-medium text-gray-500 dark:text-gray-400">
-                      Actions
+                      {t('admin.actions')}
                     </th>
                   </tr>
                 </thead>
@@ -241,7 +240,7 @@ export default function BoothsPage() {
                         {booth.booth_number}
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {booth.company?.name || '-'}
+                        {ln(booth.company?.name) || '-'}
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         {booth.category ? (
@@ -251,7 +250,7 @@ export default function BoothsPage() {
                               style={{ backgroundColor: booth.category.color }}
                             />
                             <span className="text-gray-600 dark:text-gray-300">
-                              {booth.category.name}
+                              {ln(booth.category.name)}
                             </span>
                           </span>
                         ) : (
@@ -280,14 +279,14 @@ export default function BoothsPage() {
                               setCreating(false);
                             }}
                             className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:text-indigo-400 dark:hover:bg-indigo-900/20 transition-colors"
-                            title="Edit"
+                            title={t('admin.edit')}
                           >
                             <Pencil className="h-4 w-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(booth.id)}
                             className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:text-red-400 dark:hover:bg-red-900/20 transition-colors"
-                            title="Delete"
+                            title={t('admin.delete')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>

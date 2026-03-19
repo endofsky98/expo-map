@@ -9,9 +9,11 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { MapImage } from '@/types';
+import { useI18n } from '@/lib/i18n';
 import { fetchImages, uploadImage, setCurrentImage, deleteImage } from '@/lib/api';
 
 export default function ImagesPage() {
+  const { t } = useI18n();
   const [images, setImages] = useState<MapImage[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -104,13 +106,13 @@ export default function ImagesPage() {
   const currentImg = images.find((img) => img.is_current);
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
-  function resolveUrl(url: string) {
-    if (!url) return '';
-    return url.startsWith('http') ? url : `${apiBase}${url}`;
+  function resolveUrl(path: string) {
+    if (!path) return '';
+    return path.startsWith('http') ? path : `${apiBase}${path}`;
   }
 
   return (
-    <AdminLayout title="Images">
+    <AdminLayout title={t('nav.images')}>
       <div className="max-w-5xl mx-auto space-y-6">
         {message && (
           <div className="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-500/30 text-indigo-700 dark:text-indigo-300 px-4 py-3 rounded-lg text-sm">
@@ -147,10 +149,10 @@ export default function ImagesPage() {
             }`}
           />
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-            {uploading ? 'Uploading...' : 'Drop an image here or click to browse'}
+            {uploading ? t('admin.loading') : t('admin.upload.drop')}
           </p>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            PNG, JPG, or WebP recommended
+            {t('admin.upload.formats')}
           </p>
         </div>
 
@@ -160,12 +162,12 @@ export default function ImagesPage() {
             <div className="flex items-center gap-2 mb-4">
               <Star className="h-4 w-4 text-amber-500" />
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                Current Map Image
+                {t('admin.upload.current')}
               </h2>
             </div>
             <div className="rounded-lg overflow-hidden bg-gray-100 dark:bg-[#2a2a2a] border border-gray-200 dark:border-gray-500/40">
               <img
-                src={resolveUrl(currentImg.thumbnail_url || currentImg.url)}
+                src={resolveUrl(currentImg.low_path)}
                 alt={currentImg.original_filename}
                 className="w-full max-h-80 object-contain"
               />
@@ -179,7 +181,7 @@ export default function ImagesPage() {
         {/* All images */}
         <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            All Images
+            {t('admin.upload.allImages')}
           </h2>
           {loading ? (
             <div className="flex items-center justify-center py-12">
@@ -188,10 +190,7 @@ export default function ImagesPage() {
           ) : images.length === 0 ? (
             <div className="flex flex-col items-center py-12">
               <ImageIcon className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
-              <p className="text-gray-600 dark:text-gray-300 font-medium">No images uploaded</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Upload a map image to get started.
-              </p>
+              <p className="text-gray-600 dark:text-gray-300 font-medium">{t('admin.noData')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -206,13 +205,13 @@ export default function ImagesPage() {
                 >
                   <div className="aspect-video bg-gray-100 dark:bg-[#2a2a2a] relative overflow-hidden">
                     <img
-                      src={resolveUrl(img.thumbnail_url || img.url)}
+                      src={resolveUrl(img.low_path)}
                       alt={img.original_filename}
                       className="w-full h-full object-cover"
                     />
                     {img.is_current && (
                       <div className="absolute top-2 left-2 bg-indigo-600 text-white text-xs font-medium px-2 py-0.5 rounded-md">
-                        Current
+                        {t('admin.upload.current')}
                       </div>
                     )}
                   </div>
@@ -227,7 +226,7 @@ export default function ImagesPage() {
                           className="inline-flex items-center gap-1 px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-md hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
                         >
                           <Check className="h-3 w-3" />
-                          Set as Current
+                          {t('admin.upload.setCurrent')}
                         </button>
                       )}
                       <button
@@ -235,7 +234,7 @@ export default function ImagesPage() {
                         className="inline-flex items-center gap-1 px-3 py-1.5 border border-gray-200 text-gray-600 text-xs font-medium rounded-md hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:border-gray-500/40 dark:text-gray-400 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
                       >
                         <Trash2 className="h-3 w-3" />
-                        Delete
+                        {t('admin.delete')}
                       </button>
                     </div>
                   </div>

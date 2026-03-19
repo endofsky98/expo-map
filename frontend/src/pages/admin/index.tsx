@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { fetchBooths, fetchCategories, fetchCompanies, fetchImages, seedData } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 interface Stats {
   booths: number;
@@ -19,6 +20,7 @@ interface Stats {
 }
 
 export default function AdminDashboard() {
+  const { t } = useI18n();
   const [stats, setStats] = useState<Stats>({ booths: 0, companies: 0, categories: 0, images: 0 });
   const [seeding, setSeeding] = useState(false);
   const [seedMessage, setSeedMessage] = useState('');
@@ -49,16 +51,15 @@ export default function AdminDashboard() {
   }
 
   async function handleSeed() {
-    if (!confirm('This will load sample data. Continue?')) return;
+    if (!confirm(t('admin.sampleConfirm'))) return;
     setSeeding(true);
     setSeedMessage('');
     try {
       const result = await seedData();
       setSeedMessage(result.message || 'Sample data loaded successfully!');
       await loadStats();
-    } catch (err) {
-      setSeedMessage('Failed to load sample data. Is the backend running?');
-      console.error(err);
+    } catch {
+      setSeedMessage(t('admin.sampleFailed'));
     } finally {
       setSeeding(false);
     }
@@ -66,28 +67,28 @@ export default function AdminDashboard() {
 
   const cards = [
     {
-      title: 'Booths',
+      titleKey: 'nav.booths',
       count: stats.booths,
       icon: Grid3X3,
       href: '/admin/booths',
       color: 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20',
     },
     {
-      title: 'Companies',
+      titleKey: 'nav.companies',
       count: stats.companies,
       icon: Building2,
       href: '/admin/companies',
       color: 'text-emerald-600 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-900/20',
     },
     {
-      title: 'Categories',
+      titleKey: 'nav.categories',
       count: stats.categories,
       icon: Tag,
       href: '/admin/categories',
       color: 'text-amber-600 bg-amber-50 dark:text-amber-400 dark:bg-amber-900/20',
     },
     {
-      title: 'Images',
+      titleKey: 'nav.images',
       count: stats.images,
       icon: ImageIcon,
       href: '/admin/images',
@@ -96,7 +97,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <AdminLayout title="Dashboard">
+    <AdminLayout title={t('nav.dashboard')}>
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Stats cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -104,7 +105,7 @@ export default function AdminDashboard() {
             const Icon = card.icon;
             return (
               <Link
-                key={card.title}
+                key={card.titleKey}
                 href={card.href}
                 className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-5 hover:shadow-md transition-shadow group"
               >
@@ -117,7 +118,7 @@ export default function AdminDashboard() {
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                   {loading ? '-' : card.count}
                 </p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{card.title}</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">{t(card.titleKey)}</p>
               </Link>
             );
           })}
@@ -126,26 +127,26 @@ export default function AdminDashboard() {
         {/* Quick actions */}
         <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-            Quick Actions
+            {t('admin.quickActions')}
           </h2>
           <div className="flex flex-wrap gap-3">
             <Link
               href="/admin/booths"
               className="px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
             >
-              Manage Booths
+              {t('admin.manageBooths')}
             </Link>
             <Link
               href="/admin/images"
               className="px-4 py-2.5 border border-gray-200 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-[#333] transition-colors"
             >
-              Upload Map Image
+              {t('admin.uploadImage')}
             </Link>
             <Link
               href="/"
               className="px-4 py-2.5 border border-gray-200 bg-white text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-[#333] transition-colors"
             >
-              View Map
+              {t('admin.viewMap')}
             </Link>
           </div>
         </div>
@@ -153,10 +154,10 @@ export default function AdminDashboard() {
         {/* Seed data */}
         <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-6">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            Sample Data
+            {t('admin.sampleData')}
           </h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-            Load sample booths, companies, and categories for testing.
+            {t('admin.sampleDesc')}
           </p>
           <button
             onClick={handleSeed}
@@ -164,7 +165,7 @@ export default function AdminDashboard() {
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50"
           >
             <Database className="h-4 w-4" />
-            {seeding ? 'Loading...' : 'Load Sample Data'}
+            {seeding ? t('admin.loading') : t('admin.loadSample')}
           </button>
           {seedMessage && (
             <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">{seedMessage}</p>
