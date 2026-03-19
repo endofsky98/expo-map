@@ -79,7 +79,7 @@ export default function MapViewer({
   // Pinch zoom refs
   const lastPinchDistRef = useRef<number>(0);
   const lastPinchCenterRef = useRef<{ x: number; y: number } | null>(null);
-  const lastAngleRef = useRef<number>(0);
+
   const isPinchingRef = useRef<boolean>(false);
   const currentImageIdRef = useRef<number | null>(null);
 
@@ -236,9 +236,6 @@ export default function MapViewer({
     return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
   }
 
-  function getTouchAngle(t1: Touch, t2: Touch): number {
-    return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * (180 / Math.PI);
-  }
 
   function handleTouchMove(e: Konva.KonvaEventObject<TouchEvent>) {
     const touches = e.evt.touches;
@@ -258,58 +255,34 @@ export default function MapViewer({
     const t2 = touches[1];
     const newDist = getTouchDistance(t1, t2);
     const newCenter = getTouchCenter(t1, t2);
-    const newAngle = getTouchAngle(t1, t2);
 
     if (!lastPinchDistRef.current) {
       lastPinchDistRef.current = newDist;
       lastPinchCenterRef.current = newCenter;
-      lastAngleRef.current = newAngle;
       return;
     }
 
     const oldScale = stage.scaleX();
-    const oldRotation = stage.rotation() || 0;
 
-    // 줌 (거리 변화)
+    // 줌 — 두 손가락 중심 기준
     let newScale = oldScale * (newDist / lastPinchDistRef.current);
     newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
 
-    // 회전 (각도 변화) — 두 손가락 중심 기준
-    const angleDiff = newAngle - lastAngleRef.current;
-    const newRotation = oldRotation + angleDiff;
-    const rad = (angleDiff * Math.PI) / 180;
-
-    // 두 손가락 중심(newCenter)을 기준으로 줌 + 회전 적용 후 위치 보정
-    // 1) 현재 스테이지 좌표계에서 중심점 위치
-    const stageX = stage.x();
-    const stageY = stage.y();
-
-    // 2) 중심점에서 스테이지 원점까지의 벡터
-    const dx = stageX - newCenter.x;
-    const dy = stageY - newCenter.y;
-
-    // 3) 스케일 변화 반영
-    const scaleFactor = newScale / oldScale;
-
-    // 4) 회전 변화 반영 (dx, dy를 angleDiff만큼 회전)
-    const cos = Math.cos(rad);
-    const sin = Math.sin(rad);
-    const rotatedDx = dx * cos - dy * sin;
-    const rotatedDy = dx * sin + dy * cos;
-
+    const pointTo = {
+      x: (newCenter.x - stage.x()) / oldScale,
+      y: (newCenter.y - stage.y()) / oldScale,
+    };
     const newPos = {
-      x: newCenter.x + rotatedDx * scaleFactor,
-      y: newCenter.y + rotatedDy * scaleFactor,
+      x: newCenter.x - pointTo.x * newScale,
+      y: newCenter.y - pointTo.y * newScale,
     };
 
-    stage.rotation(newRotation);
     setScale(newScale);
     setPosition(newPos);
     onZoomChange?.(newScale);
 
     lastPinchDistRef.current = newDist;
     lastPinchCenterRef.current = newCenter;
-    lastAngleRef.current = newAngle;
   }
 
   function handleTouchEnd(e: Konva.KonvaEventObject<TouchEvent>) {
@@ -320,7 +293,6 @@ export default function MapViewer({
       if (stage) stage.draggable(true);
       lastPinchDistRef.current = 0;
       lastPinchCenterRef.current = null;
-      lastAngleRef.current = 0;
     }
   }
 
@@ -448,7 +420,6 @@ export default function MapViewer({
             const t2 = touches[1];
             lastPinchDistRef.current = getTouchDistance(t1, t2);
             lastPinchCenterRef.current = getTouchCenter(t1, t2);
-            lastAngleRef.current = getTouchAngle(t1, t2);
           }
         }}
         onTouchMove={handleTouchMove}
