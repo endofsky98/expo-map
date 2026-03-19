@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "lastUpdated": "2026-03-19T18:56:35.116Z",
+  "lastUpdated": "2026-03-19T19:29:46.070Z",
   "activeFeatures": [
     "backend",
     "frontend",
@@ -31,9 +31,9 @@
       "documents": {},
       "timestamps": {
         "started": "2026-03-19T16:31:12.205Z",
-        "lastUpdated": "2026-03-19T18:53:27.396Z"
+        "lastUpdated": "2026-03-19T19:29:46.070Z"
       },
-      "lastFile": "/Users/endofsky/Documents/aidev/expo-map/frontend/src/components/AdminLayout.tsx"
+      "lastFile": "/Users/endofsky/Documents/aidev/expo-map/frontend/src/components/MapViewer.tsx"
     },
     "admin": {
       "phase": "do",
@@ -44,9 +44,9 @@
       "documents": {},
       "timestamps": {
         "started": "2026-03-19T16:34:46.921Z",
-        "lastUpdated": "2026-03-19T18:56:18.400Z"
+        "lastUpdated": "2026-03-19T19:28:57.313Z"
       },
-      "lastFile": "/Users/endofsky/Documents/aidev/expo-map/frontend/src/pages/admin/corridors.tsx"
+      "lastFile": "/Users/endofsky/Documents/aidev/expo-map/frontend/src/pages/admin/booths.tsx"
     },
     "expo-map": {
       "phase": "do",
@@ -70,7 +70,7 @@
   "session": {
     "startedAt": "2026-03-19T16:25:47.453Z",
     "onboardingCompleted": false,
-    "lastActivity": "2026-03-19T18:56:35.116Z"
+    "lastActivity": "2026-03-19T19:29:46.070Z"
   },
   "history": [
     {
@@ -688,6 +688,96 @@
     {
       "timestamp": "2026-03-19T18:56:35.116Z",
       "feature": "expo-map",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:27:34.966Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:27:46.186Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:27:56.505Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:03.252Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:15.236Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:26.467Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:36.492Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:41.873Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:51.059Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:28:57.313Z",
+      "feature": "admin",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:29:19.470Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:29:24.025Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:29:29.856Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:29:40.958Z",
+      "feature": "frontend",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-19T19:29:46.070Z",
+      "feature": "frontend",
       "phase": "do",
       "action": "updated"
     }
