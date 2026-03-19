@@ -35,7 +35,7 @@ jobs:
           port: 31222
           username: Administrator
           key: ${{ secrets.EC2_SSH_KEY }}
-          script: set PM2_HOME=C:\Users\Administrator\.pm2 && (pm2 delete expo-map-frontend || echo skip) && (pm2 delete expo-map-backend || echo skip) && cd C:/Users/Administrator/Documents/aiproject/expo-map && (if exist frontend\standalone rmdir /s /q frontend\standalone) && mkdir frontend\standalone
+          script: set PM2_HOME=C:\Users\Administrator\.pm2 && (pm2 delete expo-map-frontend || echo skip) && (pm2 delete expo-map-backend || echo skip) && cd C:/Users/Administrator/Documents/aiproject/expo-map && (if exist frontend\standalone rmdir /s /q frontend\standalone) && mkdir frontend\standalone && (if exist backend\_new rmdir /s /q backend\_new) && mkdir backend\_new && (if exist backend\_new\routers rmdir /s /q backend\_new\routers) && mkdir backend\_new\routers
 
       - name: Upload frontend standalone
         uses: appleboy/scp-action@v1.0.0
@@ -48,11 +48,41 @@ jobs:
           target: "C:/Users/Administrator/Documents/aiproject/expo-map/frontend/standalone"
           strip_components: 3
 
-      - name: Start services
+      - name: Upload backend files
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 3.36.108.114
+          port: 31222
+          username: Administrator
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "backend/main.py,backend/models.py,backend/schemas.py,backend/database.py,backend/requirements.txt"
+          target: "C:/Users/Administrator/Documents/aiproject/expo-map/backend/_new"
+          strip_components: 1
+
+      - name: Upload backend routers
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 3.36.108.114
+          port: 31222
+          username: Administrator
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "backend/routers/*"
+          target: "C:/Users/Administrator/Documents/aiproject/expo-map/backend/_new/routers"
+          strip_components: 2
+
+      - name: Apply backend update & start services
         uses: appleboy/ssh-action@master
         with:
           host: 3.36.108.114
           port: 31222
           username: Administrator
           key: ${{ secrets.EC2_SSH_KEY }}
-          script: set PM2_HOME=C:\Users\Administrator\.pm2 && cd C:/Users/Administrator/Documents/aiproject/expo-map && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.frontend.json && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.backend.json && pm2 save
+          script: >
+            set PM2_HOME=C:\Users\Administrator\.pm2 &&
+            cd C:/Users/Administrator/Documents/aiproject/expo-map &&
+            xcopy /s /y backend\_new\*.py backend\ &&
+            xcopy /s /y backend\_new\routers\*.py backend\routers\ &&
+            rmdir /s /q backend\_new &&
+            pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.frontend.json &&
+            pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.backend.json &&
+            pm2 save
