@@ -1,0 +1,8 @@
+{
+  "name": "expo-map-backend",
+  "script": "C:\\Users\\Administrator\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+  "args": "-m uvicorn main:app --host 0.0.0.0 --port 8008",
+  "cwd": "C:\\Users\\Administrator\\Documents\\aiproject\\expo-map\\backend",
+  "interpreter": "none",
+  "kill_timeout": 5000
+}
