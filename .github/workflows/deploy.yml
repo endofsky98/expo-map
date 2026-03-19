@@ -55,4 +55,4 @@ jobs:
           port: 31222
           username: Administrator
           key: ${{ secrets.EC2_SSH_KEY }}
-          script: set PM2_HOME=C:\Users\Administrator\.pm2 && cd C:/Users/Administrator/Documents/aiproject/expo-map/backend && git pull origin main && pip install -r requirements.txt && cd .. && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.frontend.json && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.backend.json && pm2 save
+          script: set PM2_HOME=C:\Users\Administrator\.pm2 && cd C:/Users/Administrator/Documents/aiproject/expo-map && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.frontend.json && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.backend.json && pm2 save
