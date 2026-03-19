@@ -1,0 +1,58 @@
+name: Deploy expo-map
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install frontend dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_URL: http://3.36.108.114:8008
+        run: npm run build
+
+      - name: Stop services & clean
+        uses: appleboy/ssh-action@master
+        with:
+          host: 3.36.108.114
+          port: 31222
+          username: Administrator
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: set PM2_HOME=C:\Users\Administrator\.pm2 && (pm2 delete expo-map-frontend || echo skip) && (pm2 delete expo-map-backend || echo skip) && cd C:/Users/Administrator/Documents/aiproject/expo-map && (if exist frontend\standalone rmdir /s /q frontend\standalone) && mkdir frontend\standalone
+
+      - name: Upload frontend standalone
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: 3.36.108.114
+          port: 31222
+          username: Administrator
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "frontend/.next/standalone/*"
+          target: "C:/Users/Administrator/Documents/aiproject/expo-map/frontend/standalone"
+          strip_components: 3
+
+      - name: Start services
+        uses: appleboy/ssh-action@master
+        with:
+          host: 3.36.108.114
+          port: 31222
+          username: Administrator
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: set PM2_HOME=C:\Users\Administrator\.pm2 && cd C:/Users/Administrator/Documents/aiproject/expo-map/backend && git pull origin main && pip install -r requirements.txt && cd .. && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.frontend.json && pm2 start C:\Users\Administrator\Documents\aiproject\expo-map\pm2.backend.json && pm2 save
