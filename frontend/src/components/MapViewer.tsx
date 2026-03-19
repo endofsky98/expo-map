@@ -22,7 +22,6 @@ interface MapViewerProps {
   obstacles: Obstacle[];
   routePath: RoutePoint[] | null;
   currentFloorId: number | null;
-  currentHallId: number | null;
   currentPosition: CurrentPosition | null;
   onBoothClick: (booth: Booth) => void;
   onZoomChange?: (zoom: number) => void;
@@ -60,7 +59,6 @@ export default function MapViewer({
   obstacles,
   routePath,
   currentFloorId,
-  currentHallId,
   currentPosition,
   onBoothClick,
   onZoomChange,
@@ -214,12 +212,12 @@ export default function MapViewer({
     if (!routePath || !currentFloorId) return null;
     const points: number[] = [];
     for (const p of routePath) {
-      if (p.floor_id === currentFloorId && (currentHallId === null || p.hall_id === currentHallId)) {
+      if (p.floor_id === currentFloorId) {
         points.push(p.x, p.y);
       }
     }
     return points.length >= 4 ? points : null;
-  }, [routePath, currentFloorId, currentHallId]);
+  }, [routePath, currentFloorId]);
 
   function getTouchDistance(t1: Touch, t2: Touch): number {
     return Math.sqrt(Math.pow(t2.clientX - t1.clientX, 2) + Math.pow(t2.clientY - t1.clientY, 2));
@@ -619,7 +617,7 @@ export default function MapViewer({
         </Layer>
 
         {/* Current position marker */}
-        {currentPosition && currentPosition.floorId === currentFloorId && (currentHallId === null || currentPosition.hallId === currentHallId) && (
+        {currentPosition && currentPosition.floorId === currentFloorId && (
           <Layer>
             <Circle x={currentPosition.x} y={currentPosition.y} radius={Math.max(12, 16 / scale)} fill="#ef4444" stroke="white" strokeWidth={3 / scale} opacity={0.9} />
             <Circle x={currentPosition.x} y={currentPosition.y} radius={Math.max(5, 6 / scale)} fill="white" listening={false} />

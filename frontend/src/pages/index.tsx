@@ -4,8 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin } from 'lucide-react';
-import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle, RouteResult } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchRoute } from '@/lib/api';
+import { Booth, Category, MapImage, Floor, Facility, Obstacle, RouteResult } from '@/types';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchFacilities, fetchObstacles, fetchRoute } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
@@ -38,11 +38,9 @@ export default function HomePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [currentImage, setCurrentImage] = useState<MapImage | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
-  const [halls, setHalls] = useState<Hall[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
-  const [selectedHallId, setSelectedHallId] = useState<number | null>(null);
   const [selectedBoothId, setSelectedBoothId] = useState<number | null>(null);
   const [activeCategories, setActiveCategories] = useState<Set<number>>(new Set());
   const [hiddenFacilityTypes, setHiddenFacilityTypes] = useState<Set<string>>(new Set());
@@ -61,24 +59,17 @@ export default function HomePage() {
     try {
       setLoading(true);
       setError(null);
-      const [boothsData, categoriesData, floorsData, hallsData] = await Promise.all([
+      const [boothsData, categoriesData, floorsData] = await Promise.all([
         fetchBooths().catch(() => []),
         fetchCategories().catch(() => []),
         fetchFloors().catch(() => []),
-        fetchHalls().catch(() => []),
       ]);
       setAllBooths(boothsData);
       setCategories(categoriesData);
       setFloors(floorsData);
-      setHalls(hallsData);
 
       if (floorsData.length > 0) {
-        const firstFloor = floorsData[0];
-        setSelectedFloorId(firstFloor.id);
-        const floorHalls = hallsData.filter((h: Hall) => h.floor_id === firstFloor.id);
-        if (floorHalls.length > 0) {
-          setSelectedHallId(floorHalls[0].id);
-        }
+        setSelectedFloorId(floorsData[0].id);
       }
 
       if (boothsData.length === 0 && categoriesData.length === 0 && floorsData.length === 0) {
@@ -98,9 +89,9 @@ export default function HomePage() {
     if (!selectedFloorId) return;
     async function loadFloorData() {
       const [filteredBooths, img, facs, obs] = await Promise.all([
-        fetchBooths(selectedFloorId!, selectedHallId || undefined).catch(() => []),
-        fetchCurrentImage(selectedFloorId!, selectedHallId || undefined).catch(() => null),
-        fetchFacilities(selectedFloorId!, selectedHallId || undefined).catch(() => []),
+        fetchBooths(selectedFloorId!).catch(() => []),
+        fetchCurrentImage(selectedFloorId!).catch(() => null),
+        fetchFacilities(selectedFloorId!).catch(() => []),
         fetchObstacles(selectedFloorId!).catch(() => []),
       ]);
       setBooths(filteredBooths);
@@ -109,7 +100,7 @@ export default function HomePage() {
       setObstacles(obs);
     }
     loadFloorData();
-  }, [selectedFloorId, selectedHallId]);
+  }, [selectedFloorId]);
 
   // URL params for pathfinding
   useEffect(() => {
@@ -126,7 +117,6 @@ export default function HomePage() {
           if (route.path.length > 0) {
             const start = route.path[0];
             if (start.floor_id) setSelectedFloorId(start.floor_id);
-            if (start.hall_id) setSelectedHallId(start.hall_id);
           }
         })
         .catch(() => {
@@ -138,16 +128,14 @@ export default function HomePage() {
 
   // URL params for current position
   useEffect(() => {
-    const { currentX, currentY, floor: floorParam, hall: hallParam } = router.query;
+    const { currentX, currentY, floor: floorParam } = router.query;
     if (currentX && currentY) {
       const x = Number(currentX);
       const y = Number(currentY);
       const floorId = Number(floorParam) || selectedFloorId || 0;
-      const hallId = Number(hallParam) || selectedHallId || 0;
       if (!isNaN(x) && !isNaN(y)) {
-        setCurrentPosition({ x, y, floorId, hallId });
+        setCurrentPosition({ x, y, floorId, hallId: 0 });
         if (floorId) setSelectedFloorId(floorId);
-        if (hallId) setSelectedHallId(hallId);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,28 +147,13 @@ export default function HomePage() {
     window.setCurrentPosition = (x: number, y: number, floorId: number, hallId: number) => {
       setCurrentPosition({ x, y, floorId, hallId });
       if (floorId) setSelectedFloorId(floorId);
-      if (hallId) setSelectedHallId(hallId);
     };
     return () => { window.setCurrentPosition = undefined; };
   }, []);
 
   const handleFloorChange = useCallback((floorId: number) => {
     setSelectedFloorId(floorId);
-    const floorHalls = halls.filter((h) => h.floor_id === floorId);
-    setSelectedHallId(floorHalls.length > 0 ? floorHalls[0].id : null);
-  }, [halls]);
-
-  const handleHallChange = useCallback((hallId: number) => {
-    setSelectedHallId(hallId);
-    // Auto-focus on hall area
-    const hall = halls.find((h) => h.id === hallId);
-    if (hall && hall.area_x != null && hall.area_y != null && hall.area_width && hall.area_height) {
-      setTimeout(() => {
-        const panFn = (window as unknown as Record<string, (x: number, y: number, w: number, h: number) => void>).__mapViewerPanToArea;
-        if (panFn) panFn(hall.area_x!, hall.area_y!, hall.area_width!, hall.area_height!);
-      }, 100);
-    }
-  }, [halls]);
+  }, []);
 
   const handleBoothClick = useCallback((booth: Booth) => {
     setSelectedBoothId(booth.id);
@@ -191,15 +164,12 @@ export default function HomePage() {
     if (booth.floor_id && booth.floor_id !== selectedFloorId) {
       setSelectedFloorId(booth.floor_id);
     }
-    if (booth.hall_id && booth.hall_id !== selectedHallId) {
-      setSelectedHallId(booth.hall_id);
-    }
     setSelectedBoothId(booth.id);
     setTimeout(() => {
       const panFn = (window as unknown as Record<string, (b: Booth) => void>).__mapViewerPanToBooth;
       if (panFn) panFn(booth);
     }, 200);
-  }, [selectedFloorId, selectedHallId]);
+  }, [selectedFloorId]);
 
   const handleCategoryToggle = useCallback((categoryId: number) => {
     setActiveCategories((prev) => {
@@ -243,7 +213,6 @@ export default function HomePage() {
       if (route.path.length > 0) {
         const start = route.path[0];
         if (start.floor_id) setSelectedFloorId(start.floor_id);
-        if (start.hall_id) setSelectedHallId(start.hall_id);
       }
     } catch {
       setRouteError(t('route.notFound'));
@@ -280,7 +249,7 @@ export default function HomePage() {
             <PathfindingUI
               booths={allBooths}
               onRouteFound={(route) => { setRouteResult(route); setRouteError(null); }}
-              onFloorSwitch={(floorId, hallId) => { setSelectedFloorId(floorId); setSelectedHallId(hallId); }}
+              onFloorSwitch={(floorId) => { setSelectedFloorId(floorId); }}
             />
             <LanguageSelector />
             <Link href="/admin" className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-indigo-400 dark:hover:bg-[#2a2a2a] transition-colors" title={t('nav.admin')}>
@@ -292,11 +261,8 @@ export default function HomePage() {
             <div className="mt-2">
               <FloorHallSelector
                 floors={floors}
-                halls={halls}
                 selectedFloorId={selectedFloorId}
-                selectedHallId={selectedHallId}
                 onFloorChange={handleFloorChange}
-                onHallChange={handleHallChange}
               />
             </div>
           )}
@@ -379,7 +345,6 @@ export default function HomePage() {
               obstacles={obstacles}
               routePath={routeResult?.path || null}
               currentFloorId={selectedFloorId}
-              currentHallId={selectedHallId}
               currentPosition={currentPosition}
               onBoothClick={handleBoothClick}
               onZoomChange={setZoom}

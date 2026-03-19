@@ -7,7 +7,7 @@ import { useI18n } from '@/lib/i18n';
 interface PathfindingUIProps {
   booths: Booth[];
   onRouteFound: (route: RouteResult | null) => void;
-  onFloorSwitch?: (floorId: number, hallId: number) => void;
+  onFloorSwitch?: (floorId: number) => void;
 }
 
 export default function PathfindingUI({ booths, onRouteFound, onFloorSwitch }: PathfindingUIProps) {
@@ -33,8 +33,8 @@ export default function PathfindingUI({ booths, onRouteFound, onFloorSwitch }: P
       // Switch to the floor of the starting booth
       if (route.path.length > 0 && onFloorSwitch) {
         const start = route.path[0];
-        if (start.floor_id && start.hall_id) {
-          onFloorSwitch(start.floor_id, start.hall_id);
+        if (start.floor_id) {
+          onFloorSwitch(start.floor_id);
         }
       }
     } catch {
