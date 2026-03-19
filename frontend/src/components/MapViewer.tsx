@@ -4,6 +4,13 @@ import Konva from 'konva';
 import { Booth, Category, MapImage, Facility, RoutePoint } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
+interface CurrentPosition {
+  x: number;
+  y: number;
+  floorId: number;
+  hallId: number;
+}
+
 interface MapViewerProps {
   booths: Booth[];
   categories: Category[];
@@ -15,6 +22,7 @@ interface MapViewerProps {
   routePath: RoutePoint[] | null;
   currentFloorId: number | null;
   currentHallId: number | null;
+  currentPosition: CurrentPosition | null;
   onBoothClick: (booth: Booth) => void;
   onZoomChange?: (zoom: number) => void;
 }
@@ -42,10 +50,12 @@ export default function MapViewer({
   routePath,
   currentFloorId,
   currentHallId,
+  currentPosition,
   onBoothClick,
   onZoomChange,
 }: MapViewerProps) {
   const { ln } = useI18n();
+  const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
@@ -156,10 +166,23 @@ export default function MapViewer({
   }
 
   function handleBoothClick(booth: Booth) {
+    setFacilityTooltip(null);
     onBoothClick(booth);
     if (typeof window !== 'undefined' && typeof window.onBoothClick === 'function') {
       window.onBoothClick(booth.id, booth);
     }
+  }
+
+  function handleFacilityClick(facility: Facility) {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pos = stage.position();
+    const sc = stage.scaleX();
+    const screenX = facility.x * sc + pos.x;
+    const screenY = facility.y * sc + pos.y;
+    setFacilityTooltip((prev) =>
+      prev?.facility.id === facility.id ? null : { facility, screenX, screenY }
+    );
   }
 
   function zoomIn() {
@@ -331,7 +354,13 @@ export default function MapViewer({
             const style = FACILITY_STYLES[fac.type] || { color: '#6b7280', label: '?' };
             const r = Math.max(10, 14 / scale);
             return (
-              <Group key={`fac-${fac.id}`} x={fac.x} y={fac.y}>
+              <Group
+                key={`fac-${fac.id}`}
+                x={fac.x}
+                y={fac.y}
+                onClick={() => handleFacilityClick(fac)}
+                onTap={() => handleFacilityClick(fac)}
+              >
                 <Circle
                   radius={r}
                   fill={style.color}
@@ -355,7 +384,33 @@ export default function MapViewer({
             );
           })}
         </Layer>
+
+        {/* Current position marker */}
+        {currentPosition && currentPosition.floorId === currentFloorId && (currentHallId === null || currentPosition.hallId === currentHallId) && (
+          <Layer>
+            <Circle x={currentPosition.x} y={currentPosition.y} radius={Math.max(12, 16 / scale)} fill="#ef4444" stroke="white" strokeWidth={3 / scale} opacity={0.9} />
+            <Circle x={currentPosition.x} y={currentPosition.y} radius={Math.max(5, 6 / scale)} fill="white" listening={false} />
+          </Layer>
+        )}
       </Stage>
+
+      {/* Facility tooltip overlay */}
+      {facilityTooltip && (
+        <div
+          className="absolute z-50 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-lg shadow-lg p-3 pointer-events-auto"
+          style={{ left: Math.min(facilityTooltip.screenX, dimensions.width - 200), top: Math.max(0, facilityTooltip.screenY - 80) }}
+        >
+          <button onClick={() => setFacilityTooltip(null)} className="absolute top-1 right-2 text-gray-400 hover:text-gray-600 text-xs">&times;</button>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+            {ln(facilityTooltip.facility.name) || (FACILITY_STYLES[facilityTooltip.facility.type]?.label ?? facilityTooltip.facility.type)}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            {FACILITY_STYLES[facilityTooltip.facility.type]?.label} &middot;
+            {facilityTooltip.facility.subtype ? ` ${facilityTooltip.facility.subtype}` : ''}
+            {` (${Math.round(facilityTooltip.facility.x)}, ${Math.round(facilityTooltip.facility.y)})`}
+          </p>
+        </div>
+      )}
     </div>
   );
 }

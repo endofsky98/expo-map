@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ZoomIn, ZoomOut, Settings, Map as MapIcon } from 'lucide-react';
+import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle } from 'lucide-react';
 import { Booth, Category, MapImage, Floor, Hall, Facility, RouteResult } from '@/types';
 import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchRoute } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -15,6 +15,21 @@ import FacilityFilter from '@/components/FacilityFilter';
 import PathfindingUI from '@/components/PathfindingUI';
 
 const MapViewer = dynamic(() => import('@/components/MapViewer'), { ssr: false });
+
+interface CurrentPosition {
+  x: number;
+  y: number;
+  floorId: number;
+  hallId: number;
+}
+
+function parseBoothParam(value: string | string[] | undefined): number | null {
+  if (!value || Array.isArray(value)) return null;
+  // Support both "booth_102" and "102" formats
+  const cleaned = value.replace(/^booth_/i, '');
+  const num = Number(cleaned);
+  return isNaN(num) ? null : num;
+}
 
 export default function HomePage() {
   const { t } = useI18n();
@@ -32,6 +47,8 @@ export default function HomePage() {
   const [activeCategories, setActiveCategories] = useState<Set<number>>(new Set());
   const [hiddenFacilityTypes, setHiddenFacilityTypes] = useState<Set<string>>(new Set());
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +78,7 @@ export default function HomePage() {
         }
       }
 
-      if (boothsData.length === 0 && categoriesData.length === 0) {
+      if (boothsData.length === 0 && categoriesData.length === 0 && floorsData.length === 0) {
         setError('api_down');
       }
     } catch {
@@ -89,15 +106,59 @@ export default function HomePage() {
     loadFloorData();
   }, [selectedFloorId, selectedHallId]);
 
-  // Handle URL params for pathfinding
+  // Handle URL params for pathfinding (?from=booth_102&to=booth_305)
   useEffect(() => {
-    const { from, to } = router.query;
-    if (from && to) {
-      fetchRoute(Number(from), Number(to))
-        .then((route) => setRouteResult(route))
-        .catch(() => {});
+    const fromId = parseBoothParam(router.query.from as string);
+    const toId = parseBoothParam(router.query.to as string);
+    if (fromId && toId) {
+      setRouteError(null);
+      fetchRoute(fromId, toId)
+        .then((route) => {
+          setRouteResult(route);
+          if (typeof window !== 'undefined' && window.onRouteReady) {
+            window.onRouteReady(route);
+          }
+          // Switch to the starting floor/hall
+          if (route.path.length > 0) {
+            const start = route.path[0];
+            if (start.floor_id) setSelectedFloorId(start.floor_id);
+            if (start.hall_id) setSelectedHallId(start.hall_id);
+          }
+        })
+        .catch(() => {
+          setRouteError(t('route.notFound'));
+        });
     }
-  }, [router.query]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query.from, router.query.to]);
+
+  // Handle URL params for current position (?currentX=100&currentY=200&floor=2&hall=A)
+  useEffect(() => {
+    const { currentX, currentY, floor: floorParam, hall: hallParam } = router.query;
+    if (currentX && currentY) {
+      const x = Number(currentX);
+      const y = Number(currentY);
+      const floorId = Number(floorParam) || selectedFloorId || 0;
+      const hallId = Number(hallParam) || selectedHallId || 0;
+      if (!isNaN(x) && !isNaN(y)) {
+        setCurrentPosition({ x, y, floorId, hallId });
+        if (floorId) setSelectedFloorId(floorId);
+        if (hallId) setSelectedHallId(hallId);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.query.currentX, router.query.currentY]);
+
+  // Register window.setCurrentPosition JS API
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.setCurrentPosition = (x: number, y: number, floorId: number, hallId: number) => {
+      setCurrentPosition({ x, y, floorId, hallId });
+      if (floorId) setSelectedFloorId(floorId);
+      if (hallId) setSelectedHallId(hallId);
+    };
+    return () => { window.setCurrentPosition = undefined; };
+  }, []);
 
   const handleFloorChange = useCallback((floorId: number) => {
     setSelectedFloorId(floorId);
@@ -156,7 +217,7 @@ export default function HomePage() {
     if (fn) fn();
   }
 
-  const showMap = !loading && booths.length > 0;
+  const showMap = !loading && (booths.length > 0 || currentImage !== null);
 
   return (
     <>
@@ -172,7 +233,7 @@ export default function HomePage() {
             <SearchBar booths={allBooths} onSelect={handleSearchSelect} />
             <PathfindingUI
               booths={allBooths}
-              onRouteFound={setRouteResult}
+              onRouteFound={(route) => { setRouteResult(route); setRouteError(null); }}
               onFloorSwitch={(floorId, hallId) => { setSelectedFloorId(floorId); setSelectedHallId(hallId); }}
             />
             <LanguageSelector />
@@ -223,7 +284,7 @@ export default function HomePage() {
                 <p className="text-sm text-gray-500 dark:text-gray-400">{t('map.loading')}</p>
               </div>
             </div>
-          ) : error === 'api_down' && booths.length === 0 ? (
+          ) : error === 'api_down' && booths.length === 0 && !currentImage ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center px-4">
                 <MapIcon className="h-12 w-12 text-gray-300 dark:text-gray-600" />
@@ -236,7 +297,7 @@ export default function HomePage() {
                 </Link>
               </div>
             </div>
-          ) : !showMap && !currentImage ? (
+          ) : !showMap ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3 text-center px-4">
                 <MapIcon className="h-12 w-12 text-gray-300 dark:text-gray-600" />
@@ -259,9 +320,19 @@ export default function HomePage() {
               routePath={routeResult?.path || null}
               currentFloorId={selectedFloorId}
               currentHallId={selectedHallId}
+              currentPosition={currentPosition}
               onBoothClick={handleBoothClick}
               onZoomChange={setZoom}
             />
+          )}
+
+          {/* Route error banner */}
+          {routeError && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg shadow-sm">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <span className="text-sm text-red-700 dark:text-red-300">{routeError}</span>
+              <button onClick={() => setRouteError(null)} className="text-red-400 hover:text-red-600 text-xs ml-2">&times;</button>
+            </div>
           )}
 
           {/* Zoom controls */}
