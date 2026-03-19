@@ -259,25 +259,41 @@ export default function MapViewer({
     }
 
     const oldScale = stage.scaleX();
-    const pointTo = {
-      x: (newCenter.x - stage.x()) / oldScale,
-      y: (newCenter.y - stage.y()) / oldScale,
-    };
+    const oldRotation = stage.rotation() || 0;
 
     // 줌 (거리 변화)
     let newScale = oldScale * (newDist / lastPinchDistRef.current);
     newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
 
+    // 회전 (각도 변화) — 두 손가락 중심 기준
+    const angleDiff = newAngle - lastAngleRef.current;
+    const newRotation = oldRotation + angleDiff;
+    const rad = (angleDiff * Math.PI) / 180;
+
+    // 두 손가락 중심(newCenter)을 기준으로 줌 + 회전 적용 후 위치 보정
+    // 1) 현재 스테이지 좌표계에서 중심점 위치
+    const stageX = stage.x();
+    const stageY = stage.y();
+
+    // 2) 중심점에서 스테이지 원점까지의 벡터
+    const dx = stageX - newCenter.x;
+    const dy = stageY - newCenter.y;
+
+    // 3) 스케일 변화 반영
+    const scaleFactor = newScale / oldScale;
+
+    // 4) 회전 변화 반영 (dx, dy를 angleDiff만큼 회전)
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const rotatedDx = dx * cos - dy * sin;
+    const rotatedDy = dx * sin + dy * cos;
+
     const newPos = {
-      x: newCenter.x - pointTo.x * newScale,
-      y: newCenter.y - pointTo.y * newScale,
+      x: newCenter.x + rotatedDx * scaleFactor,
+      y: newCenter.y + rotatedDy * scaleFactor,
     };
 
-    // 회전 (각도 변화)
-    const angleDiff = newAngle - lastAngleRef.current;
-    const currentRotation = stage.rotation() || 0;
-    stage.rotation(currentRotation + angleDiff);
-
+    stage.rotation(newRotation);
     setScale(newScale);
     setPosition(newPos);
     onZoomChange?.(newScale);
