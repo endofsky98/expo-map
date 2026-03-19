@@ -81,6 +81,8 @@ export default function MapViewer({
   // Pinch zoom refs
   const lastPinchDistRef = useRef<number>(0);
   const lastPinchCenterRef = useRef<{ x: number; y: number } | null>(null);
+  const lastAngleRef = useRef<number>(0);
+  const isPinchingRef = useRef<boolean>(false);
 
   useEffect(() => {
     function updateSize() {
@@ -227,6 +229,10 @@ export default function MapViewer({
     return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
   }
 
+  function getTouchAngle(t1: Touch, t2: Touch): number {
+    return Math.atan2(t2.clientY - t1.clientY, t2.clientX - t1.clientX) * (180 / Math.PI);
+  }
+
   function handleTouchMove(e: Konva.KonvaEventObject<TouchEvent>) {
     const touches = e.evt.touches;
     if (touches.length !== 2) return;
@@ -235,7 +241,8 @@ export default function MapViewer({
     const stage = stageRef.current;
     if (!stage) return;
 
-    // Stop drag if stage is being dragged during multi-touch
+    // 드래그 완전히 차단
+    stage.draggable(false);
     if (stage.isDragging()) {
       stage.stopDrag();
     }
@@ -244,10 +251,12 @@ export default function MapViewer({
     const t2 = touches[1];
     const newDist = getTouchDistance(t1, t2);
     const newCenter = getTouchCenter(t1, t2);
+    const newAngle = getTouchAngle(t1, t2);
 
     if (!lastPinchDistRef.current) {
       lastPinchDistRef.current = newDist;
       lastPinchCenterRef.current = newCenter;
+      lastAngleRef.current = newAngle;
       return;
     }
 
@@ -257,6 +266,7 @@ export default function MapViewer({
       y: (newCenter.y - stage.y()) / oldScale,
     };
 
+    // 줌 (거리 변화)
     let newScale = oldScale * (newDist / lastPinchDistRef.current);
     newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
 
@@ -265,17 +275,30 @@ export default function MapViewer({
       y: newCenter.y - pointTo.y * newScale,
     };
 
+    // 회전 (각도 변화)
+    const angleDiff = newAngle - lastAngleRef.current;
+    const currentRotation = stage.rotation() || 0;
+    stage.rotation(currentRotation + angleDiff);
+
     setScale(newScale);
     setPosition(newPos);
     onZoomChange?.(newScale);
 
     lastPinchDistRef.current = newDist;
     lastPinchCenterRef.current = newCenter;
+    lastAngleRef.current = newAngle;
   }
 
-  function handleTouchEnd() {
-    lastPinchDistRef.current = 0;
-    lastPinchCenterRef.current = null;
+  function handleTouchEnd(e: Konva.KonvaEventObject<TouchEvent>) {
+    const touches = e.evt.touches;
+    // 터치가 모두 끝났을 때만 드래그 다시 활성화
+    if (touches.length === 0) {
+      const stage = stageRef.current;
+      if (stage) stage.draggable(true);
+      lastPinchDistRef.current = 0;
+      lastPinchCenterRef.current = null;
+      lastAngleRef.current = 0;
+    }
   }
 
   function handleWheel(e: Konva.KonvaEventObject<WheelEvent>) {
@@ -392,12 +415,17 @@ export default function MapViewer({
         onTouchStart={(e) => {
           const touches = e.evt.touches;
           if (touches.length === 2) {
+            isPinchingRef.current = true;
             const stage = stageRef.current;
-            if (stage && stage.isDragging()) stage.stopDrag();
+            if (stage) {
+              stage.draggable(false);
+              if (stage.isDragging()) stage.stopDrag();
+            }
             const t1 = touches[0];
             const t2 = touches[1];
             lastPinchDistRef.current = getTouchDistance(t1, t2);
             lastPinchCenterRef.current = getTouchCenter(t1, t2);
+            lastAngleRef.current = getTouchAngle(t1, t2);
           }
         }}
         onTouchMove={handleTouchMove}
