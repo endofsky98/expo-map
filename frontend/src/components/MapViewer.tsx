@@ -81,6 +81,7 @@ export default function MapViewer({
   const lastPinchCenterRef = useRef<{ x: number; y: number } | null>(null);
   const lastAngleRef = useRef<number>(0);
   const isPinchingRef = useRef<boolean>(false);
+  const currentImageIdRef = useRef<number | null>(null);
 
   useEffect(() => {
     function updateSize() {
@@ -117,17 +118,25 @@ export default function MapViewer({
 
     if (imageUrl && !imageUrl.startsWith('http')) imageUrl = `${apiBase}${imageUrl}`;
 
-    // If same zoom level, skip
-    if (targetLevel === currentZoomLevelRef.current && bgImage) return;
+    // 이미지 자체가 바뀌었으면 강제 리로드
+    const imageChanged = currentImage.id !== currentImageIdRef.current;
+    if (imageChanged) {
+      currentZoomLevelRef.current = -1;
+      currentImageIdRef.current = currentImage.id;
+    }
+
+    // If same zoom level and same image, skip
+    if (targetLevel === currentZoomLevelRef.current && bgImage && !imageChanged) return;
 
     // Preload new image in background
     const img = new window.Image();
     img.crossOrigin = 'anonymous';
     img.src = imageUrl;
     img.onload = () => {
-      if (!bgImage) {
-        // First load - no crossfade needed
+      if (!bgImage || imageChanged) {
+        // First load or image changed — no crossfade, replace immediately
         setBgImage(img);
+        setNextBgImage(null);
         currentZoomLevelRef.current = targetLevel;
       } else {
         // Crossfade: show new image on top with increasing opacity
