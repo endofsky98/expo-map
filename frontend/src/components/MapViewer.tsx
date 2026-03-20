@@ -285,8 +285,8 @@ export default function MapViewer({
       const rad = (clamped * Math.PI) / 180;
       const scaleX = 1 / Math.cos(rad);
       canvas.style.transform = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
-      // 기준점을 아래쪽(70%)으로 → 기울어졌을 때 지도가 위로 위치
-      canvas.style.transformOrigin = 'center 70%';
+      // 기준점을 위쪽(30%)으로 → 기울어졌을 때 지도가 위로 위치
+      canvas.style.transformOrigin = 'center 30%';
     }
   }
 
