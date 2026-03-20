@@ -517,21 +517,38 @@ export default function MapViewer({
       }
 
       if (isDragging && e.isPrimary) {
-        const t = transformRef.current;
-        t.x = e.clientX - dragStart.x;
-        t.y = e.clientY - dragStart.y;
-        clampPosition(t);
-        mainContainer.position.set(t.x, t.y);
-        renderTilesFnRef.current();
-        scheduleMarkerUpdate();
-        // Track velocity for inertia
-        const now = Date.now();
-        const dt = now - lastDragTime;
-        if (dt > 0) {
-          velocityRef.current.vx = (e.clientX - lastDragX) / dt * 16;
-          velocityRef.current.vy = (e.clientY - lastDragY) / dt * 16;
+        if (e.ctrlKey || e.metaKey) {
+          // Ctrl+drag: vertical = tilt, horizontal = rotation
+          const dy = e.clientY - lastDragY;
+          const dx = e.clientX - lastDragX;
+          // Vertical movement → tilt (drag down = tilt more)
+          if (Math.abs(dy) > 0) {
+            applyTilt(transformRef.current.tilt + dy * 0.3);
+          }
+          // Horizontal movement → rotation (center pivot)
+          if (Math.abs(dx) > 0) {
+            const { width: cw, height: ch } = canvasDimsRef.current;
+            applyTransform(transformRef.current.scale, transformRef.current.rotation + dx * 0.003, cw / 2, ch / 2);
+          }
+          lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
+        } else {
+          // Normal drag: pan
+          const t = transformRef.current;
+          t.x = e.clientX - dragStart.x;
+          t.y = e.clientY - dragStart.y;
+          clampPosition(t);
+          mainContainer.position.set(t.x, t.y);
+          renderTilesFnRef.current();
+          scheduleMarkerUpdate();
+          // Track velocity for inertia
+          const now = Date.now();
+          const dt = now - lastDragTime;
+          if (dt > 0) {
+            velocityRef.current.vx = (e.clientX - lastDragX) / dt * 16;
+            velocityRef.current.vy = (e.clientY - lastDragY) / dt * 16;
+          }
+          lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = now;
         }
-        lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = now;
       }
     });
 
@@ -565,24 +582,9 @@ export default function MapViewer({
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        // Ctrl+wheel: vertical = tilt (bird's-eye), horizontal = rotation
-        if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
-          // Vertical → tilt: scroll down = tilt more, scroll up = tilt less
-          const newTilt = transformRef.current.tilt + e.deltaY * 0.3;
-          applyTilt(newTilt);
-        } else {
-          // Horizontal → rotation (pivot at canvas center)
-          const newRotation = transformRef.current.rotation + e.deltaX * 0.003;
-          const { width: cw, height: ch } = canvasDimsRef.current;
-          applyTransform(transformRef.current.scale, newRotation, cw / 2, ch / 2);
-        }
-      } else {
-        // Normal wheel: zoom
-        const factor = e.deltaY > 0 ? 0.9 : 1.1;
-        const rect = el.getBoundingClientRect();
-        applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
-      }
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const rect = el.getBoundingClientRect();
+      applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
     }, { passive: false });
 
     function handleClick(e: PointerEvent) {
