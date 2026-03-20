@@ -79,8 +79,7 @@ function hexStringToNumber(hex: string): number {
 }
 
 function selectTileLevel(scale: number, ti: TileInfo): number {
-  // Use floor instead of round to prefer higher-resolution tiles (one level sharper)
-  const idx = Math.floor(-Math.log2(Math.max(0.01, scale)));
+  const idx = Math.round(-Math.log2(Math.max(0.01, scale)));
   return Math.max(0, Math.min(ti.levels.length - 1, idx));
 }
 
@@ -288,20 +287,36 @@ export default function MapViewer({
     });
   }
 
-  // Clamp: image center must stay within viewport
+  // Clamp: image must overlap screen center — image cannot leave the center point
   function clampPosition(t: { x: number; y: number; scale: number; rotation: number }) {
     const { width: cw, height: ch } = canvasDimsRef.current;
     const sc = t.scale;
     const cosR = Math.cos(t.rotation);
     const sinR = Math.sin(t.rotation);
+    const absC = Math.abs(cosR);
+    const absS = Math.abs(sinR);
+    // Rotated image bounding box half-extents
+    const halfW = (imgWidth * absC + imgHeight * absS) * sc / 2;
+    const halfH = (imgWidth * absS + imgHeight * absC) * sc / 2;
     // Image center in screen coords
     const icx = t.x + sc * (imgWidth / 2 * cosR - imgHeight / 2 * sinR);
     const icy = t.y + sc * (imgWidth / 2 * sinR + imgHeight / 2 * cosR);
-    // Clamp image center to viewport bounds
-    const clampedX = Math.max(0, Math.min(cw, icx));
-    const clampedY = Math.max(0, Math.min(ch, icy));
-    t.x += clampedX - icx;
-    t.y += clampedY - icy;
+    // Screen center
+    const scx = cw / 2;
+    const scy = ch / 2;
+    // Image AABB edges
+    const imgLeft = icx - halfW;
+    const imgRight = icx + halfW;
+    const imgTop = icy - halfH;
+    const imgBot = icy + halfH;
+    // Push: image must cover screen center
+    let dx = 0, dy = 0;
+    if (imgRight < scx) dx = scx - imgRight;
+    else if (imgLeft > scx) dx = scx - imgLeft;
+    if (imgBot < scy) dy = scy - imgBot;
+    else if (imgTop > scy) dy = scy - imgTop;
+    t.x += dx;
+    t.y += dy;
   }
 
   const tileRenderPendingRef = useRef(false);
@@ -1593,6 +1608,7 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerZoomIn = zoomIn;
       (window as unknown as Record<string, unknown>).__mapViewerZoomOut = zoomOut;
       (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
+      (window as unknown as Record<string, unknown>).__mapViewerSetTilt = (deg: number) => applyTilt(deg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimensions]);

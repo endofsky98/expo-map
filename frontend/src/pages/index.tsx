@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin, Eye, EyeOff } from 'lucide-react';
+import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
 import { Booth, Category, MapImage, Floor, Facility, Obstacle, RouteResult } from '@/types';
 import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchFacilities, fetchObstacles, fetchRoute, fetchSetting } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
@@ -56,6 +56,7 @@ export default function HomePage() {
 
   // v7: Booth visibility toggle (debug/test feature)
   const [showBooths, setShowBooths] = useState(true);
+  const [isBirdView, setIsBirdView] = useState(false);
   // v7: Prefetch range from admin settings
   const [prefetchRange, setPrefetchRange] = useState(2);
 
@@ -298,8 +299,8 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Row 2: Search bar */}
-          <div className="mt-2 pointer-events-auto max-w-md">
+          {/* Row 2: Search bar — 80% width */}
+          <div className="mt-2 pointer-events-auto" style={{ width: '80%' }}>
             <SearchBar booths={allBooths} onSelect={handleSearchSelect} />
           </div>
 
@@ -454,14 +455,31 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Zoom controls + Booth toggle */}
+          {/* Zoom controls + View toggle + Booth toggle */}
           <div className="absolute bottom-6 right-6 flex flex-col items-center gap-2 z-10">
+            {/* Bird's-eye / 2D view toggle */}
+            <button
+              onClick={() => {
+                const next = !isBirdView;
+                setIsBirdView(next);
+                const setTilt = (window as unknown as Record<string, (deg: number) => void>).__mapViewerSetTilt;
+                if (setTilt) setTilt(next ? 45 : 0);
+              }}
+              className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
+                isBirdView
+                  ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-600/40 hover:bg-indigo-100'
+                  : 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+              }`}
+              title={isBirdView ? '2D View' : "Bird's-eye View"}
+            >
+              {isBirdView
+                ? <Square className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                : <Box className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+              }
+            </button>
             <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom in">
               <ZoomIn className="h-4 w-4 text-gray-700 dark:text-gray-300" />
             </button>
-            <div className="px-2 py-1 rounded-md bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm text-xs text-gray-600 dark:text-gray-400 font-mono">
-              {Math.round(zoom * 100)}%
-            </div>
             <button onClick={handleZoomOut} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom out">
               <ZoomOut className="h-4 w-4 text-gray-700 dark:text-gray-300" />
             </button>
