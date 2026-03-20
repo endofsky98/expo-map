@@ -183,6 +183,23 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, canva
       // Y-rotation in Three.js: positive = CCW from above → use -rotation for CW.
       g.rotateY(-t.rotation);
 
+      // Tilt: rotate wall group around screen center so walls lean back.
+      // Must pivot around screen center (not group origin) to stay aligned with pixi.
+      if (t.tilt > 0) {
+        const tiltRad = (t.tilt * Math.PI) / 180 * 0.5;
+        // Screen center in Three.js coords (before tilt)
+        const cx = totalW / 2;
+        const cz = totalH / 2;
+        // Translate group so pivot = screen center, rotate X, translate back
+        g.position.x -= cx;
+        g.position.z -= cz;
+        // Apply rotation around world X axis at origin
+        const mat = new THREE.Matrix4().makeRotationX(-tiltRad);
+        g.applyMatrix4(mat);
+        g.position.x += cx;
+        g.position.z += cz;
+      }
+
       // Camera frustum = full canvas size (with overscan)
       cam.left = 0;
       cam.right = totalW;
