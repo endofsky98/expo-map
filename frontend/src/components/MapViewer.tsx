@@ -139,6 +139,7 @@ export default function MapViewer({
   const prevScaleRef = useRef<number>(1);
   const stableIdsRef = useRef<Set<number>>(new Set()); // confirmed markers (only recalc on settle)
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadingIdsRef = useRef<Set<number>>(new Set()); // markers mid-fade, don't touch opacity
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -910,9 +911,11 @@ export default function MapViewer({
       if (!newIds.has(id)) {
         const el = markers.get(id);
         if (el) {
+          fadingIdsRef.current.add(id);
           el.style.transition = 'opacity 1s ease-out';
           el.style.opacity = '0';
           setTimeout(() => {
+            fadingIdsRef.current.delete(id);
             if (!stableIdsRef.current.has(id)) {
               el.style.display = 'none';
               el.style.transition = '';
@@ -934,11 +937,15 @@ export default function MapViewer({
             const { sx, sy } = worldToScreen(wcx, wcy);
             el.style.display = 'flex';
             el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+            fadingIdsRef.current.add(id);
             el.style.opacity = '0';
             el.style.transition = '';
             requestAnimationFrame(() => {
               el.style.transition = 'opacity 1s ease-in';
               el.style.opacity = '1';
+              setTimeout(() => {
+                fadingIdsRef.current.delete(id);
+              }, 1000);
             });
           }
         }
@@ -1011,8 +1018,8 @@ export default function MapViewer({
       const isDisplayed = sampledIds.has(booth.id);
 
       if (!isDisplayed) {
-        // Only hide if not currently fading out (managed by recalcMarkers)
-        if (!prevVisible.has(booth.id)) {
+        // Don't hide if mid-fade (managed by recalcMarkers)
+        if (!prevVisible.has(booth.id) && !fadingIdsRef.current.has(booth.id)) {
           el.style.display = 'none';
         }
         continue;
@@ -1026,10 +1033,9 @@ export default function MapViewer({
       el.style.display = 'flex';
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
 
-      // Category filter opacity
-      const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-      // Don't override opacity if element is mid-fade (transition active)
-      if (!el.style.transition) {
+      // Category filter opacity — skip if mid-fade
+      if (!fadingIdsRef.current.has(booth.id)) {
+        const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
         el.style.opacity = String(opacity);
       }
 
