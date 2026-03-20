@@ -14,7 +14,7 @@ import FloorHallSelector from '@/components/FloorHallSelector';
 import FacilityFilter from '@/components/FacilityFilter';
 import PathfindingUI from '@/components/PathfindingUI';
 
-const MapViewer = dynamic(() => import('@/components/MapViewer'), { ssr: false });
+const MapViewer = dynamic(() => import('@/components/map/MapViewer'), { ssr: false });
 
 interface CurrentPosition {
   x: number;
