@@ -372,6 +372,27 @@ export default function MapViewer({
     applyTransform(newScale, transformRef.current.rotation, pivotX, pivotY);
   }
 
+  const animZoomRafRef = useRef<number>(0);
+  function animateZoom(targetScale: number, pivotX: number, pivotY: number, durationMs = 300) {
+    if (animZoomRafRef.current) cancelAnimationFrame(animZoomRafRef.current);
+    const startScale = transformRef.current.scale;
+    const startTime = performance.now();
+    function step(now: number) {
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / durationMs);
+      // ease-out cubic
+      const ease = 1 - Math.pow(1 - progress, 3);
+      const currentScale = startScale + (targetScale - startScale) * ease;
+      applyZoom(currentScale, pivotX, pivotY);
+      if (progress < 1) {
+        animZoomRafRef.current = requestAnimationFrame(step);
+      } else {
+        animZoomRafRef.current = 0;
+      }
+    }
+    animZoomRafRef.current = requestAnimationFrame(step);
+  }
+
   function applyTilt(tilt: number) {
     const clamped = Math.max(MIN_TILT, Math.min(MAX_TILT, tilt));
     transformRef.current.tilt = clamped;
@@ -663,9 +684,9 @@ export default function MapViewer({
             const tapDx = Math.abs(e.clientX - lastTapX);
             const tapDy = Math.abs(e.clientY - lastTapY);
             if (now - lastTapTime < 350 && tapDx < 30 && tapDy < 30) {
-              // Double tap → zoom in 2x at tap position
+              // Double tap → animated zoom in 2x at tap position
               const rect = el.getBoundingClientRect();
-              applyZoom(transformRef.current.scale * 2, e.clientX - rect.left, e.clientY - rect.top);
+              animateZoom(transformRef.current.scale * 2, e.clientX - rect.left, e.clientY - rect.top, 300);
               lastTapTime = 0; // reset to prevent triple-tap
             } else {
               lastTapTime = now;
@@ -863,8 +884,8 @@ export default function MapViewer({
 
         const levelChanged = levelIdx !== currentTileLevelRef.current;
         if (levelChanged) {
-          layer.removeChildren();
           currentTileLevelRef.current = levelIdx;
+          // Don't remove old tiles yet — keep them visible until new ones load
         }
 
         const neededKeys = new Set<string>();
@@ -874,11 +895,18 @@ export default function MapViewer({
           }
         }
 
+        // Remove only tiles from the SAME level that are out of viewport
+        // Keep tiles from OTHER levels as backdrop until new tiles load
         for (let i = layer.children.length - 1; i >= 0; i--) {
           const child = layer.children[i];
-          if (child.name && !neededKeys.has(child.name)) {
-            layer.removeChildAt(i);
+          if (!child.name) continue;
+          const parts = child.name.split('_');
+          const childLevel = parseInt(parts[1] ?? '', 10);
+          if (childLevel === levelIdx) {
+            // Same level: remove if out of viewport
+            if (!neededKeys.has(child.name)) layer.removeChildAt(i);
           }
+          // Other level tiles: keep for now (cleaned up below when all needed tiles are loaded)
         }
 
         const existingKeys = new Set<string>();
@@ -942,6 +970,16 @@ export default function MapViewer({
                     const idx = layer.getChildIndex(placeholder);
                     layer.removeChild(placeholder);
                     layer.addChildAt(sprite, Math.min(idx, layer.children.length));
+                    // Clean up old-level tiles that are behind this newly loaded tile
+                    for (let j = layer.children.length - 1; j >= 0; j--) {
+                      const ch = layer.children[j];
+                      if (!ch.name) continue;
+                      const p = ch.name.split('_');
+                      const chLevel = parseInt(p[1] ?? '', 10);
+                      if (chLevel !== currentTileLevelRef.current) {
+                        layer.removeChildAt(j);
+                      }
+                    }
                   }
                 });
               }

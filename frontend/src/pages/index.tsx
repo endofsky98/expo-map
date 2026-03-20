@@ -275,7 +275,7 @@ export default function HomePage() {
         {/* Top bar — transparent overlay */}
         <div className="absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none">
           {/* Row 1: Logo + Floor selector + utilities — opaque background */}
-          <div className="flex items-center gap-3 pointer-events-auto bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm rounded-lg px-3 py-2 shadow-sm">
+          <div className="flex items-center gap-3 pointer-events-auto bg-white dark:bg-[#1a1a1a] rounded-lg px-3 py-2 shadow-sm border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 shrink-0">
               <MapIcon className="h-5 w-5" />
               <span className="font-bold text-sm hidden sm:inline">{t('app.title')}</span>
