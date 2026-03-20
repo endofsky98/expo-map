@@ -51,6 +51,13 @@ const MIN_BOOTH_SCREEN_SIZE = 3;
 const CLICK_THRESHOLD = 5;
 const CLICK_TIME_THRESHOLD = 300;
 
+function maxMarkersForScale(scale: number): number {
+  if (scale >= 3.0) return 30;
+  if (scale >= 2.0) return 20;
+  if (scale >= 1.0) return 15;
+  return 8;
+}
+
 const FACILITY_STYLES: Record<string, { color: number; label: string }> = {
   restroom: { color: 0x3b82f6, label: 'WC' },
   emergency_exit: { color: 0xef4444, label: 'EXIT' },
@@ -109,7 +116,6 @@ export default function MapViewer({
   const tileLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const obstacleLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const routeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
-  const boothLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const facilityLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const overlayLayerRef = useRef<PIXI.Container>(new PIXI.Container());
 
@@ -120,8 +126,6 @@ export default function MapViewer({
 
   // Function refs for pointer event handlers
   const renderTilesFnRef = useRef<() => void>(() => {});
-  const redrawBoothsFnRef = useRef<() => void>(() => {});
-  const lastBoothRedrawScaleRef = useRef<number>(1);
 
   // Callbacks as refs to avoid stale closures
   const onBoothClickRef = useRef(onBoothClick);
@@ -131,7 +135,6 @@ export default function MapViewer({
   onMapClickRef.current = onMapClick;
   onZoomChangeRef.current = onZoomChange;
 
-  const boothContainersRef = useRef<Map<number, PIXI.Container>>(new Map());
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
@@ -140,6 +143,8 @@ export default function MapViewer({
   const stableIdsRef = useRef<Set<number>>(new Set()); // confirmed markers (only recalc on settle)
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadingIdsRef = useRef<Set<number>>(new Set()); // markers mid-fade, don't touch opacity
+  const inertiaRafRef = useRef<number>(0);
+  const velocityRef = useRef({ vx: 0, vy: 0 });
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -227,7 +232,13 @@ export default function MapViewer({
   // Refs for data accessed in click handler closure
   const boothsRef = useRef(booths);
   boothsRef.current = booths;
+  const boothMapRef = useRef<Map<number, Booth>>(new Map());
   const visibleFacilitiesRef = useRef(visibleFacilities);
+  useEffect(() => {
+    const m = new Map<number, Booth>();
+    for (const b of booths) m.set(b.id, b);
+    boothMapRef.current = m;
+  }, [booths]);
   visibleFacilitiesRef.current = visibleFacilities;
   const currentFloorIdRef = useRef(currentFloorId);
   currentFloorIdRef.current = currentFloorId;
@@ -321,29 +332,11 @@ export default function MapViewer({
     }
     onZoomChangeRef.current?.(clamped);
     renderTilesFnRef.current();
-    checkBoothRedraw();
     scheduleMarkerUpdate();
   }
 
   function applyZoom(newScale: number, pivotX: number, pivotY: number) {
     applyTransform(newScale, transformRef.current.rotation, pivotX, pivotY);
-  }
-
-  function checkBoothRedraw() {
-    const sc = transformRef.current.scale;
-    const last = lastBoothRedrawScaleRef.current;
-    if (
-      Math.abs(sc - last) / Math.max(last, 0.01) > 0.15 ||
-      (last < 1.0 && sc >= 1.0) ||
-      (last >= 1.0 && sc < 1.0) ||
-      (last < 2.0 && sc >= 2.0) ||
-      (last >= 2.0 && sc < 2.0)
-    ) {
-      lastBoothRedrawScaleRef.current = sc;
-      redrawBoothsFnRef.current();
-    scheduleMarkerUpdate();
-      scheduleMarkerUpdate();
-    }
   }
 
   function applyTilt(tilt: number) {
@@ -361,6 +354,38 @@ export default function MapViewer({
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
     scheduleMarkerUpdate();
+  }
+
+  // #6: Inertia scrolling
+  function stopInertia() {
+    if (inertiaRafRef.current) {
+      cancelAnimationFrame(inertiaRafRef.current);
+      inertiaRafRef.current = 0;
+    }
+  }
+
+  function startInertia(vx: number, vy: number) {
+    stopInertia();
+    velocityRef.current = { vx, vy };
+    function step() {
+      const v = velocityRef.current;
+      if (Math.abs(v.vx) < 0.5 && Math.abs(v.vy) < 0.5) {
+        inertiaRafRef.current = 0;
+        return;
+      }
+      const t = transformRef.current;
+      t.x += v.vx;
+      t.y += v.vy;
+      clampPosition(t);
+      const mc = mainContainerRef.current;
+      if (mc) mc.position.set(t.x, t.y);
+      renderTilesFnRef.current();
+      scheduleMarkerUpdate();
+      v.vx *= 0.92;
+      v.vy *= 0.92;
+      inertiaRafRef.current = requestAnimationFrame(step);
+    }
+    inertiaRafRef.current = requestAnimationFrame(step);
   }
 
   function getBoothOpacity(booth: Booth): number {
@@ -418,11 +443,18 @@ export default function MapViewer({
     let pointerDownInfo = { x: 0, y: 0, time: 0 };
     const pointers = new Map<number, { x: number; y: number }>();
     let lastPinchDist = 0;
-    let lastPinchAngle = 0;
-    let lastPinchMidY = 0; // 버드뷰: 두 손가락 중점 Y
+    let lastPinchMidY = 0;
+    // #2: Gesture classification
+    let gestureType: 'none' | 'zoom' | 'tilt' = 'none';
+    let gestureAccumDist = 0;
+    let gestureAccumMidY = 0;
+    const GESTURE_THRESHOLD = 12;
+
+    let lastDragX = 0, lastDragY = 0, lastDragTime = 0;
 
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
+      stopInertia();
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -431,12 +463,15 @@ export default function MapViewer({
         dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
         isDragging = true;
         pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
+        lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
       } else if (pointers.size === 2) {
         isDragging = false;
         const pts = Array.from(pointers.values());
         lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        lastPinchAngle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
         lastPinchMidY = (pts[0].y + pts[1].y) / 2;
+        gestureType = 'none';
+        gestureAccumDist = 0;
+        gestureAccumMidY = 0;
       }
     });
 
@@ -446,21 +481,31 @@ export default function MapViewer({
       if (pointers.size === 2) {
         const pts = Array.from(pointers.values());
         const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
         const midY = (pts[0].y + pts[1].y) / 2;
         if (lastPinchDist > 0) {
-          const rect = el.getBoundingClientRect();
-          const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
-          const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
-          const newScale = transformRef.current.scale * (dist / lastPinchDist);
-          const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
-          applyTransform(newScale, newRotation, cx, cy);
-          // Bird's eye tilt: vertical midpoint movement
-          const tiltDelta = -(midY - lastPinchMidY) * 0.3;
-          applyTilt(transformRef.current.tilt + tiltDelta);
+          // #2: Classify gesture once, then commit
+          const distDelta = Math.abs(dist - lastPinchDist);
+          const midYDelta = Math.abs(midY - lastPinchMidY);
+          if (gestureType === 'none') {
+            gestureAccumDist += distDelta;
+            gestureAccumMidY += midYDelta;
+            if (gestureAccumDist > GESTURE_THRESHOLD || gestureAccumMidY > GESTURE_THRESHOLD) {
+              gestureType = gestureAccumDist > gestureAccumMidY ? 'zoom' : 'tilt';
+            }
+          }
+          if (gestureType !== 'tilt') {
+            const rect = el.getBoundingClientRect();
+            const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
+            const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
+            const newScale = transformRef.current.scale * (dist / lastPinchDist);
+            applyTransform(newScale, transformRef.current.rotation, cx, cy);
+          }
+          if (gestureType === 'tilt') {
+            const tiltDelta = -(midY - lastPinchMidY) * 0.3;
+            applyTilt(transformRef.current.tilt + tiltDelta);
+          }
         }
         lastPinchDist = dist;
-        lastPinchAngle = angle;
         lastPinchMidY = midY;
         return;
       }
@@ -473,6 +518,14 @@ export default function MapViewer({
         mainContainer.position.set(t.x, t.y);
         renderTilesFnRef.current();
         scheduleMarkerUpdate();
+        // Track velocity for inertia
+        const now = Date.now();
+        const dt = now - lastDragTime;
+        if (dt > 0) {
+          velocityRef.current.vx = (e.clientX - lastDragX) / dt * 16;
+          velocityRef.current.vy = (e.clientY - lastDragY) / dt * 16;
+        }
+        lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = now;
       }
     });
 
@@ -487,15 +540,21 @@ export default function MapViewer({
         const dt = Date.now() - pointerDownInfo.time;
         if (Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD) {
           handleClick(e);
+        } else {
+          // Start inertia
+          const v = velocityRef.current;
+          if (Math.abs(v.vx) > 0.5 || Math.abs(v.vy) > 0.5) {
+            startInertia(v.vx, v.vy);
+          }
         }
       }
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; }
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       pointers.delete(e.pointerId);
       isDragging = false;
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; }
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -576,6 +635,7 @@ export default function MapViewer({
 
     return () => {
       ro.disconnect();
+      stopInertia();
       app.destroy(true);
       pixiApp.current = null;
       mainContainerRef.current = null;
@@ -615,7 +675,6 @@ export default function MapViewer({
       mc.scale.set(fitScale);
       mc.rotation = 0;
       applyTilt(0);
-      lastBoothRedrawScaleRef.current = fitScale;
       onZoomChangeRef.current?.(fitScale);
     }
 
@@ -872,9 +931,9 @@ export default function MapViewer({
   // recalcMarkers: called after interaction settles (debounced)
   // Picks up to MAX_MARKERS using center-weighted sampling, applies fade transitions
   function recalcMarkers() {
-    const MAX_MARKERS = 10;
     const markers = markerElementsRef.current;
     const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
+    const MAX_MARKERS = maxMarkersForScale(sc);
     const { width: cw, height: ch } = canvasDimsRef.current;
     const show = showBoothsRef.current;
 
@@ -1001,7 +1060,7 @@ export default function MapViewer({
       if (!oldIds.has(id)) {
         const el = markers.get(id);
         if (el) {
-          const booth = boothsRef.current.find(b => b.id === id);
+          const booth = boothMapRef.current.get(id);
           if (booth) {
             const wcx = booth.x + booth.width / 2;
             const wcy = booth.y + booth.height / 2;
@@ -1063,7 +1122,7 @@ export default function MapViewer({
       }
     }
 
-    const MAX_MARKERS = 10;
+    const MAX_MARKERS = maxMarkersForScale(sc);
     const visibleBoothIds = new Set(visibleBooths.map(b => b.id));
 
     // During interaction: keep stable set, only drop markers that left viewport
@@ -1305,7 +1364,6 @@ export default function MapViewer({
     clampPosition(transformRef.current);
     mc.position.set(transformRef.current.x, transformRef.current.y);
     renderTilesFnRef.current();
-    redrawBoothsFnRef.current();
     scheduleMarkerUpdate();
   }
 
@@ -1327,10 +1385,8 @@ export default function MapViewer({
     mc.scale.set(fitScale);
     mc.rotation = 0;
     applyTilt(0);
-    lastBoothRedrawScaleRef.current = fitScale;
     onZoomChangeRef.current?.(fitScale);
     renderTilesFnRef.current();
-    redrawBoothsFnRef.current();
     scheduleMarkerUpdate();
   }
 
@@ -1353,7 +1409,6 @@ export default function MapViewer({
     mc.scale.set(clampedScale);
     onZoomChange?.(clampedScale);
     renderTilesFnRef.current();
-    redrawBoothsFnRef.current();
     scheduleMarkerUpdate();
   }
 
