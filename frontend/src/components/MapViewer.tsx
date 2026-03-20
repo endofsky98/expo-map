@@ -1418,14 +1418,6 @@ export default function MapViewer({
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(() => {
       recalcMarkers();
-      // Snap zoom to nearest 0.5 level for crisp tile alignment
-      const curLevel = Math.log2(transformRef.current.scale);
-      const snapped = Math.round(curLevel * 2) / 2;
-      const snappedScale = Math.pow(2, snapped);
-      if (Math.abs(snappedScale - transformRef.current.scale) > 0.01) {
-        const { width: cw, height: ch } = canvasDimsRef.current;
-        animateZoom(snappedScale, cw / 2, ch / 2, 150);
-      }
     }, 300);
 
     const sampledIds = currentDisplay;
