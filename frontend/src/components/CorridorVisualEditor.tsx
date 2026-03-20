@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
-import { Booth, CorridorNode, CorridorEdge, Obstacle, MapImage, ZoomLevel } from '@/types';
+import { Booth, CorridorNode, CorridorEdge, Obstacle, Facility, MapImage, ZoomLevel } from '@/types';
 
-export type EditorMode = 'select' | 'add_node' | 'connect' | 'delete';
+export type EditorMode = 'select' | 'add_node' | 'connect' | 'delete' | 'draw_corridor' | 'draw_booth' | 'draw_obstacle' | 'place_facility';
 
 interface CorridorVisualEditorProps {
   nodes: CorridorNode[];
   edges: CorridorEdge[];
   booths: Booth[];
   obstacles: Obstacle[];
+  facilities: Facility[];
   currentImage: MapImage | null;
   floorId: number;
   mode: EditorMode;
@@ -22,6 +23,21 @@ interface CorridorVisualEditorProps {
   onEdgeCreate: (fromId: number, toId: number) => void;
   onNodeDelete: (nodeId: number) => void;
   onEdgeDelete: (edgeId: number) => void;
+  // 새 콜백: draw_corridor (직선 드래그 → 교차점 자동 포함)
+  onCorridorDraw?: (startX: number, startY: number, endX: number, endY: number) => void;
+  // 새 콜백: 부스/장애물/편의시설 생성
+  onBoothCreate?: (x: number, y: number, width: number, height: number) => void;
+  onBoothMove?: (boothId: number, x: number, y: number) => void;
+  onBoothResize?: (boothId: number, x: number, y: number, width: number, height: number) => void;
+  onBoothDelete?: (boothId: number) => void;
+  onObstacleCreate?: (x: number, y: number, width: number, height: number) => void;
+  onObstacleMove?: (obstacleId: number, x: number, y: number) => void;
+  onObstacleDelete?: (obstacleId: number) => void;
+  onFacilityCreate?: (x: number, y: number, type: string) => void;
+  onFacilityMove?: (facilityId: number, x: number, y: number) => void;
+  onFacilityDelete?: (facilityId: number) => void;
+  // 편의시설 타입 (place_facility 모드에서 사용)
+  facilityType?: string;
 }
 
 const NODE_COLORS: Record<string, number> = {
@@ -85,6 +101,7 @@ export default function CorridorVisualEditor({
   edges,
   booths,
   obstacles,
+  facilities = [],
   currentImage,
   floorId,
   mode,
@@ -98,6 +115,18 @@ export default function CorridorVisualEditor({
   onEdgeCreate,
   onNodeDelete,
   onEdgeDelete,
+  onCorridorDraw,
+  onBoothCreate,
+  onBoothMove,
+  onBoothResize,
+  onBoothDelete,
+  onObstacleCreate,
+  onObstacleMove,
+  onObstacleDelete,
+  onFacilityCreate,
+  onFacilityMove,
+  onFacilityDelete,
+  facilityType = 'restroom',
 }: CorridorVisualEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
@@ -112,6 +141,7 @@ export default function CorridorVisualEditor({
   const boothLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const obstacleLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const edgeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
+  const facilityLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const nodeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
 
   // Node containers map for drag lookup
@@ -139,11 +169,41 @@ export default function CorridorVisualEditor({
   const onEdgeDeleteRef = useRef(onEdgeDelete);
   onEdgeDeleteRef.current = onEdgeDelete;
 
+  // New callback refs
+  const onCorridorDrawRef = useRef(onCorridorDraw);
+  onCorridorDrawRef.current = onCorridorDraw;
+  const onBoothCreateRef = useRef(onBoothCreate);
+  onBoothCreateRef.current = onBoothCreate;
+  const onBoothMoveRef = useRef(onBoothMove);
+  onBoothMoveRef.current = onBoothMove;
+  const onBoothDeleteRef = useRef(onBoothDelete);
+  onBoothDeleteRef.current = onBoothDelete;
+  const onObstacleCreateRef = useRef(onObstacleCreate);
+  onObstacleCreateRef.current = onObstacleCreate;
+  const onObstacleMoveRef = useRef(onObstacleMove);
+  onObstacleMoveRef.current = onObstacleMove;
+  const onObstacleDeleteRef = useRef(onObstacleDelete);
+  onObstacleDeleteRef.current = onObstacleDelete;
+  const onFacilityCreateRef = useRef(onFacilityCreate);
+  onFacilityCreateRef.current = onFacilityCreate;
+  const onFacilityMoveRef = useRef(onFacilityMove);
+  onFacilityMoveRef.current = onFacilityMove;
+  const onFacilityDeleteRef = useRef(onFacilityDelete);
+  onFacilityDeleteRef.current = onFacilityDelete;
+  const facilityTypeRef = useRef(facilityType);
+  facilityTypeRef.current = facilityType;
+
   // Data refs for pointer handler access
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
+  const boothsRef = useRef(booths);
+  boothsRef.current = booths;
+  const obstaclesRef = useRef(obstacles);
+  obstaclesRef.current = obstacles;
+  const facilitiesRef = useRef(facilities);
+  facilitiesRef.current = facilities;
 
   const imgWidth = currentImage?.width || 800;
   const imgHeight = currentImage?.height || 600;
@@ -218,6 +278,7 @@ export default function CorridorVisualEditor({
     mainContainer.addChild(boothLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(edgeLayerRef.current);
+    mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(nodeLayerRef.current);
     mainContainerRef.current = mainContainer;
 
@@ -237,6 +298,25 @@ export default function CorridorVisualEditor({
     const pointers = new Map<number, { x: number; y: number }>();
     let lastPinchDist = 0;
 
+    // ===== Draw mode state =====
+    let isDrawing = false;
+    let drawStartWorld = { x: 0, y: 0 };
+    let drawCurrentWorld = { x: 0, y: 0 };
+    const drawPreviewGraphics = new PIXI.Graphics();
+    // Add preview to top layer
+    mainContainer.addChild(drawPreviewGraphics);
+
+    // ===== Booth/obstacle drag state (select mode) =====
+    let isDraggingBooth = false;
+    let draggedBoothId: number | null = null;
+    let boothDragOffset = { x: 0, y: 0 };
+    let isDraggingObstacle = false;
+    let draggedObstacleId: number | null = null;
+    let obstacleDragOffset = { x: 0, y: 0 };
+    let isDraggingFacility = false;
+    let draggedFacilityId: number | null = null;
+    let facilityDragOffset = { x: 0, y: 0 };
+
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       canvas.setPointerCapture(e.pointerId);
@@ -252,7 +332,6 @@ export default function CorridorVisualEditor({
         return;
       }
 
-      // Hit test nodes
       const rect = canvas.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
@@ -260,22 +339,79 @@ export default function CorridorVisualEditor({
       const wx = (sx - t.x) / t.scale;
       const wy = (sy - t.y) / t.scale;
       const hitR = (NODE_RADIUS / t.scale) * 2;
+      const m = modeRef.current;
 
+      // Draw modes: start drawing
+      if (m === 'draw_corridor' || m === 'draw_booth' || m === 'draw_obstacle') {
+        isDrawing = true;
+        drawStartWorld = { x: wx, y: wy };
+        drawCurrentWorld = { x: wx, y: wy };
+        drawPreviewGraphics.clear();
+        return;
+      }
+
+      // Place facility: immediate placement on click (handled in pointerup)
+      if (m === 'place_facility') {
+        // no drag needed, handled in handleEmptyClick
+      }
+
+      // Select mode: hit test booths, obstacles, facilities for dragging
+      if (m === 'select') {
+        // Hit test booths
+        for (const b of boothsRef.current) {
+          if (wx >= b.x && wx <= b.x + b.width && wy >= b.y && wy <= b.y + b.height) {
+            isDraggingBooth = true;
+            draggedBoothId = b.id;
+            boothDragOffset = { x: wx - b.x, y: wy - b.y };
+            return;
+          }
+        }
+        // Hit test obstacles
+        for (const o of obstaclesRef.current) {
+          if (o.shape === 'circle' && o.radius) {
+            if (Math.hypot(wx - o.x, wy - o.y) <= o.radius) {
+              isDraggingObstacle = true;
+              draggedObstacleId = o.id;
+              obstacleDragOffset = { x: wx - o.x, y: wy - o.y };
+              return;
+            }
+          } else {
+            const ow = o.width || 40, oh = o.height || 40;
+            if (wx >= o.x && wx <= o.x + ow && wy >= o.y && wy <= o.y + oh) {
+              isDraggingObstacle = true;
+              draggedObstacleId = o.id;
+              obstacleDragOffset = { x: wx - o.x, y: wy - o.y };
+              return;
+            }
+          }
+        }
+        // Hit test facilities
+        for (const f of facilitiesRef.current) {
+          if (Math.hypot(wx - f.x, wy - f.y) <= 12) {
+            isDraggingFacility = true;
+            draggedFacilityId = f.id;
+            facilityDragOffset = { x: wx - f.x, y: wy - f.y };
+            return;
+          }
+        }
+      }
+
+      // Hit test nodes
       for (const node of nodesRef.current) {
         const dx = wx - node.x;
         const dy = wy - node.y;
         if (dx * dx + dy * dy <= hitR * hitR) {
           hitNodeIdOnDown = node.id;
-          if (modeRef.current === 'select') {
+          if (m === 'select') {
             isNodeDragging = true;
             draggedNodeId = node.id;
             draggedContainer = nodeContainersRef.current.get(node.id) || null;
           }
-          return; // Don't start map drag when hitting a node
+          return;
         }
       }
 
-      // No node hit — start map drag
+      // No hit — start map drag
       dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
       isDragging = true;
     });
@@ -294,6 +430,83 @@ export default function CorridorVisualEditor({
           applyZoom(newScale, cx, cy);
         }
         lastPinchDist = dist;
+        return;
+      }
+
+      // Draw mode preview
+      if (isDrawing) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const t = transformRef.current;
+        const wx = (sx - t.x) / t.scale;
+        const wy = (sy - t.y) / t.scale;
+        drawCurrentWorld = { x: wx, y: wy };
+
+        drawPreviewGraphics.clear();
+        const m = modeRef.current;
+        if (m === 'draw_corridor') {
+          drawPreviewGraphics.lineStyle(3 / t.scale, 0x6366f1, 0.8);
+          drawPreviewGraphics.moveTo(drawStartWorld.x, drawStartWorld.y);
+          drawPreviewGraphics.lineTo(wx, wy);
+        } else if (m === 'draw_booth') {
+          const rx = Math.min(drawStartWorld.x, wx);
+          const ry = Math.min(drawStartWorld.y, wy);
+          const rw = Math.abs(wx - drawStartWorld.x);
+          const rh = Math.abs(wy - drawStartWorld.y);
+          drawPreviewGraphics.lineStyle(2 / t.scale, 0x22c55e, 0.8);
+          drawPreviewGraphics.beginFill(0x22c55e, 0.15);
+          drawPreviewGraphics.drawRect(rx, ry, rw, rh);
+          drawPreviewGraphics.endFill();
+        } else if (m === 'draw_obstacle') {
+          const rx = Math.min(drawStartWorld.x, wx);
+          const ry = Math.min(drawStartWorld.y, wy);
+          const rw = Math.abs(wx - drawStartWorld.x);
+          const rh = Math.abs(wy - drawStartWorld.y);
+          drawPreviewGraphics.lineStyle(2 / t.scale, 0xef4444, 0.8);
+          drawPreviewGraphics.beginFill(0xef4444, 0.15);
+          drawPreviewGraphics.drawRect(rx, ry, rw, rh);
+          drawPreviewGraphics.endFill();
+        }
+        return;
+      }
+
+      // Booth/obstacle/facility drag in select mode
+      if (isDraggingBooth || isDraggingObstacle || isDraggingFacility) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const t = transformRef.current;
+        const wx = (sx - t.x) / t.scale;
+        const wy = (sy - t.y) / t.scale;
+        // Visual update will happen on re-render after API call in pointerup
+        drawPreviewGraphics.clear();
+        if (isDraggingBooth && draggedBoothId !== null) {
+          const b = boothsRef.current.find(bb => bb.id === draggedBoothId);
+          if (b) {
+            const nx = wx - boothDragOffset.x;
+            const ny = wy - boothDragOffset.y;
+            drawPreviewGraphics.lineStyle(2 / t.scale, 0x22c55e, 0.8);
+            drawPreviewGraphics.beginFill(0x22c55e, 0.2);
+            drawPreviewGraphics.drawRect(nx, ny, b.width, b.height);
+            drawPreviewGraphics.endFill();
+          }
+        } else if (isDraggingObstacle && draggedObstacleId !== null) {
+          const o = obstaclesRef.current.find(oo => oo.id === draggedObstacleId);
+          if (o) {
+            const nx = wx - obstacleDragOffset.x;
+            const ny = wy - obstacleDragOffset.y;
+            drawPreviewGraphics.lineStyle(2 / t.scale, 0xef4444, 0.8);
+            drawPreviewGraphics.beginFill(0xef4444, 0.2);
+            drawPreviewGraphics.drawRect(nx, ny, o.width || 40, o.height || 40);
+            drawPreviewGraphics.endFill();
+          }
+        } else if (isDraggingFacility && draggedFacilityId !== null) {
+          drawPreviewGraphics.lineStyle(2 / t.scale, 0x3b82f6, 0.8);
+          drawPreviewGraphics.beginFill(0x3b82f6, 0.3);
+          drawPreviewGraphics.drawCircle(wx - facilityDragOffset.x, wy - facilityDragOffset.y, 8);
+          drawPreviewGraphics.endFill();
+        }
         return;
       }
 
@@ -325,6 +538,81 @@ export default function CorridorVisualEditor({
       const dy = e.clientY - pointerDownInfo.y;
       const dt = Date.now() - pointerDownInfo.time;
       const isClick = Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD;
+
+      // Draw mode completion
+      if (isDrawing) {
+        isDrawing = false;
+        drawPreviewGraphics.clear();
+        const m = modeRef.current;
+        const sx2 = drawStartWorld.x, sy2 = drawStartWorld.y;
+        const ex2 = drawCurrentWorld.x, ey2 = drawCurrentWorld.y;
+        const drawDist = Math.hypot(ex2 - sx2, ey2 - sy2);
+        if (drawDist > 5) { // minimum drag distance
+          if (m === 'draw_corridor' && onCorridorDrawRef.current) {
+            onCorridorDrawRef.current(Math.round(sx2), Math.round(sy2), Math.round(ex2), Math.round(ey2));
+          } else if (m === 'draw_booth' && onBoothCreateRef.current) {
+            const rx = Math.round(Math.min(sx2, ex2));
+            const ry = Math.round(Math.min(sy2, ey2));
+            const rw = Math.round(Math.abs(ex2 - sx2));
+            const rh = Math.round(Math.abs(ey2 - sy2));
+            if (rw > 5 && rh > 5) onBoothCreateRef.current(rx, ry, rw, rh);
+          } else if (m === 'draw_obstacle' && onObstacleCreateRef.current) {
+            const rx = Math.round(Math.min(sx2, ex2));
+            const ry = Math.round(Math.min(sy2, ey2));
+            const rw = Math.round(Math.abs(ex2 - sx2));
+            const rh = Math.round(Math.abs(ey2 - sy2));
+            if (rw > 5 && rh > 5) onObstacleCreateRef.current(rx, ry, rw, rh);
+          }
+        }
+        return;
+      }
+
+      // Booth/obstacle/facility drag completion
+      if (isDraggingBooth && draggedBoothId !== null) {
+        drawPreviewGraphics.clear();
+        if (!isClick) {
+          const rect2 = canvas.getBoundingClientRect();
+          const sx3 = e.clientX - rect2.left;
+          const sy3 = e.clientY - rect2.top;
+          const t2 = transformRef.current;
+          const wx2 = (sx3 - t2.x) / t2.scale;
+          const wy2 = (sy3 - t2.y) / t2.scale;
+          onBoothMoveRef.current?.(draggedBoothId, Math.round(wx2 - boothDragOffset.x), Math.round(wy2 - boothDragOffset.y));
+        }
+        isDraggingBooth = false;
+        draggedBoothId = null;
+        return;
+      }
+      if (isDraggingObstacle && draggedObstacleId !== null) {
+        drawPreviewGraphics.clear();
+        if (!isClick) {
+          const rect2 = canvas.getBoundingClientRect();
+          const sx3 = e.clientX - rect2.left;
+          const sy3 = e.clientY - rect2.top;
+          const t2 = transformRef.current;
+          const wx2 = (sx3 - t2.x) / t2.scale;
+          const wy2 = (sy3 - t2.y) / t2.scale;
+          onObstacleMoveRef.current?.(draggedObstacleId, Math.round(wx2 - obstacleDragOffset.x), Math.round(wy2 - obstacleDragOffset.y));
+        }
+        isDraggingObstacle = false;
+        draggedObstacleId = null;
+        return;
+      }
+      if (isDraggingFacility && draggedFacilityId !== null) {
+        drawPreviewGraphics.clear();
+        if (!isClick) {
+          const rect2 = canvas.getBoundingClientRect();
+          const sx3 = e.clientX - rect2.left;
+          const sy3 = e.clientY - rect2.top;
+          const t2 = transformRef.current;
+          const wx2 = (sx3 - t2.x) / t2.scale;
+          const wy2 = (sy3 - t2.y) / t2.scale;
+          onFacilityMoveRef.current?.(draggedFacilityId, Math.round(wx2 - facilityDragOffset.x), Math.round(wy2 - facilityDragOffset.y));
+        }
+        isDraggingFacility = false;
+        draggedFacilityId = null;
+        return;
+      }
 
       if (isNodeDragging) {
         isNodeDragging = false;
@@ -415,6 +703,29 @@ export default function CorridorVisualEditor({
 
       if (m === 'add_node') {
         onNodeAddRef.current(Math.round(wx), Math.round(wy));
+      } else if (m === 'place_facility') {
+        onFacilityCreateRef.current?.(Math.round(wx), Math.round(wy), facilityTypeRef.current);
+      } else if (m === 'delete') {
+        // Delete booths
+        for (const b of boothsRef.current) {
+          if (wx >= b.x && wx <= b.x + b.width && wy >= b.y && wy <= b.y + b.height) {
+            onBoothDeleteRef.current?.(b.id);
+            return;
+          }
+        }
+        // Delete obstacles
+        for (const o of obstaclesRef.current) {
+          const ow = o.width || 40, oh = o.height || 40;
+          if (o.shape === 'circle' && o.radius) {
+            if (Math.hypot(wx - o.x, wy - o.y) <= o.radius) { onObstacleDeleteRef.current?.(o.id); return; }
+          } else if (wx >= o.x && wx <= o.x + ow && wy >= o.y && wy <= o.y + oh) {
+            onObstacleDeleteRef.current?.(o.id); return;
+          }
+        }
+        // Delete facilities
+        for (const f of facilitiesRef.current) {
+          if (Math.hypot(wx - f.x, wy - f.y) <= 12) { onFacilityDeleteRef.current?.(f.id); return; }
+        }
       } else if (m === 'select') {
         onNodeSelectRef.current(null);
       }
@@ -457,12 +768,13 @@ export default function CorridorVisualEditor({
       return;
     }
     const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+    // 원본 사이즈 이미지 사용 (level 0 = 원본, high_path = 고해상도)
     const zoomLevels = parseZoomLevels(currentImage);
     let imageUrl = '';
     if (zoomLevels.length > 0) {
-      imageUrl = zoomLevels[Math.min(2, zoomLevels.length - 1)].path;
+      imageUrl = zoomLevels[0].path; // level 0 = 원본 해상도
     } else {
-      imageUrl = currentImage.medium_path;
+      imageUrl = currentImage.high_path || currentImage.medium_path;
     }
     if (imageUrl && !imageUrl.startsWith('http')) imageUrl = `${apiBase}${imageUrl}`;
 
@@ -522,6 +834,44 @@ export default function CorridorVisualEditor({
       layer.addChild(g);
     }
   }, [obstacles]);
+
+  // ===== Facilities =====
+  useEffect(() => {
+    const layer = facilityLayerRef.current;
+    layer.removeChildren();
+    layer.interactiveChildren = false;
+    const sc = transformRef.current.scale;
+
+    const FACILITY_COLORS: Record<string, number> = {
+      restroom: 0x3b82f6,
+      elevator: 0x8b5cf6,
+      stairs: 0xf59e0b,
+      entrance: 0x22c55e,
+      info: 0x06b6d4,
+      emergency_exit: 0xef4444,
+    };
+
+    for (const f of facilities) {
+      const color = FACILITY_COLORS[f.type] || 0x6b7280;
+      const g = new PIXI.Graphics();
+      g.lineStyle(1.5 / sc, color, 0.8);
+      g.beginFill(color, 0.3);
+      g.drawCircle(f.x, f.y, 8 / sc);
+      g.endFill();
+      layer.addChild(g);
+
+      const label = new PIXI.Text(f.type.charAt(0).toUpperCase(), {
+        fontSize: 8 / sc,
+        fontFamily: 'Inter, sans-serif',
+        fill: color === 0xf59e0b ? '#000' : '#fff',
+        fontWeight: 'bold',
+      });
+      label.anchor.set(0.5);
+      label.x = f.x;
+      label.y = f.y;
+      layer.addChild(label);
+    }
+  }, [facilities]);
 
   // ===== Edges =====
   useEffect(() => {

@@ -6,10 +6,10 @@ import {
   fetchFloors, fetchHalls, fetchCorridorNodes, fetchCorridorEdges,
   createCorridorNode, updateCorridorNode, deleteCorridorNode,
   createCorridorEdge, deleteCorridorEdge,
-  fetchBooths, fetchObstacles, fetchCurrentImage,
+  fetchBooths, fetchObstacles, fetchFacilities, fetchCurrentImage,
 } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
-import { Floor, Hall, CorridorNode, CorridorEdge, Booth, Obstacle, MapImage } from '@/types';
+import { Floor, Hall, CorridorNode, CorridorEdge, Booth, Obstacle, Facility, MapImage } from '@/types';
 import type { EditorMode } from '@/components/CorridorVisualEditor';
 
 const CorridorVisualEditor = dynamic(() => import('@/components/CorridorVisualEditor'), { ssr: false });
@@ -22,6 +22,7 @@ export default function CorridorsPage() {
   const [allEdges, setAllEdges] = useState<CorridorEdge[]>([]);
   const [booths, setBooths] = useState<Booth[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [currentImage, setCurrentImage] = useState<MapImage | null>(null);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,17 +50,19 @@ export default function CorridorsPage() {
 
   const loadFloorData = useCallback(async () => {
     if (!selectedFloorId) return;
-    const [n, e, b, o, img] = await Promise.all([
-      fetchCorridorNodes(), // load all nodes for cross-floor linking
+    const [n, e, b, o, f, img] = await Promise.all([
+      fetchCorridorNodes(),
       fetchCorridorEdges(),
       fetchBooths(selectedFloorId),
       fetchObstacles(selectedFloorId),
+      fetchFacilities(selectedFloorId),
       fetchCurrentImage(selectedFloorId).catch(() => null),
     ]);
     setAllNodes(n);
     setAllEdges(e);
     setBooths(b);
     setObstacles(o);
+    setFacilities(f);
     setCurrentImage(img);
   }, [selectedFloorId]);
 
