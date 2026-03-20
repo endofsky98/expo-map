@@ -6,11 +6,12 @@ import {
   ImageIcon,
   X,
   Star,
+  Settings2,
 } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import { MapImage } from '@/types';
 import { useI18n } from '@/lib/i18n';
-import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage, updateImageFloor } from '@/lib/api';
+import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage, updateImageFloor, fetchSetting, updateSetting } from '@/lib/api';
 import { Floor } from '@/types';
 
 export default function ImagesPage() {
@@ -23,11 +24,36 @@ export default function ImagesPage() {
   const [dragActive, setDragActive] = useState(false);
   const [uploadFloorId, setUploadFloorId] = useState<number | ''>('');
   const [uploadZoomStep, setUploadZoomStep] = useState(512);
+  const [prefetchRange, setPrefetchRange] = useState(2);
+  const [prefetchSaving, setPrefetchSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadImages();
+    loadPrefetchRange();
   }, []);
+
+  async function loadPrefetchRange() {
+    try {
+      const setting = await fetchSetting('prefetch_range');
+      const val = parseInt(setting.value, 10);
+      if (!isNaN(val) && val >= 1 && val <= 5) {
+        setPrefetchRange(val);
+      }
+    } catch { /* use default */ }
+  }
+
+  async function handlePrefetchSave() {
+    setPrefetchSaving(true);
+    try {
+      await updateSetting('prefetch_range', String(prefetchRange));
+      setMessage('Prefetch range updated');
+    } catch {
+      setMessage('Failed to update prefetch range');
+    } finally {
+      setPrefetchSaving(false);
+    }
+  }
 
   async function loadImages() {
     setLoading(true);
@@ -163,6 +189,40 @@ export default function ImagesPage() {
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500 dark:text-gray-400">{t('admin.zoomStep')}:</label>
             <input type="number" value={uploadZoomStep} onChange={(e) => setUploadZoomStep(Number(e.target.value))} className="w-20 px-2 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none" min={100} step={100} />
+          </div>
+        </div>
+
+        {/* Tile prefetch range setting */}
+        <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-6">
+          <div className="flex items-center gap-2 mb-3">
+            <Settings2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Tile Prefetch Range
+            </h2>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+            Number of tiles to preload around the viewport in each direction (1-5). Higher values reduce loading gaps when panning but increase data usage.
+          </p>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={1}
+              value={prefetchRange}
+              onChange={(e) => setPrefetchRange(Number(e.target.value))}
+              className="flex-1 accent-indigo-600"
+            />
+            <span className="w-8 text-center text-sm font-mono font-semibold text-gray-800 dark:text-gray-200">
+              {prefetchRange}
+            </span>
+            <button
+              onClick={handlePrefetchSave}
+              disabled={prefetchSaving}
+              className="px-4 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50"
+            >
+              {prefetchSaving ? '...' : 'Save'}
+            </button>
           </div>
         </div>
 

@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 from database import Base, engine, get_db
 from models import (
     Floor, Hall, Category, Company, Booth, Language, Admin,
-    Facility, CorridorNode, CorridorEdge, Obstacle,
+    Facility, CorridorNode, CorridorEdge, Obstacle, Setting,
 )
 from routers import booths, images, categories, companies
-from routers import auth, floors, halls, facilities, corridors, route, obstacles
+from routers import auth, floors, halls, facilities, corridors, route, obstacles, settings
 from routers.auth import hash_password
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -47,6 +47,7 @@ app.include_router(facilities.router)
 app.include_router(corridors.router)
 app.include_router(route.router)
 app.include_router(obstacles.router)
+app.include_router(settings.router)
 
 
 def _create_seed_data(db: Session) -> dict | None:
@@ -323,6 +324,18 @@ def _create_seed_data(db: Session) -> dict | None:
     }
 
 
+def _ensure_default_settings(db: Session):
+    """Ensure default settings exist."""
+    defaults = [
+        ("prefetch_range", "2", "Viewport tile prefetch range (1-5 tiles in each direction)"),
+    ]
+    for key, value, desc in defaults:
+        existing = db.query(Setting).filter(Setting.key == key).first()
+        if not existing:
+            db.add(Setting(key=key, value=value, description=desc))
+    db.commit()
+
+
 @app.on_event("startup")
 def on_startup():
     # Check if schema migration needed (v2 -> v4)
@@ -342,6 +355,8 @@ def on_startup():
             print(f"[startup] Auto-seeded: {result}")
         else:
             print("[startup] Database already has data, skipping seed.")
+        _ensure_default_settings(db)
+        print("[startup] Default settings ensured.")
     finally:
         db.close()
 

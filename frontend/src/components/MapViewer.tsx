@@ -24,6 +24,8 @@ interface MapViewerProps {
   routeResult?: RouteResult | null;
   currentFloorId: number | null;
   currentPosition: CurrentPosition | null;
+  showBooths: boolean;
+  prefetchRange: number;
   onBoothClick: (booth: Booth) => void;
   onZoomChange?: (zoom: number) => void;
 }
@@ -31,7 +33,7 @@ interface MapViewerProps {
 const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 5.0;
 const VIEWPORT_PADDING = 200;
-const MIN_BOOTH_SCREEN_SIZE = 20; // pixels — hides most booths at zoom ≤ 0.3
+const MIN_BOOTH_SCREEN_SIZE = 20;
 
 const FACILITY_STYLES: Record<string, { color: string; label: string }> = {
   restroom: { color: '#3b82f6', label: 'WC' },
@@ -62,6 +64,8 @@ export default function MapViewer({
   routeResult,
   currentFloorId,
   currentPosition,
+  showBooths,
+  prefetchRange,
   onBoothClick,
   onZoomChange,
 }: MapViewerProps) {
@@ -78,12 +82,22 @@ export default function MapViewer({
   const [viewportBounds, setViewportBounds] = useState({ x: 0, y: 0, width: 800, height: 600 });
   const crossfadeTimerRef = useRef<number | null>(null);
   const currentZoomLevelRef = useRef<number>(-1);
-  // Pinch zoom refs
   const lastPinchDistRef = useRef<number>(0);
   const lastPinchCenterRef = useRef<{ x: number; y: number } | null>(null);
-
   const isPinchingRef = useRef<boolean>(false);
   const currentImageIdRef = useRef<number | null>(null);
+  // Prefetch cache: stores preloaded images by zoom level index
+  const prefetchCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+
+  // Cleanup prefetch cache and images on unmount (floor memory management)
+  useEffect(() => {
+    return () => {
+      prefetchCacheRef.current.clear();
+      setBgImage(null);
+      setNextBgImage(null);
+      if (crossfadeTimerRef.current) cancelAnimationFrame(crossfadeTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     function updateSize() {
@@ -96,57 +110,99 @@ export default function MapViewer({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+
+  function resolveImageUrl(path: string): string {
+    if (!path) return '';
+    return path.startsWith('http') ? path : `${apiBase}${path}`;
+  }
+
+  function getTargetZoomLevel(zoomLevels: ZoomLevel[], currentScale: number): number {
+    const scaleRange = MAX_ZOOM - MIN_ZOOM;
+    const normalizedScale = Math.max(0, Math.min(1, (currentScale - MIN_ZOOM) / scaleRange));
+    return Math.min(zoomLevels.length - 1, Math.floor(normalizedScale * zoomLevels.length));
+  }
+
+  // Prefetch adjacent zoom level images in background
+  useEffect(() => {
+    if (!currentImage) return;
+    const zoomLevels = parseZoomLevels(currentImage);
+    if (zoomLevels.length === 0) return;
+
+    const currentLevel = getTargetZoomLevel(zoomLevels, scale);
+    const imageId = currentImage.id;
+    const levelsToPreload: number[] = [];
+
+    // Always preload next higher resolution (해상도 선행 로드)
+    if (currentLevel + 1 < zoomLevels.length) {
+      levelsToPreload.push(currentLevel + 1);
+    }
+
+    // Preload adjacent levels based on prefetchRange
+    for (let offset = 1; offset <= prefetchRange; offset++) {
+      if (currentLevel - offset >= 0) levelsToPreload.push(currentLevel - offset);
+      if (currentLevel + offset < zoomLevels.length && !levelsToPreload.includes(currentLevel + offset)) {
+        levelsToPreload.push(currentLevel + offset);
+      }
+    }
+
+    for (const level of levelsToPreload) {
+      const cacheKey = `${imageId}-${level}`;
+      if (prefetchCacheRef.current.has(cacheKey)) continue;
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.src = resolveImageUrl(zoomLevels[level].path);
+      img.onload = () => {
+        prefetchCacheRef.current.set(cacheKey, img);
+      };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentImage, scale, prefetchRange]);
+
   // Crossfade zoom: pick the right zoom level image based on current scale
   useEffect(() => {
     if (!currentImage) { setBgImage(null); setNextBgImage(null); return; }
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
     const zoomLevels = parseZoomLevels(currentImage);
 
     let imageUrl: string;
     let targetLevel = -1;
 
     if (zoomLevels.length > 0) {
-      // Map scale to zoom level
-      const scaleRange = MAX_ZOOM - MIN_ZOOM;
-      const normalizedScale = Math.max(0, Math.min(1, (scale - MIN_ZOOM) / scaleRange));
-      targetLevel = Math.min(zoomLevels.length - 1, Math.floor(normalizedScale * zoomLevels.length));
+      targetLevel = getTargetZoomLevel(zoomLevels, scale);
       imageUrl = zoomLevels[targetLevel].path;
     } else {
-      // Fallback to legacy 3-level system
       if (scale < 0.8 && currentImage.low_path) imageUrl = currentImage.low_path;
       else if (scale > 1.5 && currentImage.high_path) imageUrl = currentImage.high_path;
       else imageUrl = currentImage.medium_path;
     }
 
-    if (imageUrl && !imageUrl.startsWith('http')) imageUrl = `${apiBase}${imageUrl}`;
+    imageUrl = resolveImageUrl(imageUrl);
 
-    // 이미지 자체가 바뀌었으면 강제 리로드
     const imageChanged = currentImage.id !== currentImageIdRef.current;
     if (imageChanged) {
       currentZoomLevelRef.current = -1;
       currentImageIdRef.current = currentImage.id;
+      // Clear prefetch cache on image/floor change
+      prefetchCacheRef.current.clear();
     }
 
-    // If same zoom level and same image, skip
     if (targetLevel === currentZoomLevelRef.current && bgImage && !imageChanged) return;
 
-    // Preload new image in background
-    const img = new window.Image();
-    img.crossOrigin = 'anonymous';
-    img.src = imageUrl;
-    img.onload = () => {
+    // Check prefetch cache first
+    const cacheKey = `${currentImage.id}-${targetLevel}`;
+    const cachedImg = prefetchCacheRef.current.get(cacheKey);
+
+    function applyImage(img: HTMLImageElement) {
       if (!bgImage || imageChanged) {
-        // First load or image changed — no crossfade, replace immediately
         setBgImage(img);
         setNextBgImage(null);
         currentZoomLevelRef.current = targetLevel;
       } else {
-        // Crossfade: show new image on top with increasing opacity
         setNextBgImage(img);
         setCrossfadeOpacity(0);
         if (crossfadeTimerRef.current) cancelAnimationFrame(crossfadeTimerRef.current);
         let startTime: number | null = null;
-        const duration = 200; // ms
+        const duration = 200;
         function animate(timestamp: number) {
           if (!startTime) startTime = timestamp;
           const elapsed = timestamp - startTime;
@@ -155,7 +211,6 @@ export default function MapViewer({
           if (progress < 1) {
             crossfadeTimerRef.current = requestAnimationFrame(animate);
           } else {
-            // Crossfade complete
             setBgImage(img);
             setNextBgImage(null);
             setCrossfadeOpacity(0);
@@ -164,7 +219,19 @@ export default function MapViewer({
         }
         crossfadeTimerRef.current = requestAnimationFrame(animate);
       }
-    };
+    }
+
+    if (cachedImg) {
+      applyImage(cachedImg);
+    } else {
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.src = imageUrl;
+      img.onload = () => {
+        prefetchCacheRef.current.set(cacheKey, img);
+        applyImage(img);
+      };
+    }
 
     return () => {
       if (crossfadeTimerRef.current) cancelAnimationFrame(crossfadeTimerRef.current);
@@ -189,21 +256,20 @@ export default function MapViewer({
 
   // Filter visible booths: viewport + minimum screen size
   const visibleBooths = useMemo(() => {
+    if (!showBooths) return [];
     return booths.filter((booth) => {
-      // Viewport check
       if (
         booth.x + booth.width < viewportBounds.x ||
         booth.x > viewportBounds.x + viewportBounds.width ||
         booth.y + booth.height < viewportBounds.y ||
         booth.y > viewportBounds.y + viewportBounds.height
       ) return false;
-      // Minimum screen size check
       const screenWidth = booth.width * scale;
       const screenHeight = booth.height * scale;
       if (screenWidth < MIN_BOOTH_SCREEN_SIZE || screenHeight < MIN_BOOTH_SCREEN_SIZE) return false;
       return true;
     });
-  }, [booths, viewportBounds, scale]);
+  }, [booths, viewportBounds, scale, showBooths]);
 
   const categoryColorMap = useMemo(() => {
     const map: Record<number, string> = {};
@@ -230,14 +296,12 @@ export default function MapViewer({
     return points.length >= 4 ? points : null;
   }, [routePath, currentFloorId]);
 
-  // Route transition markers: show where routes enter/exit this floor
   const routeTransitionMarkers = useMemo(() => {
     if (!routePath || !currentFloorId || routePath.length < 2) return [];
     const markers: { x: number; y: number; type: 'start' | 'end' | 'transition'; label: string }[] = [];
     for (let i = 0; i < routePath.length; i++) {
       const p = routePath[i];
       if (p.floor_id !== currentFloorId) continue;
-      // Check if this is a transition point (prev or next is on different floor)
       const prev = i > 0 ? routePath[i - 1] : null;
       const next = i < routePath.length - 1 ? routePath[i + 1] : null;
       if (i === 0) {
@@ -253,7 +317,6 @@ export default function MapViewer({
     return markers;
   }, [routePath, currentFloorId]);
 
-  // Facilities used in route (for showing transition icons)
   const routeFacilityMarkers = useMemo(() => {
     if (!routeResult?.facilities_used || !currentFloorId) return [];
     return routeResult.facilities_used.filter((f) => f.floor_id === currentFloorId);
@@ -267,7 +330,6 @@ export default function MapViewer({
     return { x: (t1.clientX + t2.clientX) / 2, y: (t1.clientY + t2.clientY) / 2 };
   }
 
-
   function handleTouchMove(e: Konva.KonvaEventObject<TouchEvent>) {
     const touches = e.evt.touches;
     if (touches.length !== 2) return;
@@ -276,7 +338,6 @@ export default function MapViewer({
     const stage = stageRef.current;
     if (!stage) return;
 
-    // 드래그 완전히 차단
     stage.draggable(false);
     if (stage.isDragging()) {
       stage.stopDrag();
@@ -294,8 +355,6 @@ export default function MapViewer({
     }
 
     const oldScale = stage.scaleX();
-
-    // 줌 — 두 손가락 중심 기준
     let newScale = oldScale * (newDist / lastPinchDistRef.current);
     newScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
 
@@ -318,12 +377,12 @@ export default function MapViewer({
 
   function handleTouchEnd(e: Konva.KonvaEventObject<TouchEvent>) {
     const touches = e.evt.touches;
-    // 터치가 모두 끝났을 때만 드래그 다시 활성화
     if (touches.length === 0) {
       const stage = stageRef.current;
       if (stage) stage.draggable(true);
       lastPinchDistRef.current = 0;
       lastPinchCenterRef.current = null;
+      isPinchingRef.current = false;
     }
   }
 
@@ -350,12 +409,59 @@ export default function MapViewer({
     if (stage) setPosition(stage.position());
   }
 
-  function handleBoothClick(booth: Booth) {
+  // --- Coordinate-based booth click detection (v7 requirement 5) ---
+  // Instead of attaching events to each booth element, we detect clicks at the stage level,
+  // convert screen coordinates to map coordinates, and find which booth was clicked.
+  function handleStageClick(e: Konva.KonvaEventObject<MouseEvent>) {
+    if (isPinchingRef.current) return;
     setFacilityTooltip(null);
-    onBoothClick(booth);
-    if (typeof window !== 'undefined' && typeof window.onBoothClick === 'function') {
-      window.onBoothClick(booth.id, booth);
+
+    const stage = stageRef.current;
+    if (!stage) return;
+    const pointer = stage.getPointerPosition();
+    if (!pointer) return;
+
+    // Convert screen coordinates to map coordinates
+    const stagePos = stage.position();
+    const stageScale = stage.scaleX();
+    const mapX = (pointer.x - stagePos.x) / stageScale;
+    const mapY = (pointer.y - stagePos.y) / stageScale;
+
+    // Check facilities first (they render on top)
+    for (const fac of visibleFacilities) {
+      const r = Math.max(10, 14 / stageScale);
+      const dx = mapX - fac.x;
+      const dy = mapY - fac.y;
+      if (dx * dx + dy * dy <= r * r) {
+        handleFacilityClick(fac);
+        return;
+      }
     }
+
+    // Find booth at this map coordinate
+    if (showBooths) {
+      for (const booth of booths) {
+        // Check all booths, not just visible ones, for accurate hit detection
+        if (
+          mapX >= booth.x &&
+          mapX <= booth.x + booth.width &&
+          mapY >= booth.y &&
+          mapY <= booth.y + booth.height
+        ) {
+          onBoothClick(booth);
+          if (typeof window !== 'undefined' && typeof window.onBoothClick === 'function') {
+            window.onBoothClick(booth.id, booth);
+          }
+          return;
+        }
+      }
+    }
+  }
+
+  function handleStageTap(e: Konva.KonvaEventObject<TouchEvent>) {
+    if (isPinchingRef.current) return;
+    // Use same coordinate detection as click
+    handleStageClick(e as unknown as Konva.KonvaEventObject<MouseEvent>);
   }
 
   function handleFacilityClick(facility: Facility) {
@@ -422,7 +528,6 @@ export default function MapViewer({
     return '#94a3b8';
   }
 
-  // Determine image dimensions for rendering (use original image size)
   const imgWidth = currentImage?.width || (bgImage?.naturalWidth ?? 800);
   const imgHeight = currentImage?.height || (bgImage?.naturalHeight ?? 600);
 
@@ -438,6 +543,8 @@ export default function MapViewer({
         y={position.y}
         draggable
         onWheel={handleWheel}
+        onClick={handleStageClick}
+        onTap={handleStageTap}
         onTouchStart={(e) => {
           const touches = e.evt.touches;
           if (touches.length === 2) {
@@ -510,7 +617,6 @@ export default function MapViewer({
         {/* Route layer */}
         {currentRoutePoints && (
           <Layer>
-            {/* Route shadow */}
             <Line
               points={currentRoutePoints}
               stroke="#1e1b4b"
@@ -520,7 +626,6 @@ export default function MapViewer({
               opacity={0.15}
               listening={false}
             />
-            {/* Route main line */}
             <Line
               points={currentRoutePoints}
               stroke="#4f46e5"
@@ -531,7 +636,6 @@ export default function MapViewer({
               opacity={0.85}
               listening={false}
             />
-            {/* Route transition markers */}
             {routeTransitionMarkers.map((m, i) => {
               const r = Math.max(10, 14 / scale);
               const color = m.type === 'start' ? '#22c55e' : m.type === 'end' ? '#ef4444' : '#f59e0b';
@@ -547,7 +651,6 @@ export default function MapViewer({
                 </Group>
               );
             })}
-            {/* Route facility markers (stairs/elevator icons on route) */}
             {routeFacilityMarkers.map((fac) => {
               const r = Math.max(12, 16 / scale);
               const label = fac.type === 'stairs' ? 'S' : fac.type === 'elevator' ? 'EV' : fac.type === 'escalator' ? 'ES' : '?';
@@ -566,91 +669,92 @@ export default function MapViewer({
           </Layer>
         )}
 
-        {/* Booths layer */}
-        <Layer>
-          {visibleBooths.map((booth) => {
-            const isSelected = booth.id === selectedBoothId;
-            const opacity = getBoothOpacity(booth);
-            const fill = getBoothFill(booth);
-            const companyName = ln(booth.company?.name) || '';
-            const categoryName = ln(booth.category?.name) || '';
+        {/* Booths layer — rendered only when showBooths is true */}
+        {showBooths && (
+          <Layer listening={false}>
+            {visibleBooths.map((booth) => {
+              const isSelected = booth.id === selectedBoothId;
+              const opacity = getBoothOpacity(booth);
+              const fill = getBoothFill(booth);
+              const companyName = ln(booth.company?.name) || '';
+              const categoryName = ln(booth.category?.name) || '';
 
-            return (
-              <Group
-                key={booth.id}
-                x={booth.x}
-                y={booth.y}
-                opacity={opacity}
-                onClick={() => handleBoothClick(booth)}
-                onTap={() => handleBoothClick(booth)}
-              >
-                <Rect
-                  width={booth.width}
-                  height={booth.height}
-                  fill={scale >= 2.0 ? `${fill}33` : `${fill}22`}
-                  stroke={isSelected ? '#4f46e5' : fill}
-                  strokeWidth={isSelected ? 3 / scale : 1.5 / scale}
-                  cornerRadius={2 / scale}
-                />
-                {isSelected && (
+              return (
+                <Group
+                  key={booth.id}
+                  x={booth.x}
+                  y={booth.y}
+                  opacity={opacity}
+                  listening={false}
+                >
                   <Rect
                     width={booth.width}
                     height={booth.height}
-                    stroke="#4f46e5"
-                    strokeWidth={3 / scale}
+                    fill={scale >= 2.0 ? `${fill}33` : `${fill}22`}
+                    stroke={isSelected ? '#4f46e5' : fill}
+                    strokeWidth={isSelected ? 3 / scale : 1.5 / scale}
                     cornerRadius={2 / scale}
-                    dash={[6 / scale, 3 / scale]}
-                    listening={false}
                   />
-                )}
-                <Text
-                  text={booth.booth_number}
-                  x={4 / scale}
-                  y={4 / scale}
-                  fontSize={scale < 1.0 ? 10 / scale : 11 / scale}
-                  fontFamily="Inter, sans-serif"
-                  fontStyle="bold"
-                  fill="#1f2937"
-                  width={booth.width - 8 / scale}
-                  wrap="none"
-                  ellipsis
-                  listening={false}
-                />
-                {scale >= 1.0 && companyName && (
+                  {isSelected && (
+                    <Rect
+                      width={booth.width}
+                      height={booth.height}
+                      stroke="#4f46e5"
+                      strokeWidth={3 / scale}
+                      cornerRadius={2 / scale}
+                      dash={[6 / scale, 3 / scale]}
+                      listening={false}
+                    />
+                  )}
                   <Text
-                    text={companyName}
+                    text={booth.booth_number}
                     x={4 / scale}
-                    y={18 / scale}
-                    fontSize={9 / scale}
+                    y={4 / scale}
+                    fontSize={scale < 1.0 ? 10 / scale : 11 / scale}
                     fontFamily="Inter, sans-serif"
-                    fill="#4b5563"
+                    fontStyle="bold"
+                    fill="#1f2937"
                     width={booth.width - 8 / scale}
                     wrap="none"
                     ellipsis
                     listening={false}
                   />
-                )}
-                {scale >= 2.0 && categoryName && (
-                  <Text
-                    text={categoryName}
-                    x={4 / scale}
-                    y={30 / scale}
-                    fontSize={7 / scale}
-                    fontFamily="Inter, sans-serif"
-                    fill={fill}
-                    width={booth.width - 8 / scale}
-                    wrap="none"
-                    ellipsis
-                    listening={false}
-                  />
-                )}
-              </Group>
-            );
-          })}
-        </Layer>
+                  {scale >= 1.0 && companyName && (
+                    <Text
+                      text={companyName}
+                      x={4 / scale}
+                      y={18 / scale}
+                      fontSize={9 / scale}
+                      fontFamily="Inter, sans-serif"
+                      fill="#4b5563"
+                      width={booth.width - 8 / scale}
+                      wrap="none"
+                      ellipsis
+                      listening={false}
+                    />
+                  )}
+                  {scale >= 2.0 && categoryName && (
+                    <Text
+                      text={categoryName}
+                      x={4 / scale}
+                      y={30 / scale}
+                      fontSize={7 / scale}
+                      fontFamily="Inter, sans-serif"
+                      fill={fill}
+                      width={booth.width - 8 / scale}
+                      wrap="none"
+                      ellipsis
+                      listening={false}
+                    />
+                  )}
+                </Group>
+              );
+            })}
+          </Layer>
+        )}
 
         {/* Facilities layer (always on top) */}
-        <Layer>
+        <Layer listening={false}>
           {visibleFacilities.map((fac) => {
             const style = FACILITY_STYLES[fac.type] || { color: '#6b7280', label: '?' };
             const r = Math.max(10, 14 / scale);
@@ -659,8 +763,7 @@ export default function MapViewer({
                 key={`fac-${fac.id}`}
                 x={fac.x}
                 y={fac.y}
-                onClick={() => handleFacilityClick(fac)}
-                onTap={() => handleFacilityClick(fac)}
+                listening={false}
               >
                 <Circle
                   radius={r}

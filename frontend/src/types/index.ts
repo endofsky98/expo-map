@@ -139,6 +139,13 @@ export interface RouteResult {
   facilities_used: Facility[];
 }
 
+export interface Setting {
+  id: number;
+  key: string;
+  value: string;
+  description?: string;
+}
+
 declare global {
   interface Window {
     onBoothClick?: (boothId: number, boothData: Booth) => void;

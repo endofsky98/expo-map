@@ -3,9 +3,9 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin } from 'lucide-react';
+import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin, Eye, EyeOff } from 'lucide-react';
 import { Booth, Category, MapImage, Floor, Facility, Obstacle, RouteResult } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchFacilities, fetchObstacles, fetchRoute } from '@/lib/api';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchFacilities, fetchObstacles, fetchRoute, fetchSetting } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
@@ -50,10 +50,34 @@ export default function HomePage() {
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Booth popup for pathfinding
   const [boothPopup, setBoothPopup] = useState<Booth | null>(null);
   const [pathFrom, setPathFrom] = useState<number | null>(null);
   const [pathTo, setPathTo] = useState<number | null>(null);
+
+  // v7: Booth visibility toggle (debug/test feature)
+  const [showBooths, setShowBooths] = useState(true);
+  // v7: Prefetch range from admin settings
+  const [prefetchRange, setPrefetchRange] = useState(2);
+
+  // v7: Read showBooths from URL parameter
+  useEffect(() => {
+    const { showBooths: showBoothsParam } = router.query;
+    if (showBoothsParam === 'false') {
+      setShowBooths(false);
+    }
+  }, [router.query.showBooths]);
+
+  // v7: Fetch prefetch range setting
+  useEffect(() => {
+    fetchSetting('prefetch_range')
+      .then((setting) => {
+        const val = parseInt(setting.value, 10);
+        if (!isNaN(val) && val >= 1 && val <= 5) {
+          setPrefetchRange(val);
+        }
+      })
+      .catch(() => { /* use default */ });
+  }, []);
 
   const loadInitialData = useCallback(async () => {
     try {
@@ -84,9 +108,15 @@ export default function HomePage() {
 
   useEffect(() => { loadInitialData(); }, [loadInitialData]);
 
-  // Load floor/hall specific data when selection changes
+  // v7: Floor memory management — load only current floor data, clear previous floor data
   useEffect(() => {
     if (!selectedFloorId) return;
+    // Clear previous floor data immediately to free memory
+    setBooths([]);
+    setCurrentImage(null);
+    setFacilities([]);
+    setObstacles([]);
+
     async function loadFloorData() {
       const [filteredBooths, img, facs, obs] = await Promise.all([
         fetchBooths(selectedFloorId!).catch(() => []),
@@ -189,7 +219,6 @@ export default function HomePage() {
     });
   }, []);
 
-  // Set as start/destination from booth popup
   function setAsStart(boothId: number) {
     setPathFrom(boothId);
     setBoothPopup(null);
@@ -335,6 +364,7 @@ export default function HomePage() {
             </div>
           ) : (
             <MapViewer
+              key={selectedFloorId}
               booths={booths}
               categories={categories}
               currentImage={currentImage}
@@ -347,6 +377,8 @@ export default function HomePage() {
               routeResult={routeResult}
               currentFloorId={selectedFloorId}
               currentPosition={currentPosition}
+              showBooths={showBooths}
+              prefetchRange={prefetchRange}
               onBoothClick={handleBoothClick}
               onZoomChange={setZoom}
             />
@@ -431,7 +463,7 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Zoom controls */}
+          {/* Zoom controls + Booth toggle */}
           <div className="absolute bottom-6 right-6 flex flex-col items-center gap-2 z-10">
             <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom in">
               <ZoomIn className="h-4 w-4 text-gray-700 dark:text-gray-300" />
@@ -441,6 +473,21 @@ export default function HomePage() {
             </div>
             <button onClick={handleZoomOut} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom out">
               <ZoomOut className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+            </button>
+            {/* v7: Booth visibility toggle (debug/test) */}
+            <button
+              onClick={() => setShowBooths((prev) => !prev)}
+              className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
+                showBooths
+                  ? 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
+                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600/40 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+              }`}
+              title={showBooths ? 'Hide booths' : 'Show booths'}
+            >
+              {showBooths
+                ? <Eye className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+                : <EyeOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              }
             </button>
           </div>
         </div>

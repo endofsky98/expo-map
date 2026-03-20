@@ -372,3 +372,18 @@ class RouteResponse(BaseModel):
     total_distance: float
     floors_visited: List[int]
     facilities_used: List[FacilityResponse]
+
+
+# ---------- Setting ----------
+
+class SettingResponse(BaseModel):
+    id: int
+    key: str
+    value: str
+    description: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class SettingUpdate(BaseModel):
+    value: str

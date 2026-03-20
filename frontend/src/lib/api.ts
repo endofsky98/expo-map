@@ -1,4 +1,4 @@
-import { Booth, Category, Company, MapImage, Floor, Hall, Facility, CorridorNode, CorridorEdge, RouteResult, Obstacle } from '@/types';
+import { Booth, Category, Company, MapImage, Floor, Hall, Facility, CorridorNode, CorridorEdge, RouteResult, Obstacle, Setting } from '@/types';
 import { getToken } from '@/lib/auth';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
@@ -289,6 +289,22 @@ export async function deleteObstacle(id: number): Promise<void> {
 // Route
 export async function fetchRoute(fromBoothId: number, toBoothId: number): Promise<RouteResult> {
   return request<RouteResult>(`/api/route?from_booth_id=${fromBoothId}&to_booth_id=${toBoothId}`);
+}
+
+// Settings
+export async function fetchSettings(): Promise<Setting[]> {
+  return request<Setting[]>('/api/settings');
+}
+
+export async function fetchSetting(key: string): Promise<Setting> {
+  return request<Setting>(`/api/settings/${encodeURIComponent(key)}`);
+}
+
+export async function updateSetting(key: string, value: string): Promise<Setting> {
+  return request<Setting>(`/api/settings/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ value }),
+  });
 }
 
 // Seed
