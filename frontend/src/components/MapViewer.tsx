@@ -274,9 +274,29 @@ export default function MapViewer({
     });
   }
 
+  function clampPosition(t: { x: number; y: number; scale: number; rotation: number }) {
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const sc = t.scale;
+    const cosR = Math.cos(t.rotation);
+    const sinR = Math.sin(t.rotation);
+    const absC = Math.abs(cosR);
+    const absS = Math.abs(sinR);
+    const effW = (imgWidth * absC + imgHeight * absS) * sc;
+    const effH = (imgWidth * absS + imgHeight * absC) * sc;
+    const icx = t.x + sc * (imgWidth / 2 * cosR - imgHeight / 2 * sinR);
+    const icy = t.y + sc * (imgWidth / 2 * sinR + imgHeight / 2 * cosR);
+    const clampedIcx = Math.max(cw - effW / 2, Math.min(effW / 2, icx));
+    const clampedIcy = Math.max(ch - effH / 2, Math.min(effH / 2, icy));
+    t.x += clampedIcx - icx;
+    t.y += clampedIcy - icy;
+  }
+
   function applyTransform(newScale: number, newRotation: number, pivotX: number, pivotY: number) {
     const t = transformRef.current;
-    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    // Minimum zoom: image must fill canvas (no smaller than fit)
+    const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+    const clamped = Math.max(minFitScale, Math.min(MAX_ZOOM, newScale));
     // Convert pivot from screen to world using current transform
     const cos0 = Math.cos(t.rotation);
     const sin0 = Math.sin(t.rotation);
@@ -290,6 +310,8 @@ export default function MapViewer({
     t.x = pivotX - clamped * (wx * cos1 - wy * sin1);
     t.y = pivotY - clamped * (wx * sin1 + wy * cos1);
     t.scale = clamped;
+    // Clamp position so image always covers canvas
+    clampPosition(t);
     t.rotation = newRotation;
     const mc = mainContainerRef.current;
     if (mc) {
@@ -447,6 +469,7 @@ export default function MapViewer({
         const t = transformRef.current;
         t.x = e.clientX - dragStart.x;
         t.y = e.clientY - dragStart.y;
+        clampPosition(t);
         mainContainer.position.set(t.x, t.y);
         renderTilesFnRef.current();
         scheduleMarkerUpdate();
@@ -578,7 +601,8 @@ export default function MapViewer({
     // Initial fit when image changes
     if (imageChanged) {
       const { width: cw, height: ch } = canvasDimsRef.current;
-      const fitScale = Math.min(cw / imgWidth, ch / imgHeight) * 0.9;
+      const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+      const fitScale = Math.max(minFitScale, Math.min(cw / imgWidth, ch / imgHeight) * 0.9);
       transformRef.current = {
         scale: fitScale,
         x: (cw - imgWidth * fitScale) / 2,
@@ -586,6 +610,7 @@ export default function MapViewer({
         rotation: 0,
         tilt: 0,
       };
+      clampPosition(transformRef.current);
       mc.position.set(transformRef.current.x, transformRef.current.y);
       mc.scale.set(fitScale);
       mc.rotation = 0;
@@ -1277,6 +1302,7 @@ export default function MapViewer({
     const centerY = booth.y + booth.height / 2;
     transformRef.current.x = cw / 2 - centerX * sc;
     transformRef.current.y = ch / 2 - centerY * sc;
+    clampPosition(transformRef.current);
     mc.position.set(transformRef.current.x, transformRef.current.y);
     renderTilesFnRef.current();
     redrawBoothsFnRef.current();
@@ -1287,7 +1313,8 @@ export default function MapViewer({
     const mc = mainContainerRef.current;
     if (!mc) return;
     const { width: cw, height: ch } = canvasDimsRef.current;
-    const fitScale = Math.min(cw / imgWidth, ch / imgHeight) * 0.9;
+    const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+    const fitScale = Math.max(minFitScale, Math.min(cw / imgWidth, ch / imgHeight) * 0.9);
     transformRef.current = {
       scale: fitScale,
       x: (cw - imgWidth * fitScale) / 2,
@@ -1295,6 +1322,7 @@ export default function MapViewer({
       rotation: 0,
       tilt: 0,
     };
+    clampPosition(transformRef.current);
     mc.position.set(transformRef.current.x, transformRef.current.y);
     mc.scale.set(fitScale);
     mc.rotation = 0;
@@ -1313,12 +1341,14 @@ export default function MapViewer({
     const scaleX = cw / width;
     const scaleY = ch / height;
     const newScale = Math.min(scaleX, scaleY) * 0.85;
-    const clampedScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
+    const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+    const clampedScale = Math.min(MAX_ZOOM, Math.max(minFitScale, newScale));
     const centerX = x + width / 2;
     const centerY = y + height / 2;
     transformRef.current.scale = clampedScale;
     transformRef.current.x = cw / 2 - centerX * clampedScale;
-    transformRef.current.y = ch / 2 - centerY * clampedScale;
+    transformRef.current.y = cw / 2 - centerY * clampedScale;
+    clampPosition(transformRef.current);
     mc.position.set(transformRef.current.x, transformRef.current.y);
     mc.scale.set(clampedScale);
     onZoomChange?.(clampedScale);
