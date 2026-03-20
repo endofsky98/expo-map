@@ -1110,8 +1110,8 @@ export default function MapViewer({
 
         // SVG map pin (realistic pin shape)
         const pinSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        pinSvg.setAttribute('width', '28');
-        pinSvg.setAttribute('height', '36');
+        pinSvg.setAttribute('width', '14');
+        pinSvg.setAttribute('height', '18');
         pinSvg.setAttribute('viewBox', '0 0 28 36');
         pinSvg.style.filter = 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))';
         pinSvg.innerHTML = `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${fill}" stroke="#fff" stroke-width="2"/>` +
@@ -1121,7 +1121,7 @@ export default function MapViewer({
         const label = document.createElement('div');
         label.setAttribute('data-label', '');
         label.textContent = booth.booth_number;
-        label.style.fontSize = '11px';
+        label.style.fontSize = '8px';
         label.style.fontWeight = '700';
         label.style.fontFamily = 'Inter, sans-serif';
         label.style.color = '#1f2937';
