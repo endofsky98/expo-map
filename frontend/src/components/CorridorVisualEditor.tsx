@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import * as PIXI from 'pixi.js';
-import { Viewport } from 'pixi-viewport';
 import { Booth, CorridorNode, CorridorEdge, Obstacle, MapImage, ZoomLevel } from '@/types';
 
 export type EditorMode = 'select' | 'add_node' | 'connect' | 'delete';
@@ -42,6 +41,8 @@ const NODE_COLORS_STR: Record<string, string> = {
 const NODE_RADIUS = 8;
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 4.0;
+const CLICK_THRESHOLD = 5;
+const CLICK_TIME_THRESHOLD = 300;
 
 function parseZoomLevels(img: MapImage): ZoomLevel[] {
   if (!img.zoom_levels) return [];
@@ -69,6 +70,16 @@ function segmentIntersectsCircle(x1: number, y1: number, x2: number, y2: number,
   return false;
 }
 
+function pointToSegmentDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
 export default function CorridorVisualEditor({
   nodes,
   edges,
@@ -90,7 +101,9 @@ export default function CorridorVisualEditor({
 }: CorridorVisualEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
-  const viewportRef = useRef<Viewport | null>(null);
+  const mainContainerRef = useRef<PIXI.Container | null>(null);
+  const transformRef = useRef({ x: 0, y: 0, scale: 0.6 });
+  const canvasDimsRef = useRef({ width: 800, height: 500 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 500 });
   const [scale, setScale] = useState(0.6);
 
@@ -100,6 +113,9 @@ export default function CorridorVisualEditor({
   const obstacleLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const edgeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const nodeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
+
+  // Node containers map for drag lookup
+  const nodeContainersRef = useRef<Map<number, PIXI.Container>>(new Map());
 
   // Callback refs to avoid stale closures
   const modeRef = useRef(mode);
@@ -123,6 +139,12 @@ export default function CorridorVisualEditor({
   const onEdgeDeleteRef = useRef(onEdgeDelete);
   onEdgeDeleteRef.current = onEdgeDelete;
 
+  // Data refs for pointer handler access
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+
   const imgWidth = currentImage?.width || 800;
   const imgHeight = currentImage?.height || 600;
 
@@ -131,6 +153,9 @@ export default function CorridorVisualEditor({
     nodes.forEach((n) => { m[n.id] = n; });
     return m;
   }, [nodes]);
+
+  const nodeMapRef = useRef(nodeMap);
+  nodeMapRef.current = nodeMap;
 
   const checkEdgeCollision = useCallback((fromNode: CorridorNode, toNode: CorridorNode): boolean => {
     for (const b of booths) {
@@ -146,12 +171,28 @@ export default function CorridorVisualEditor({
     return false;
   }, [booths, obstacles]);
 
+  function applyZoom(newScale: number, pivotX: number, pivotY: number) {
+    const t = transformRef.current;
+    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+    const ratio = clamped / t.scale;
+    t.x = pivotX - ratio * (pivotX - t.x);
+    t.y = pivotY - ratio * (pivotY - t.y);
+    t.scale = clamped;
+    const mc = mainContainerRef.current;
+    if (mc) {
+      mc.position.set(t.x, t.y);
+      mc.scale.set(clamped);
+    }
+    setScale(clamped);
+  }
+
   // ===== Initialize PIXI Application =====
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     const w = el.offsetWidth || 800;
     const h = el.offsetHeight || 500;
+    canvasDimsRef.current = { width: w, height: h };
 
     const app = new PIXI.Application({
       width: w,
@@ -165,46 +206,221 @@ export default function CorridorVisualEditor({
 
     const canvas = app.view as HTMLCanvasElement;
     canvas.style.touchAction = 'none';
+    canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
 
-    const vp = new Viewport({
-      screenWidth: w,
-      screenHeight: h,
-      worldWidth: 10000,
-      worldHeight: 10000,
-      events: app.renderer.events,
-    } as any);
-    app.stage.addChild(vp as any);
-    vp.drag().pinch().wheel().decelerate({ friction: 0.95 });
-    vp.clampZoom({ minScale: MIN_ZOOM, maxScale: MAX_ZOOM });
-    vp.setZoom(0.6, false);
+    // Main container (replaces pixi-viewport)
+    const mainContainer = new PIXI.Container();
+    app.stage.addChild(mainContainer);
+    mainContainer.addChild(bgLayerRef.current);
+    mainContainer.addChild(boothLayerRef.current);
+    mainContainer.addChild(obstacleLayerRef.current);
+    mainContainer.addChild(edgeLayerRef.current);
+    mainContainer.addChild(nodeLayerRef.current);
+    mainContainerRef.current = mainContainer;
 
-    // Add layers
-    vp.addChild(bgLayerRef.current as any);
-    vp.addChild(boothLayerRef.current as any);
-    vp.addChild(obstacleLayerRef.current as any);
-    vp.addChild(edgeLayerRef.current as any);
-    vp.addChild(nodeLayerRef.current as any);
+    // Set initial scale
+    const initialScale = 0.6;
+    transformRef.current = { x: 0, y: 0, scale: initialScale };
+    mainContainer.scale.set(initialScale);
 
-    // Zoom display
-    vp.on('zoomed', () => setScale(vp.scale.x));
-    vp.on('moved', () => setScale(vp.scale.x));
+    // ===== Pointer events =====
+    let isDragging = false;
+    let isNodeDragging = false;
+    let draggedNodeId: number | null = null;
+    let draggedContainer: PIXI.Container | null = null;
+    let dragStart = { x: 0, y: 0 };
+    let pointerDownInfo = { x: 0, y: 0, time: 0 };
+    let hitNodeIdOnDown: number | null = null;
+    const pointers = new Map<number, { x: number; y: number }>();
+    let lastPinchDist = 0;
 
-    // Click on empty space
-    vp.on('clicked', (e: { world: PIXI.IPointData; event: PIXI.FederatedPointerEvent }) => {
-      const worldPos = e.world;
-      const m = modeRef.current;
-      if (m === 'add_node') {
-        onNodeAddRef.current(Math.round(worldPos.x), Math.round(worldPos.y));
-      } else if (m === 'select') {
-        onNodeSelectRef.current(null);
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
+      hitNodeIdOnDown = null;
+
+      if (pointers.size >= 2) {
+        isDragging = false;
+        isNodeDragging = false;
+        const pts = Array.from(pointers.values());
+        lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        return;
+      }
+
+      // Hit test nodes
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const t = transformRef.current;
+      const wx = (sx - t.x) / t.scale;
+      const wy = (sy - t.y) / t.scale;
+      const hitR = (NODE_RADIUS / t.scale) * 2;
+
+      for (const node of nodesRef.current) {
+        const dx = wx - node.x;
+        const dy = wy - node.y;
+        if (dx * dx + dy * dy <= hitR * hitR) {
+          hitNodeIdOnDown = node.id;
+          if (modeRef.current === 'select') {
+            isNodeDragging = true;
+            draggedNodeId = node.id;
+            draggedContainer = nodeContainersRef.current.get(node.id) || null;
+          }
+          return; // Don't start map drag when hitting a node
+        }
+      }
+
+      // No node hit — start map drag
+      dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
+      isDragging = true;
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        if (lastPinchDist > 0) {
+          const rect = canvas.getBoundingClientRect();
+          const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
+          const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
+          const newScale = transformRef.current.scale * (dist / lastPinchDist);
+          applyZoom(newScale, cx, cy);
+        }
+        lastPinchDist = dist;
+        return;
+      }
+
+      if (isNodeDragging && draggedContainer) {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const t = transformRef.current;
+        const wx = (sx - t.x) / t.scale;
+        const wy = (sy - t.y) / t.scale;
+        draggedContainer.x = wx;
+        draggedContainer.y = wy;
+        return;
+      }
+
+      if (isDragging && e.isPrimary) {
+        const t = transformRef.current;
+        t.x = e.clientX - dragStart.x;
+        t.y = e.clientY - dragStart.y;
+        mainContainer.position.set(t.x, t.y);
       }
     });
 
+    canvas.addEventListener('pointerup', (e) => {
+      canvas.releasePointerCapture(e.pointerId);
+      pointers.delete(e.pointerId);
+
+      const dx = e.clientX - pointerDownInfo.x;
+      const dy = e.clientY - pointerDownInfo.y;
+      const dt = Date.now() - pointerDownInfo.time;
+      const isClick = Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD;
+
+      if (isNodeDragging) {
+        isNodeDragging = false;
+        if (isClick && draggedNodeId !== null) {
+          // Node click in select mode
+          onNodeSelectRef.current(draggedNodeId);
+        } else if (draggedContainer && draggedNodeId !== null) {
+          // Node drag completed
+          onNodeMoveRef.current(draggedNodeId, Math.round(draggedContainer.x), Math.round(draggedContainer.y));
+        }
+        draggedNodeId = null;
+        draggedContainer = null;
+        hitNodeIdOnDown = null;
+        return;
+      }
+
+      isDragging = false;
+
+      if (isClick) {
+        if (hitNodeIdOnDown !== null) {
+          // Clicked on a node (non-select mode)
+          handleNodeClick(hitNodeIdOnDown);
+        } else {
+          handleEmptyClick(e);
+        }
+      }
+      hitNodeIdOnDown = null;
+      if (pointers.size < 2) lastPinchDist = 0;
+    });
+
+    canvas.addEventListener('pointercancel', (e) => {
+      pointers.delete(e.pointerId);
+      isDragging = false;
+      isNodeDragging = false;
+      draggedNodeId = null;
+      draggedContainer = null;
+      hitNodeIdOnDown = null;
+      if (pointers.size < 2) lastPinchDist = 0;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const rect = canvas.getBoundingClientRect();
+      applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+
+    function handleNodeClick(nodeId: number) {
+      const m = modeRef.current;
+      if (m === 'select') {
+        onNodeSelectRef.current(nodeId);
+      } else if (m === 'connect') {
+        if (connectFromIdRef.current === null) {
+          onConnectStartRef.current(nodeId);
+        } else if (connectFromIdRef.current !== nodeId) {
+          onEdgeCreateRef.current(connectFromIdRef.current, nodeId);
+        }
+      } else if (m === 'delete') {
+        onNodeDeleteRef.current(nodeId);
+      }
+    }
+
+    function handleEmptyClick(e: PointerEvent) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const t = transformRef.current;
+      const wx = (sx - t.x) / t.scale;
+      const wy = (sy - t.y) / t.scale;
+      const sc = t.scale;
+      const m = modeRef.current;
+
+      // Check edges for delete mode
+      if (m === 'delete') {
+        const edgesData = edgesRef.current;
+        const nm = nodeMapRef.current;
+        for (const edge of edgesData) {
+          const from = nm[edge.from_node_id];
+          const to = nm[edge.to_node_id];
+          if (!from || !to) continue;
+          const dist = pointToSegmentDist(wx, wy, from.x, from.y, to.x, to.y);
+          if (dist < 10 / sc) {
+            onEdgeDeleteRef.current(edge.id);
+            return;
+          }
+        }
+      }
+
+      if (m === 'add_node') {
+        onNodeAddRef.current(Math.round(wx), Math.round(wy));
+      } else if (m === 'select') {
+        onNodeSelectRef.current(null);
+      }
+    }
+
     pixiApp.current = app;
-    viewportRef.current = vp;
     setDimensions({ width: w, height: h });
 
     const ro = new ResizeObserver((entries) => {
@@ -212,7 +428,7 @@ export default function CorridorVisualEditor({
         const { width: rw, height: rh } = entry.contentRect;
         if (rw > 0 && rh > 0) {
           app.renderer.resize(rw, rh);
-          vp.resize(rw, rh);
+          canvasDimsRef.current = { width: rw, height: rh };
           setDimensions({ width: rw, height: rh });
         }
       }
@@ -223,17 +439,10 @@ export default function CorridorVisualEditor({
       ro.disconnect();
       app.destroy(true);
       pixiApp.current = null;
-      viewportRef.current = null;
+      mainContainerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Disable viewport drag when mode is not 'select' or when dragging a node
-  useEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp) return;
-    // Viewport drag is always enabled; node drag handled via event stopping
-  }, [mode]);
 
   // ===== Background image =====
   useEffect(() => {
@@ -269,8 +478,7 @@ export default function CorridorVisualEditor({
     const layer = boothLayerRef.current;
     layer.removeChildren();
     layer.interactiveChildren = false;
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 0.6;
+    const sc = transformRef.current.scale;
 
     for (const b of booths) {
       const g = new PIXI.Graphics();
@@ -296,8 +504,7 @@ export default function CorridorVisualEditor({
     const layer = obstacleLayerRef.current;
     layer.removeChildren();
     layer.interactiveChildren = false;
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 0.6;
+    const sc = transformRef.current.scale;
 
     for (const obs of obstacles) {
       const g = new PIXI.Graphics();
@@ -320,8 +527,7 @@ export default function CorridorVisualEditor({
   useEffect(() => {
     const layer = edgeLayerRef.current;
     layer.removeChildren();
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 0.6;
+    const sc = transformRef.current.scale;
 
     for (const edge of edges) {
       const from = nodeMap[edge.from_node_id];
@@ -337,18 +543,6 @@ export default function CorridorVisualEditor({
       line.lineStyle(lineWidth, color);
       line.moveTo(from.x, from.y);
       line.lineTo(to.x, to.y);
-
-      // Make edge clickable with hit area
-      line.eventMode = 'static';
-      line.cursor = 'pointer';
-      line.hitArea = createLineHitArea(from.x, from.y, to.x, to.y, 10 / sc);
-      line.on('pointertap', (e: PIXI.FederatedPointerEvent) => {
-        e.stopPropagation();
-        if (modeRef.current === 'delete') {
-          onEdgeDeleteRef.current(edge.id);
-        }
-      });
-
       layer.addChild(line);
     }
 
@@ -367,8 +561,8 @@ export default function CorridorVisualEditor({
   useEffect(() => {
     const layer = nodeLayerRef.current;
     layer.removeChildren();
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 0.6;
+    nodeContainersRef.current.clear();
+    const sc = transformRef.current.scale;
     const r = NODE_RADIUS / sc;
 
     for (const node of nodes) {
@@ -381,8 +575,6 @@ export default function CorridorVisualEditor({
       const container = new PIXI.Container();
       container.x = node.x;
       container.y = node.y;
-      container.eventMode = 'static';
-      container.cursor = 'pointer';
 
       // Outer ring for selected/connect source
       if (isSelected || isConnectSource) {
@@ -419,75 +611,7 @@ export default function CorridorVisualEditor({
       label.y = -r / 2;
       container.addChild(label);
 
-      // Hit area for easier clicking
-      container.hitArea = new PIXI.Circle(0, 0, r * 2);
-
-      // Drag support
-      let dragging = false;
-      let dragStartPos = { x: 0, y: 0 };
-
-      container.on('pointerdown', (e: PIXI.FederatedPointerEvent) => {
-        if (modeRef.current === 'select') {
-          dragging = true;
-          dragStartPos = { x: container.x, y: container.y };
-          // Disable viewport drag while dragging a node
-          if (vp) {
-            vp.plugins.pause('drag');
-          }
-        }
-      });
-
-      container.on('globalpointermove', (e: PIXI.FederatedPointerEvent) => {
-        if (!dragging || modeRef.current !== 'select') return;
-        const worldPos = vp ? vp.toWorld(e.global.x, e.global.y) : { x: e.global.x, y: e.global.y };
-        container.x = worldPos.x;
-        container.y = worldPos.y;
-      });
-
-      container.on('pointerup', (e: PIXI.FederatedPointerEvent) => {
-        if (vp) {
-          vp.plugins.resume('drag');
-        }
-        if (dragging && modeRef.current === 'select') {
-          dragging = false;
-          const dx = container.x - dragStartPos.x;
-          const dy = container.y - dragStartPos.y;
-          if (Math.abs(dx) > 2 || Math.abs(dy) > 2) {
-            // This was a drag
-            onNodeMoveRef.current(node.id, Math.round(container.x), Math.round(container.y));
-          }
-          return;
-        }
-        dragging = false;
-      });
-
-      container.on('pointerupoutside', (e: PIXI.FederatedPointerEvent) => {
-        if (vp) {
-          vp.plugins.resume('drag');
-        }
-        if (dragging && modeRef.current === 'select') {
-          dragging = false;
-          onNodeMoveRef.current(node.id, Math.round(container.x), Math.round(container.y));
-        }
-        dragging = false;
-      });
-
-      container.on('pointertap', (e: PIXI.FederatedPointerEvent) => {
-        e.stopPropagation();
-        const m = modeRef.current;
-        if (m === 'select') {
-          onNodeSelectRef.current(node.id);
-        } else if (m === 'connect') {
-          if (connectFromIdRef.current === null) {
-            onConnectStartRef.current(node.id);
-          } else if (connectFromIdRef.current !== node.id) {
-            onEdgeCreateRef.current(connectFromIdRef.current, node.id);
-          }
-        } else if (m === 'delete') {
-          onNodeDeleteRef.current(node.id);
-        }
-      });
-
+      nodeContainersRef.current.set(node.id, container);
       layer.addChild(container);
     }
   }, [nodes, selectedNodeId, connectFromId, nodeMap]);
@@ -520,19 +644,4 @@ export default function CorridorVisualEditor({
       </div>
     </div>
   );
-}
-
-// Helper: create a polygon hit area for a line segment with given thickness
-function createLineHitArea(x1: number, y1: number, x2: number, y2: number, thickness: number): PIXI.Polygon {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.sqrt(dx * dx + dy * dy) || 1;
-  const nx = (-dy / len) * thickness / 2;
-  const ny = (dx / len) * thickness / 2;
-  return new PIXI.Polygon([
-    x1 + nx, y1 + ny,
-    x2 + nx, y2 + ny,
-    x2 - nx, y2 - ny,
-    x1 - nx, y1 - ny,
-  ]);
 }

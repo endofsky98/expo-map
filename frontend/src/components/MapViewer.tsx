@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as PIXI from 'pixi.js';
-import { Viewport } from 'pixi-viewport';
 import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
@@ -47,6 +46,8 @@ interface MapViewerProps {
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8.0;
 const MIN_BOOTH_SCREEN_SIZE = 20;
+const CLICK_THRESHOLD = 5;
+const CLICK_TIME_THRESHOLD = 300;
 
 const FACILITY_STYLES: Record<string, { color: number; label: string }> = {
   restroom: { color: 0x3b82f6, label: 'WC' },
@@ -68,9 +69,9 @@ function hexStringToNumber(hex: string): number {
   return parseInt(hex.replace('#', ''), 16);
 }
 
-function hexWithAlpha(hex: string, alpha: number): number {
-  // Returns the hex color as number; alpha handled via sprite/graphics alpha
-  return parseInt(hex.replace('#', ''), 16);
+function selectTileLevel(scale: number, ti: TileInfo): number {
+  const idx = Math.round(-Math.log2(Math.max(0.01, scale)));
+  return Math.max(0, Math.min(ti.levels.length - 1, idx));
 }
 
 export default function MapViewer({
@@ -96,7 +97,9 @@ export default function MapViewer({
   const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
-  const viewportRef = useRef<Viewport | null>(null);
+  const mainContainerRef = useRef<PIXI.Container | null>(null);
+  const transformRef = useRef({ x: 0, y: 0, scale: 1 });
+  const canvasDimsRef = useRef({ width: 800, height: 600 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   // Layer refs
@@ -111,7 +114,11 @@ export default function MapViewer({
   const tileCacheRef = useRef<Map<string, PIXI.Texture>>(new Map());
   const currentImageIdRef = useRef<number | null>(null);
   const currentTileLevelRef = useRef<number>(0);
-  const lastScaleRef = useRef<number>(1);
+
+  // Function refs for pointer event handlers
+  const renderTilesFnRef = useRef<() => void>(() => {});
+  const redrawBoothsFnRef = useRef<() => void>(() => {});
+  const lastBoothRedrawScaleRef = useRef<number>(1);
 
   // Callbacks as refs to avoid stale closures
   const onBoothClickRef = useRef(onBoothClick);
@@ -193,12 +200,65 @@ export default function MapViewer({
   const imgWidth = currentImage?.width || 800;
   const imgHeight = currentImage?.height || 600;
 
+  // Refs for data accessed in click handler closure
+  const boothsRef = useRef(booths);
+  boothsRef.current = booths;
+  const visibleFacilitiesRef = useRef(visibleFacilities);
+  visibleFacilitiesRef.current = visibleFacilities;
+  const currentFloorIdRef = useRef(currentFloorId);
+  currentFloorIdRef.current = currentFloorId;
+
+  function applyZoom(newScale: number, pivotX: number, pivotY: number) {
+    const t = transformRef.current;
+    const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
+    const ratio = clamped / t.scale;
+    t.x = pivotX - ratio * (pivotX - t.x);
+    t.y = pivotY - ratio * (pivotY - t.y);
+    t.scale = clamped;
+    const mc = mainContainerRef.current;
+    if (mc) {
+      mc.position.set(t.x, t.y);
+      mc.scale.set(clamped);
+    }
+    onZoomChangeRef.current?.(clamped);
+    renderTilesFnRef.current();
+    checkBoothRedraw();
+  }
+
+  function checkBoothRedraw() {
+    const sc = transformRef.current.scale;
+    const last = lastBoothRedrawScaleRef.current;
+    if (
+      Math.abs(sc - last) / Math.max(last, 0.01) > 0.15 ||
+      (last < 1.0 && sc >= 1.0) ||
+      (last >= 1.0 && sc < 1.0) ||
+      (last < 2.0 && sc >= 2.0) ||
+      (last >= 2.0 && sc < 2.0)
+    ) {
+      lastBoothRedrawScaleRef.current = sc;
+      redrawBoothsFnRef.current();
+    }
+  }
+
+  function getBoothOpacity(booth: Booth): number {
+    if (activeCategories.size === 0) return 1;
+    if (booth.category_id && activeCategories.has(booth.category_id)) return 1;
+    return 0.2;
+  }
+
+  function getBoothFill(booth: Booth): string {
+    if (booth.color) return booth.color;
+    if (booth.category_id && categoryColorMap[booth.category_id]) return categoryColorMap[booth.category_id];
+    return '#94a3b8';
+  }
+
   // ===== Initialize PIXI Application =====
   useEffect(() => {
     if (!containerRef.current) return;
     const el = containerRef.current;
     const w = el.offsetWidth || 800;
     const h = el.offsetHeight || 600;
+    canvasDimsRef.current = { width: w, height: h };
 
     const app = new PIXI.Application({
       width: w,
@@ -212,52 +272,120 @@ export default function MapViewer({
 
     const canvas = app.view as HTMLCanvasElement;
     canvas.style.touchAction = 'none';
+    canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
     canvas.style.width = '100%';
     canvas.style.height = '100%';
 
-    const vp = new Viewport({
-      screenWidth: w,
-      screenHeight: h,
-      worldWidth: 10000,
-      worldHeight: 10000,
-      events: app.renderer.events,
-    } as any);
-    app.stage.addChild(vp as any);
-    vp.drag().pinch().wheel().decelerate({ friction: 0.95 });
-    vp.clampZoom({ minScale: MIN_ZOOM, maxScale: MAX_ZOOM });
+    // Main container (replaces pixi-viewport)
+    const mainContainer = new PIXI.Container();
+    app.stage.addChild(mainContainer);
+    mainContainer.addChild(tileLayerRef.current);
+    mainContainer.addChild(obstacleLayerRef.current);
+    mainContainer.addChild(routeLayerRef.current);
+    mainContainer.addChild(boothLayerRef.current);
+    mainContainer.addChild(facilityLayerRef.current);
+    mainContainer.addChild(overlayLayerRef.current);
+    mainContainerRef.current = mainContainer;
 
-    // Add layers in order
-    vp.addChild(tileLayerRef.current as any);
-    vp.addChild(obstacleLayerRef.current as any);
-    vp.addChild(routeLayerRef.current as any);
-    vp.addChild(boothLayerRef.current as any);
-    vp.addChild(facilityLayerRef.current as any);
-    vp.addChild(overlayLayerRef.current as any);
+    // ===== Pointer events for drag/zoom =====
+    let isDragging = false;
+    let dragStart = { x: 0, y: 0 };
+    let pointerDownInfo = { x: 0, y: 0, time: 0 };
+    const pointers = new Map<number, { x: number; y: number }>();
+    let lastPinchDist = 0;
 
-    // Events
-    vp.on('moved', () => {
-      onZoomChangeRef.current?.(vp.scale.x);
-      lastScaleRef.current = vp.scale.x;
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 1 && e.isPrimary) {
+        const t = transformRef.current;
+        dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
+        isDragging = true;
+        pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
+      } else if (pointers.size === 2) {
+        isDragging = false;
+        const pts = Array.from(pointers.values());
+        lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+      }
     });
-    vp.on('zoomed', () => {
-      onZoomChangeRef.current?.(vp.scale.x);
-      lastScaleRef.current = vp.scale.x;
+
+    canvas.addEventListener('pointermove', (e) => {
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pointers.size === 2) {
+        const pts = Array.from(pointers.values());
+        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        if (lastPinchDist > 0) {
+          const rect = canvas.getBoundingClientRect();
+          const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
+          const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
+          const newScale = transformRef.current.scale * (dist / lastPinchDist);
+          applyZoom(newScale, cx, cy);
+        }
+        lastPinchDist = dist;
+        return;
+      }
+
+      if (isDragging && e.isPrimary) {
+        const t = transformRef.current;
+        t.x = e.clientX - dragStart.x;
+        t.y = e.clientY - dragStart.y;
+        mainContainer.position.set(t.x, t.y);
+        renderTilesFnRef.current();
+      }
     });
-    vp.on('clicked', (e: { world: PIXI.IPointData; screen: PIXI.IPointData; event: PIXI.FederatedPointerEvent }) => {
-      const worldPos = e.world;
-      const screenPos = e.screen;
-      const sc = vp.scale.x;
+
+    canvas.addEventListener('pointerup', (e) => {
+      canvas.releasePointerCapture(e.pointerId);
+      pointers.delete(e.pointerId);
+
+      if (e.isPrimary && isDragging) {
+        isDragging = false;
+        const dx = e.clientX - pointerDownInfo.x;
+        const dy = e.clientY - pointerDownInfo.y;
+        const dt = Date.now() - pointerDownInfo.time;
+        if (Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD) {
+          handleClick(e);
+        }
+      }
+      if (pointers.size < 2) lastPinchDist = 0;
+    });
+
+    canvas.addEventListener('pointercancel', (e) => {
+      pointers.delete(e.pointerId);
+      isDragging = false;
+      if (pointers.size < 2) lastPinchDist = 0;
+    });
+
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      const rect = canvas.getBoundingClientRect();
+      applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
+    }, { passive: false });
+
+    function handleClick(e: PointerEvent) {
+      const rect = canvas.getBoundingClientRect();
+      const sx = e.clientX - rect.left;
+      const sy = e.clientY - rect.top;
+      const t = transformRef.current;
+      const wx = (sx - t.x) / t.scale;
+      const wy = (sy - t.y) / t.scale;
+      const sc = t.scale;
 
       // Check facilities first
       for (const fac of visibleFacilitiesRef.current) {
         const r = Math.max(10, 14 / sc);
-        const dx = worldPos.x - fac.x;
-        const dy = worldPos.y - fac.y;
-        if (dx * dx + dy * dy <= r * r) {
-          const sPos = vp.toScreen(fac.x, fac.y);
+        const fdx = wx - fac.x;
+        const fdy = wy - fac.y;
+        if (fdx * fdx + fdy * fdy <= r * r) {
+          const fsx = fac.x * sc + t.x;
+          const fsy = fac.y * sc + t.y;
           setFacilityTooltip((prev) =>
-            prev?.facility.id === fac.id ? null : { facility: fac, screenX: sPos.x, screenY: sPos.y }
+            prev?.facility.id === fac.id ? null : { facility: fac, screenX: fsx, screenY: fsy }
           );
           return;
         }
@@ -266,14 +394,14 @@ export default function MapViewer({
       // Check booths
       for (const booth of boothsRef.current) {
         if (
-          worldPos.x >= booth.x &&
-          worldPos.x <= booth.x + booth.width &&
-          worldPos.y >= booth.y &&
-          worldPos.y <= booth.y + booth.height
+          wx >= booth.x &&
+          wx <= booth.x + booth.width &&
+          wy >= booth.y &&
+          wy <= booth.y + booth.height
         ) {
           onBoothClickRef.current(booth);
-          if (typeof window !== 'undefined' && typeof window.onBoothClick === 'function') {
-            window.onBoothClick(booth.id, booth);
+          if (typeof window !== 'undefined' && typeof (window as any).onBoothClick === 'function') {
+            (window as any).onBoothClick(booth.id, booth);
           }
           return;
         }
@@ -282,14 +410,13 @@ export default function MapViewer({
       // No booth/facility hit — fire onMapClick
       setFacilityTooltip(null);
       const floorId = currentFloorIdRef.current || 0;
-      onMapClickRef.current?.(Math.round(worldPos.x), Math.round(worldPos.y), floorId);
-      if (typeof window !== 'undefined' && typeof window.onMapClick === 'function') {
-        window.onMapClick(Math.round(worldPos.x), Math.round(worldPos.y), floorId);
+      onMapClickRef.current?.(Math.round(wx), Math.round(wy), floorId);
+      if (typeof window !== 'undefined' && typeof (window as any).onMapClick === 'function') {
+        (window as any).onMapClick(Math.round(wx), Math.round(wy), floorId);
       }
-    });
+    }
 
     pixiApp.current = app;
-    viewportRef.current = vp;
     setDimensions({ width: w, height: h });
 
     // ResizeObserver
@@ -298,7 +425,7 @@ export default function MapViewer({
         const { width: rw, height: rh } = entry.contentRect;
         if (rw > 0 && rh > 0) {
           app.renderer.resize(rw, rh);
-          vp.resize(rw, rh);
+          canvasDimsRef.current = { width: rw, height: rh };
           setDimensions({ width: rw, height: rh });
         }
       }
@@ -309,23 +436,15 @@ export default function MapViewer({
       ro.disconnect();
       app.destroy(true);
       pixiApp.current = null;
-      viewportRef.current = null;
+      mainContainerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Refs for data accessed in click handler closure
-  const boothsRef = useRef(booths);
-  boothsRef.current = booths;
-  const visibleFacilitiesRef = useRef(visibleFacilities);
-  visibleFacilitiesRef.current = visibleFacilities;
-  const currentFloorIdRef = useRef(currentFloorId);
-  currentFloorIdRef.current = currentFloorId;
-
   // ===== Tile/Image rendering =====
   useEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp || !currentImage) return;
+    const mc = mainContainerRef.current;
+    if (!mc || !currentImage) return;
 
     const layer = tileLayerRef.current;
     layer.removeChildren();
@@ -336,23 +455,142 @@ export default function MapViewer({
       currentImageIdRef.current = currentImage.id;
     }
 
-    if (useTileMode && tileInfo) {
-      // Tile mode rendering
-      renderTiles(vp, layer);
-
-      const onMoved = () => renderTiles(vp, layer);
-      vp.on('moved', onMoved);
-      vp.on('zoomed', onMoved);
-      return () => {
-        vp.off('moved', onMoved);
-        vp.off('zoomed', onMoved);
+    // Initial fit when image changes
+    if (imageChanged) {
+      const { width: cw, height: ch } = canvasDimsRef.current;
+      const fitScale = Math.min(cw / imgWidth, ch / imgHeight) * 0.9;
+      transformRef.current = {
+        scale: fitScale,
+        x: (cw - imgWidth * fitScale) / 2,
+        y: (ch - imgHeight * fitScale) / 2,
       };
+      mc.position.set(transformRef.current.x, transformRef.current.y);
+      mc.scale.set(fitScale);
+      lastBoothRedrawScaleRef.current = fitScale;
+      onZoomChangeRef.current?.(fitScale);
+    }
+
+    if (useTileMode && tileInfo) {
+      const doRender = () => {
+        if (!tileInfo || !currentImage) return;
+        const { x: tx, y: ty, scale: sc } = transformRef.current;
+        const { width: canvasW, height: canvasH } = canvasDimsRef.current;
+
+        const levelIdx = selectTileLevel(sc, tileInfo);
+        const level = tileInfo.levels[levelIdx];
+        if (!level) return;
+        const tileSize = tileInfo.tile_size;
+        const sfx = imgWidth / level.width;
+        const sfy = imgHeight / level.height;
+
+        const boundsX = -tx / sc;
+        const boundsY = -ty / sc;
+        const boundsW = canvasW / sc;
+        const boundsH = canvasH / sc;
+
+        const colStart = Math.max(0, Math.floor((boundsX / sfx) / tileSize) - prefetchRange);
+        const colEnd = Math.min(level.cols - 1, Math.ceil(((boundsX + boundsW) / sfx) / tileSize) + prefetchRange);
+        const rowStart = Math.max(0, Math.floor((boundsY / sfy) / tileSize) - prefetchRange);
+        const rowEnd = Math.min(level.rows - 1, Math.ceil(((boundsY + boundsH) / sfy) / tileSize) + prefetchRange);
+
+        const levelChanged = levelIdx !== currentTileLevelRef.current;
+        if (levelChanged) {
+          layer.removeChildren();
+          currentTileLevelRef.current = levelIdx;
+        }
+
+        const neededKeys = new Set<string>();
+        for (let r = rowStart; r <= rowEnd; r++) {
+          for (let c = colStart; c <= colEnd; c++) {
+            neededKeys.add(`${currentImage.id}_${levelIdx}_${r}_${c}`);
+          }
+        }
+
+        for (let i = layer.children.length - 1; i >= 0; i--) {
+          const child = layer.children[i];
+          if (child.name && !neededKeys.has(child.name)) {
+            layer.removeChildAt(i);
+          }
+        }
+
+        const existingKeys = new Set<string>();
+        for (const child of layer.children) {
+          if (child.name) existingKeys.add(child.name);
+        }
+
+        for (let r = rowStart; r <= rowEnd; r++) {
+          for (let c = colStart; c <= colEnd; c++) {
+            const key = `${currentImage.id}_${levelIdx}_${r}_${c}`;
+            if (existingKeys.has(key)) continue;
+
+            const x = c * tileSize * sfx;
+            const y = r * tileSize * sfy;
+            const tw = Math.min(tileSize, level.width - c * tileSize);
+            const th = Math.min(tileSize, level.height - r * tileSize);
+            const dw = tw * sfx;
+            const dh = th * sfy;
+
+            const cached = tileCacheRef.current.get(key);
+            if (cached) {
+              const sprite = new PIXI.Sprite(cached);
+              sprite.name = key;
+              sprite.x = x;
+              sprite.y = y;
+              sprite.width = dw;
+              sprite.height = dh;
+              layer.addChild(sprite);
+            } else {
+              const placeholder = new PIXI.Graphics();
+              placeholder.name = key;
+              placeholder.beginFill(0xe5e7eb, 0.3);
+              placeholder.drawRect(0, 0, dw, dh);
+              placeholder.endFill();
+              placeholder.x = x;
+              placeholder.y = y;
+              layer.addChild(placeholder);
+
+              const url = `${apiBase}/api/tiles/${currentImage.id}/${levelIdx}/${r}/${c}`;
+              const tex = PIXI.Texture.from(url, { resourceOptions: { crossorigin: 'anonymous' } });
+              if (tex.valid) {
+                tileCacheRef.current.set(key, tex);
+                layer.removeChild(placeholder);
+                const sprite = new PIXI.Sprite(tex);
+                sprite.name = key;
+                sprite.x = x;
+                sprite.y = y;
+                sprite.width = dw;
+                sprite.height = dh;
+                layer.addChild(sprite);
+              } else {
+                tex.baseTexture.on('loaded', () => {
+                  tileCacheRef.current.set(key, tex);
+                  if (placeholder.parent) {
+                    const sprite = new PIXI.Sprite(tex);
+                    sprite.name = key;
+                    sprite.x = x;
+                    sprite.y = y;
+                    sprite.width = dw;
+                    sprite.height = dh;
+                    const idx = layer.getChildIndex(placeholder);
+                    layer.removeChild(placeholder);
+                    layer.addChildAt(sprite, Math.min(idx, layer.children.length));
+                  }
+                });
+              }
+            }
+          }
+        }
+      };
+
+      renderTilesFnRef.current = doRender;
+      doRender();
     } else {
+      renderTilesFnRef.current = () => {};
       // Single image fallback
       const zoomLevels = parseZoomLevels(currentImage);
       let imageUrl: string;
       if (zoomLevels.length > 0) {
-        const sc = vp.scale.x;
+        const sc = transformRef.current.scale;
         const scaleRange = MAX_ZOOM - MIN_ZOOM;
         const normalized = Math.max(0, Math.min(1, (sc - MIN_ZOOM) / scaleRange));
         const targetLevel = Math.min(zoomLevels.length - 1, Math.floor(normalized * zoomLevels.length));
@@ -369,130 +607,13 @@ export default function MapViewer({
       layer.addChild(sprite);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentImage, tileInfo, useTileMode, imgWidth, imgHeight]);
-
-  function selectTileLevel(scale: number): number {
-    if (!tileInfo) return 0;
-    const idx = Math.round(-Math.log2(Math.max(0.01, scale)));
-    return Math.max(0, Math.min(tileInfo.levels.length - 1, idx));
-  }
-
-  function renderTiles(vp: Viewport, layer: PIXI.Container) {
-    if (!tileInfo || !currentImage) return;
-    const sc = vp.scale.x;
-    const levelIdx = selectTileLevel(sc);
-    const level = tileInfo.levels[levelIdx];
-    if (!level) return;
-    const tileSize = tileInfo.tile_size;
-    const sfx = imgWidth / level.width;
-    const sfy = imgHeight / level.height;
-
-    const bounds = vp.getVisibleBounds();
-    const colStart = Math.max(0, Math.floor((bounds.x / sfx) / tileSize) - prefetchRange);
-    const colEnd = Math.min(level.cols - 1, Math.ceil(((bounds.x + bounds.width) / sfx) / tileSize) + prefetchRange);
-    const rowStart = Math.max(0, Math.floor((bounds.y / sfy) / tileSize) - prefetchRange);
-    const rowEnd = Math.min(level.rows - 1, Math.ceil(((bounds.y + bounds.height) / sfy) / tileSize) + prefetchRange);
-
-    // Only re-render if level changed or we need different tiles
-    const levelChanged = levelIdx !== currentTileLevelRef.current;
-    if (levelChanged) {
-      layer.removeChildren();
-      currentTileLevelRef.current = levelIdx;
-    }
-
-    // Track which tiles are currently in the layer
-    const neededKeys = new Set<string>();
-    for (let r = rowStart; r <= rowEnd; r++) {
-      for (let c = colStart; c <= colEnd; c++) {
-        neededKeys.add(`${currentImage.id}_${levelIdx}_${r}_${c}`);
-      }
-    }
-
-    // Remove tiles no longer needed
-    for (let i = layer.children.length - 1; i >= 0; i--) {
-      const child = layer.children[i];
-      if (child.name && !neededKeys.has(child.name)) {
-        layer.removeChildAt(i);
-      }
-    }
-
-    // Add new tiles
-    const existingKeys = new Set<string>();
-    for (const child of layer.children) {
-      if (child.name) existingKeys.add(child.name);
-    }
-
-    for (let r = rowStart; r <= rowEnd; r++) {
-      for (let c = colStart; c <= colEnd; c++) {
-        const key = `${currentImage.id}_${levelIdx}_${r}_${c}`;
-        if (existingKeys.has(key)) continue;
-
-        const x = c * tileSize * sfx;
-        const y = r * tileSize * sfy;
-        const tw = Math.min(tileSize, level.width - c * tileSize);
-        const th = Math.min(tileSize, level.height - r * tileSize);
-        const dw = tw * sfx;
-        const dh = th * sfy;
-
-        const cached = tileCacheRef.current.get(key);
-        if (cached) {
-          const sprite = new PIXI.Sprite(cached);
-          sprite.name = key;
-          sprite.x = x;
-          sprite.y = y;
-          sprite.width = dw;
-          sprite.height = dh;
-          layer.addChild(sprite);
-        } else {
-          // Show placeholder then load
-          const placeholder = new PIXI.Graphics();
-          placeholder.name = key;
-          placeholder.beginFill(0xe5e7eb, 0.3);
-          placeholder.drawRect(0, 0, dw, dh);
-          placeholder.endFill();
-          placeholder.x = x;
-          placeholder.y = y;
-          layer.addChild(placeholder);
-
-          const url = `${apiBase}/api/tiles/${currentImage.id}/${levelIdx}/${r}/${c}`;
-          const tex = PIXI.Texture.from(url, { resourceOptions: { crossorigin: 'anonymous' } });
-          if (tex.valid) {
-            tileCacheRef.current.set(key, tex);
-            layer.removeChild(placeholder);
-            const sprite = new PIXI.Sprite(tex);
-            sprite.name = key;
-            sprite.x = x;
-            sprite.y = y;
-            sprite.width = dw;
-            sprite.height = dh;
-            layer.addChild(sprite);
-          } else {
-            tex.baseTexture.on('loaded', () => {
-              tileCacheRef.current.set(key, tex);
-              if (placeholder.parent) {
-                const sprite = new PIXI.Sprite(tex);
-                sprite.name = key;
-                sprite.x = x;
-                sprite.y = y;
-                sprite.width = dw;
-                sprite.height = dh;
-                const idx = layer.getChildIndex(placeholder);
-                layer.removeChild(placeholder);
-                layer.addChildAt(sprite, Math.min(idx, layer.children.length));
-              }
-            });
-          }
-        }
-      }
-    }
-  }
+  }, [currentImage, tileInfo, useTileMode, imgWidth, imgHeight, prefetchRange]);
 
   // ===== Obstacles =====
   useEffect(() => {
     const layer = obstacleLayerRef.current;
     layer.removeChildren();
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 1;
+    const sc = transformRef.current.scale;
 
     for (const obs of obstacles) {
       const g = new PIXI.Graphics();
@@ -516,8 +637,7 @@ export default function MapViewer({
     const layer = routeLayerRef.current;
     layer.removeChildren();
     if (!currentRoutePoints || currentRoutePoints.length < 2) return;
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 1;
+    const sc = transformRef.current.scale;
 
     // Shadow line
     const shadow = new PIXI.Graphics();
@@ -528,7 +648,7 @@ export default function MapViewer({
     }
     layer.addChild(shadow);
 
-    // Main dashed line
+    // Main line
     const mainLine = new PIXI.Graphics();
     mainLine.lineStyle(3 / sc, 0x4f46e5, 0.85);
     mainLine.moveTo(currentRoutePoints[0].x, currentRoutePoints[0].y);
@@ -592,242 +712,116 @@ export default function MapViewer({
 
   // ===== Booths =====
   useEffect(() => {
-    const layer = boothLayerRef.current;
-    layer.removeChildren();
-    if (!showBooths) return;
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 1;
+    const doRedraw = () => {
+      const layer = boothLayerRef.current;
+      layer.removeChildren();
+      if (!showBooths) return;
+      const sc = transformRef.current.scale;
+      const { x: tx, y: ty } = transformRef.current;
+      const { width: cw, height: ch } = canvasDimsRef.current;
+      const bounds = { x: -tx / sc, y: -ty / sc, width: cw / sc, height: ch / sc };
 
-    // Viewport culling
-    const bounds = vp?.getVisibleBounds();
-
-    for (const booth of booths) {
-      // Viewport culling
-      if (bounds) {
+      for (const booth of booths) {
+        // Viewport culling
         if (
           booth.x + booth.width < bounds.x ||
           booth.x > bounds.x + bounds.width ||
           booth.y + booth.height < bounds.y ||
           booth.y > bounds.y + bounds.height
         ) continue;
-      }
-      // Min screen size check
-      const screenWidth = booth.width * sc;
-      const screenHeight = booth.height * sc;
-      if (screenWidth < MIN_BOOTH_SCREEN_SIZE || screenHeight < MIN_BOOTH_SCREEN_SIZE) continue;
+        const screenWidth = booth.width * sc;
+        const screenHeight = booth.height * sc;
+        if (screenWidth < MIN_BOOTH_SCREEN_SIZE || screenHeight < MIN_BOOTH_SCREEN_SIZE) continue;
 
-      const isSelected = booth.id === selectedBoothId;
-      const opacity = getBoothOpacity(booth);
-      const fill = getBoothFill(booth);
-      const fillNum = hexStringToNumber(fill);
+        const isSelected = booth.id === selectedBoothId;
+        const opacity = getBoothOpacity(booth);
+        const fill = getBoothFill(booth);
+        const fillNum = hexStringToNumber(fill);
 
-      const container = new PIXI.Container();
-      container.x = booth.x;
-      container.y = booth.y;
-      container.alpha = opacity;
+        const container = new PIXI.Container();
+        container.x = booth.x;
+        container.y = booth.y;
+        container.alpha = opacity;
 
-      // Booth rect
-      const g = new PIXI.Graphics();
-      g.lineStyle(isSelected ? 3 / sc : 1.5 / sc, isSelected ? 0x4f46e5 : fillNum);
-      g.beginFill(fillNum, sc >= 2.0 ? 0.2 : 0.13);
-      g.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-      g.endFill();
-      container.addChild(g);
+        // Booth rect
+        const g = new PIXI.Graphics();
+        g.lineStyle(isSelected ? 3 / sc : 1.5 / sc, isSelected ? 0x4f46e5 : fillNum);
+        g.beginFill(fillNum, sc >= 2.0 ? 0.2 : 0.13);
+        g.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
+        g.endFill();
+        container.addChild(g);
 
-      // Selected dash overlay
-      if (isSelected) {
-        const dash = new PIXI.Graphics();
-        dash.lineStyle(3 / sc, 0x4f46e5, 1);
-        dash.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-        container.addChild(dash);
-      }
-
-      // Booth number
-      const numText = new PIXI.Text(booth.booth_number, {
-        fontSize: sc < 1.0 ? 10 / sc : 11 / sc,
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: 'bold',
-        fill: '#1f2937',
-      });
-      numText.x = 4 / sc;
-      numText.y = 4 / sc;
-      // Clip text width
-      if (numText.width > booth.width - 8 / sc) {
-        numText.width = booth.width - 8 / sc;
-      }
-      container.addChild(numText);
-
-      // Company name (at scale >= 1.0)
-      if (sc >= 1.0) {
-        const companyName = ln(booth.company?.name) || '';
-        if (companyName) {
-          const compText = new PIXI.Text(companyName, {
-            fontSize: 9 / sc,
-            fontFamily: 'Inter, sans-serif',
-            fill: '#4b5563',
-          });
-          compText.x = 4 / sc;
-          compText.y = 18 / sc;
-          if (compText.width > booth.width - 8 / sc) {
-            compText.width = booth.width - 8 / sc;
-          }
-          container.addChild(compText);
+        // Selected dash overlay
+        if (isSelected) {
+          const dash = new PIXI.Graphics();
+          dash.lineStyle(3 / sc, 0x4f46e5, 1);
+          dash.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
+          container.addChild(dash);
         }
-      }
 
-      // Category name (at scale >= 2.0)
-      if (sc >= 2.0) {
-        const categoryName = ln(booth.category?.name) || '';
-        if (categoryName) {
-          const catText = new PIXI.Text(categoryName, {
-            fontSize: 7 / sc,
-            fontFamily: 'Inter, sans-serif',
-            fill: fill,
-          });
-          catText.x = 4 / sc;
-          catText.y = 30 / sc;
-          if (catText.width > booth.width - 8 / sc) {
-            catText.width = booth.width - 8 / sc;
-          }
-          container.addChild(catText);
+        // Booth number
+        const numText = new PIXI.Text(booth.booth_number, {
+          fontSize: sc < 1.0 ? 10 / sc : 11 / sc,
+          fontFamily: 'Inter, sans-serif',
+          fontWeight: 'bold',
+          fill: '#1f2937',
+        });
+        numText.x = 4 / sc;
+        numText.y = 4 / sc;
+        if (numText.width > booth.width - 8 / sc) {
+          numText.width = booth.width - 8 / sc;
         }
-      }
+        container.addChild(numText);
 
-      layer.addChild(container);
-    }
-  }, [booths, showBooths, selectedBoothId, activeCategories, categories, categoryColorMap, ln]);
+        // Company name (at scale >= 1.0)
+        if (sc >= 1.0) {
+          const companyName = ln(booth.company?.name) || '';
+          if (companyName) {
+            const compText = new PIXI.Text(companyName, {
+              fontSize: 9 / sc,
+              fontFamily: 'Inter, sans-serif',
+              fill: '#4b5563',
+            });
+            compText.x = 4 / sc;
+            compText.y = 18 / sc;
+            if (compText.width > booth.width - 8 / sc) {
+              compText.width = booth.width - 8 / sc;
+            }
+            container.addChild(compText);
+          }
+        }
 
-  // Redraw booths when zoom changes significantly
-  useEffect(() => {
-    const vp = viewportRef.current;
-    if (!vp) return;
+        // Category name (at scale >= 2.0)
+        if (sc >= 2.0) {
+          const categoryName = ln(booth.category?.name) || '';
+          if (categoryName) {
+            const catText = new PIXI.Text(categoryName, {
+              fontSize: 7 / sc,
+              fontFamily: 'Inter, sans-serif',
+              fill: fill,
+            });
+            catText.x = 4 / sc;
+            catText.y = 30 / sc;
+            if (catText.width > booth.width - 8 / sc) {
+              catText.width = booth.width - 8 / sc;
+            }
+            container.addChild(catText);
+          }
+        }
 
-    let lastRedrawScale = vp.scale.x;
-    const onZoomed = () => {
-      const sc = vp.scale.x;
-      // Redraw if scale changed enough to affect visibility thresholds
-      if (
-        Math.abs(sc - lastRedrawScale) / lastRedrawScale > 0.15 ||
-        (lastRedrawScale < 1.0 && sc >= 1.0) ||
-        (lastRedrawScale >= 1.0 && sc < 1.0) ||
-        (lastRedrawScale < 2.0 && sc >= 2.0) ||
-        (lastRedrawScale >= 2.0 && sc < 2.0)
-      ) {
-        lastRedrawScale = sc;
-        redrawBooths();
+        layer.addChild(container);
       }
     };
-    vp.on('zoomed', onZoomed);
-    vp.on('moved', onZoomed);
-    return () => {
-      vp.off('zoomed', onZoomed);
-      vp.off('moved', onZoomed);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    redrawBoothsFnRef.current = doRedraw;
+    doRedraw();
   }, [booths, showBooths, selectedBoothId, activeCategories, categories, categoryColorMap, ln]);
-
-  function redrawBooths() {
-    const layer = boothLayerRef.current;
-    layer.removeChildren();
-    if (!showBooths) return;
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 1;
-    const bounds = vp?.getVisibleBounds();
-
-    for (const booth of booths) {
-      if (bounds) {
-        if (
-          booth.x + booth.width < bounds.x ||
-          booth.x > bounds.x + bounds.width ||
-          booth.y + booth.height < bounds.y ||
-          booth.y > bounds.y + bounds.height
-        ) continue;
-      }
-      const screenWidth = booth.width * sc;
-      const screenHeight = booth.height * sc;
-      if (screenWidth < MIN_BOOTH_SCREEN_SIZE || screenHeight < MIN_BOOTH_SCREEN_SIZE) continue;
-
-      const isSelected = booth.id === selectedBoothId;
-      const opacity = getBoothOpacity(booth);
-      const fill = getBoothFill(booth);
-      const fillNum = hexStringToNumber(fill);
-
-      const container = new PIXI.Container();
-      container.x = booth.x;
-      container.y = booth.y;
-      container.alpha = opacity;
-
-      const g = new PIXI.Graphics();
-      g.lineStyle(isSelected ? 3 / sc : 1.5 / sc, isSelected ? 0x4f46e5 : fillNum);
-      g.beginFill(fillNum, sc >= 2.0 ? 0.2 : 0.13);
-      g.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-      g.endFill();
-      container.addChild(g);
-
-      if (isSelected) {
-        const dash = new PIXI.Graphics();
-        dash.lineStyle(3 / sc, 0x4f46e5, 1);
-        dash.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-        container.addChild(dash);
-      }
-
-      const numText = new PIXI.Text(booth.booth_number, {
-        fontSize: sc < 1.0 ? 10 / sc : 11 / sc,
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: 'bold',
-        fill: '#1f2937',
-      });
-      numText.x = 4 / sc;
-      numText.y = 4 / sc;
-      if (numText.width > booth.width - 8 / sc) {
-        numText.width = booth.width - 8 / sc;
-      }
-      container.addChild(numText);
-
-      if (sc >= 1.0) {
-        const companyName = ln(booth.company?.name) || '';
-        if (companyName) {
-          const compText = new PIXI.Text(companyName, {
-            fontSize: 9 / sc,
-            fontFamily: 'Inter, sans-serif',
-            fill: '#4b5563',
-          });
-          compText.x = 4 / sc;
-          compText.y = 18 / sc;
-          if (compText.width > booth.width - 8 / sc) {
-            compText.width = booth.width - 8 / sc;
-          }
-          container.addChild(compText);
-        }
-      }
-
-      if (sc >= 2.0) {
-        const categoryName = ln(booth.category?.name) || '';
-        if (categoryName) {
-          const catText = new PIXI.Text(categoryName, {
-            fontSize: 7 / sc,
-            fontFamily: 'Inter, sans-serif',
-            fill: fill,
-          });
-          catText.x = 4 / sc;
-          catText.y = 30 / sc;
-          if (catText.width > booth.width - 8 / sc) {
-            catText.width = booth.width - 8 / sc;
-          }
-          container.addChild(catText);
-        }
-      }
-
-      layer.addChild(container);
-    }
-  }
 
   // ===== Facilities =====
   useEffect(() => {
     const layer = facilityLayerRef.current;
     layer.removeChildren();
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 1;
+    const sc = transformRef.current.scale;
 
     for (const fac of visibleFacilities) {
       const style = FACILITY_STYLES[fac.type] || { color: 0x6b7280, label: '?' };
@@ -861,8 +855,7 @@ export default function MapViewer({
     const layer = overlayLayerRef.current;
     layer.removeChildren();
     if (!currentPosition || currentPosition.floorId !== currentFloorId) return;
-    const vp = viewportRef.current;
-    const sc = vp?.scale.x || 1;
+    const sc = transformRef.current.scale;
 
     const outer = new PIXI.Graphics();
     outer.lineStyle(3 / sc, 0xffffff);
@@ -883,52 +876,48 @@ export default function MapViewer({
   }, [currentPosition, currentFloorId]);
 
   // ===== Window-exposed functions =====
-  function getBoothOpacity(booth: Booth): number {
-    if (activeCategories.size === 0) return 1;
-    if (booth.category_id && activeCategories.has(booth.category_id)) return 1;
-    return 0.2;
-  }
-
-  function getBoothFill(booth: Booth): string {
-    if (booth.color) return booth.color;
-    if (booth.category_id && categoryColorMap[booth.category_id]) return categoryColorMap[booth.category_id];
-    return '#94a3b8';
-  }
-
   function zoomIn() {
-    const vp = viewportRef.current;
-    if (!vp) return;
-    const newScale = Math.min(MAX_ZOOM, vp.scale.x * 1.3);
-    vp.setZoom(newScale, true);
-    onZoomChange?.(newScale);
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    applyZoom(transformRef.current.scale * 1.3, cw / 2, ch / 2);
   }
 
   function zoomOut() {
-    const vp = viewportRef.current;
-    if (!vp) return;
-    const newScale = Math.max(MIN_ZOOM, vp.scale.x / 1.3);
-    vp.setZoom(newScale, true);
-    onZoomChange?.(newScale);
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    applyZoom(transformRef.current.scale / 1.3, cw / 2, ch / 2);
   }
 
   function panToBooth(booth: Booth) {
-    const vp = viewportRef.current;
-    if (!vp) return;
+    const mc = mainContainerRef.current;
+    if (!mc) return;
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const sc = transformRef.current.scale;
     const centerX = booth.x + booth.width / 2;
     const centerY = booth.y + booth.height / 2;
-    vp.moveCenter(centerX, centerY);
+    transformRef.current.x = cw / 2 - centerX * sc;
+    transformRef.current.y = ch / 2 - centerY * sc;
+    mc.position.set(transformRef.current.x, transformRef.current.y);
+    renderTilesFnRef.current();
+    redrawBoothsFnRef.current();
   }
 
   function panToArea(x: number, y: number, width: number, height: number) {
-    const vp = viewportRef.current;
-    if (!vp) return;
-    const scaleX = dimensions.width / width;
-    const scaleY = dimensions.height / height;
+    const mc = mainContainerRef.current;
+    if (!mc) return;
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const scaleX = cw / width;
+    const scaleY = ch / height;
     const newScale = Math.min(scaleX, scaleY) * 0.85;
     const clampedScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, newScale));
-    vp.setZoom(clampedScale, false);
-    vp.moveCenter(x + width / 2, y + height / 2);
+    const centerX = x + width / 2;
+    const centerY = y + height / 2;
+    transformRef.current.scale = clampedScale;
+    transformRef.current.x = cw / 2 - centerX * clampedScale;
+    transformRef.current.y = ch / 2 - centerY * clampedScale;
+    mc.position.set(transformRef.current.x, transformRef.current.y);
+    mc.scale.set(clampedScale);
     onZoomChange?.(clampedScale);
+    renderTilesFnRef.current();
+    redrawBoothsFnRef.current();
   }
 
   useEffect(() => {
