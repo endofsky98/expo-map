@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   output: 'standalone',
+  outputFileTracingIncludes: {
+    '/**': ['./node_modules/@swc/helpers/**', './node_modules/@next/env/**'],
+  },
   images: {
     remotePatterns: [
       {

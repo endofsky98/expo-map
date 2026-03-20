@@ -10,6 +10,9 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
+import dynamic from 'next/dynamic';
+
+const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
 
 export default function MapViewer({
   booths,
@@ -1246,6 +1249,13 @@ export default function MapViewer({
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: '#ffffff' }}>
 
+      {/* Three.js 3D wall overlay — renders booth walls with real 3D */}
+      <WallOverlay
+        booths={booths}
+        transformRef={transformRef}
+        canvasDimsRef={canvasDimsRef}
+        containerRef={containerRef}
+      />
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
