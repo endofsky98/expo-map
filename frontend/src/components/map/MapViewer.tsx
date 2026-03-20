@@ -79,6 +79,7 @@ export default function MapViewer({
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
+  const horizonRef = useRef<HTMLDivElement | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -292,8 +293,6 @@ export default function MapViewer({
       mc.rotation = newRotation;
     }
     onZoomChangeRef.current?.(clamped);
-    // Redraw walls if tilted (wall direction changes with rotation)
-    if (transformRef.current.tilt >= 5) drawWallsRef.current();
     scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
@@ -346,8 +345,19 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
-    // Redraw walls with new tilt angle
-    drawWallsRef.current();
+    // Update horizon line
+    const hz = horizonRef.current;
+    if (hz) {
+      if (clamped < 3) {
+        hz.style.opacity = '0';
+      } else {
+        // Horizon height: more tilt → horizon drops from top
+        // At 60° tilt, horizon at ~30% from top; at 10°, barely visible at top edge
+        const horizonPct = Math.min(35, (clamped / 60) * 35);
+        hz.style.opacity = String(Math.min(1, (clamped - 3) / 10));
+        hz.style.height = `${horizonPct}%`;
+      }
+    }
     scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
@@ -625,100 +635,8 @@ export default function MapViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentImage, tileInfo, useTileMode, imgWidth, imgHeight, prefetchRange]);
 
-  // ===== Walls (isometric 3D wall effect — responds to tilt & rotation) =====
+  // Walls removed — replaced by horizon effect
   const drawWallsRef = useRef<() => void>(() => {});
-
-  useEffect(() => {
-    const draw = () => {
-      const layer = wallLayerRef.current;
-      layer.removeChildren();
-
-      const tilt = transformRef.current.tilt;
-      const rot = transformRef.current.rotation;
-
-      // Fade: invisible below 5°, full at 20°+
-      if (tilt < 5) { layer.alpha = 0; return; }
-      layer.alpha = Math.min(1, (tilt - 5) / 15);
-
-      // Wall height scales with tilt angle (more tilt = taller walls)
-      const wallH = 4 + (tilt / 60) * 18; // 4px at 5° → 22px at 60°
-
-      // Light direction from rotation — simulates sun angle
-      // dx,dy = normalized offset direction for wall extrusion
-      const lightAngle = -rot + Math.PI * 0.75; // light from upper-left, counter-rotate with map
-      const dx = Math.cos(lightAngle) * wallH * 0.4;
-      const dy = Math.sin(lightAngle) * wallH * 0.6;
-
-      const darkSide = 0x1f2937;  // gray-800
-      const lightSide = 0x6b7280; // gray-500
-      const topColor = 0x9ca3af;  // gray-400
-
-      for (const booth of booths) {
-        const bx = booth.x, by = booth.y, bw = booth.width, bh = booth.height;
-
-        // 4 corners of booth top face
-        const tl = { x: bx, y: by };
-        const tr = { x: bx + bw, y: by };
-        const bl = { x: bx, y: by + bh };
-        const br = { x: bx + bw, y: by + bh };
-
-        // Projected base corners (shifted by light direction)
-        const tlB = { x: tl.x + dx, y: tl.y + dy };
-        const trB = { x: tr.x + dx, y: tr.y + dy };
-        const blB = { x: bl.x + dx, y: bl.y + dy };
-        const brB = { x: br.x + dx, y: br.y + dy };
-
-        // Draw 4 wall faces as quads (only visible faces based on direction)
-        const walls = new PIXI.Graphics();
-
-        // Bottom wall (front face) — visible when dy > 0
-        if (dy > 0) {
-          walls.beginFill(darkSide, 0.6);
-          walls.moveTo(bl.x, bl.y); walls.lineTo(br.x, br.y);
-          walls.lineTo(brB.x, brB.y); walls.lineTo(blB.x, blB.y);
-          walls.closePath(); walls.endFill();
-        }
-        // Top wall (back face) — visible when dy < 0
-        if (dy < 0) {
-          walls.beginFill(lightSide, 0.4);
-          walls.moveTo(tl.x, tl.y); walls.lineTo(tr.x, tr.y);
-          walls.lineTo(trB.x, trB.y); walls.lineTo(tlB.x, tlB.y);
-          walls.closePath(); walls.endFill();
-        }
-        // Right wall — visible when dx > 0
-        if (dx > 0) {
-          walls.beginFill(lightSide, 0.5);
-          walls.moveTo(tr.x, tr.y); walls.lineTo(br.x, br.y);
-          walls.lineTo(brB.x, brB.y); walls.lineTo(trB.x, trB.y);
-          walls.closePath(); walls.endFill();
-        }
-        // Left wall — visible when dx < 0
-        if (dx < 0) {
-          walls.beginFill(darkSide, 0.5);
-          walls.moveTo(tl.x, tl.y); walls.lineTo(bl.x, bl.y);
-          walls.lineTo(blB.x, blB.y); walls.lineTo(tlB.x, tlB.y);
-          walls.closePath(); walls.endFill();
-        }
-        layer.addChild(walls);
-
-        // Top face (roof)
-        const top = new PIXI.Graphics();
-        top.beginFill(topColor, 0.12);
-        top.drawRect(bx, by, bw, bh);
-        top.endFill();
-        layer.addChild(top);
-
-        // Outline
-        const outline = new PIXI.Graphics();
-        outline.lineStyle(1.2, darkSide, 0.6);
-        outline.drawRect(bx, by, bw, bh);
-        layer.addChild(outline);
-      }
-    };
-
-    drawWallsRef.current = draw;
-    draw();
-  }, [booths, dimensions]);
 
   // ===== Obstacles =====
   useEffect(() => {
@@ -1361,20 +1279,25 @@ export default function MapViewer({
           <rect width="100%" height="100%" fill="url(#stk-pattern)" />
         </svg>
       </div>
+      {/* Horizon sky gradient — visible during tilt (Mapbox-style) */}
+      <div
+        ref={horizonRef}
+        className="absolute left-0 right-0 top-0 pointer-events-none"
+        style={{
+          zIndex: 3,
+          height: '0%',
+          opacity: 0,
+          transition: 'opacity 0.3s ease',
+          background: 'linear-gradient(to bottom, #0f172a 0%, #1e3a5f 30%, #2d5a87 60%, rgba(45,90,135,0) 100%)',
+        }}
+      />
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
         className="absolute inset-0 overflow-hidden"
         style={{ pointerEvents: 'none', zIndex: 5 }}
       />
-      {/* Edge fog/vignette — always visible, stronger during tilt */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          zIndex: 4,
-          background: 'radial-gradient(ellipse 70% 65% at 50% 50%, transparent 50%, rgba(15,20,35,0.4) 85%, rgba(10,14,28,0.75) 100%)',
-        }}
-      />
+
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
         <div
