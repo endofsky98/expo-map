@@ -132,6 +132,9 @@ export default function MapViewer({
   onZoomChangeRef.current = onZoomChange;
 
   const boothContainersRef = useRef<Map<number, PIXI.Container>>(new Map());
+  const markerOverlayRef = useRef<HTMLDivElement | null>(null);
+  const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const rafIdRef = useRef<number>(0);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -224,6 +227,25 @@ export default function MapViewer({
   const currentFloorIdRef = useRef(currentFloorId);
   currentFloorIdRef.current = currentFloorId;
 
+  // World coordinate → screen pixel
+  function worldToScreen(wx: number, wy: number): { sx: number; sy: number } {
+    const t = transformRef.current;
+    const cos = Math.cos(t.rotation);
+    const sin = Math.sin(t.rotation);
+    const sx = t.x + t.scale * (wx * cos - wy * sin);
+    const sy = t.y + t.scale * (wx * sin + wy * cos);
+    return { sx, sy };
+  }
+
+  // Schedule marker position update via rAF (debounced)
+  function scheduleMarkerUpdate() {
+    if (rafIdRef.current) return;
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = 0;
+      updateMarkerPositions();
+    });
+  }
+
   function applyTransform(newScale: number, newRotation: number, pivotX: number, pivotY: number) {
     const t = transformRef.current;
     const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
@@ -250,6 +272,7 @@ export default function MapViewer({
     onZoomChangeRef.current?.(clamped);
     renderTilesFnRef.current();
     checkBoothRedraw();
+    scheduleMarkerUpdate();
   }
 
   function applyZoom(newScale: number, pivotX: number, pivotY: number) {
@@ -268,6 +291,8 @@ export default function MapViewer({
     ) {
       lastBoothRedrawScaleRef.current = sc;
       redrawBoothsFnRef.current();
+    scheduleMarkerUpdate();
+      scheduleMarkerUpdate();
     }
   }
 
@@ -334,7 +359,7 @@ export default function MapViewer({
     mainContainer.addChild(tileLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(routeLayerRef.current);
-    mainContainer.addChild(boothLayerRef.current);
+    // boothLayer removed — booths are now HTML DOM markers
     mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(overlayLayerRef.current);
     mainContainerRef.current = mainContainer;
@@ -398,6 +423,7 @@ export default function MapViewer({
         t.y = e.clientY - dragStart.y;
         mainContainer.position.set(t.x, t.y);
         renderTilesFnRef.current();
+        scheduleMarkerUpdate();
       }
     });
 
@@ -790,197 +816,208 @@ export default function MapViewer({
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
-  // ===== Booths (Mapbox-style pin markers — fixed screen size) =====
+  // ===== Booths (HTML DOM markers — Mapbox style) =====
+  // updateMarkerPositions: called on every transform change via rAF
+  function updateMarkerPositions() {
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const markers = markerElementsRef.current;
+    const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const show = showBoothsRef.current;
+    const selId = selectedBoothIdRef.current;
+    const actCats = activeCategoriesRef.current;
+    const catColors = categoryColorMapRef.current;
+    const lnFn = lnRef.current;
+
+    // Rotation-aware viewport bounds in world space
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+    const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
+    const wCorners = scrCorners.map(([sx, sy]) => ({
+      x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
+      y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
+    }));
+    const bx0 = Math.min(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+    const by0 = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
+    const bx1 = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+    const by1 = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
+
+    // Viewport culling
+    const visibleBooths: Booth[] = [];
+    for (const booth of boothsRef.current) {
+      const cx = booth.x + booth.width / 2;
+      const cy = booth.y + booth.height / 2;
+      if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
+        visibleBooths.push(booth);
+      }
+    }
+
+    // Grid-based density limiting
+    let sampledIds: Set<number>;
+    if (sc >= 3.0) {
+      sampledIds = new Set(visibleBooths.map(b => b.id));
+    } else {
+      const cellSize = Math.max(30, 100 / sc);
+      const cellMap = new Map<string, number>();
+      for (const booth of visibleBooths) {
+        const cx = Math.floor((booth.x + booth.width / 2) / cellSize);
+        const cy = Math.floor((booth.y + booth.height / 2) / cellSize);
+        const key = `${cx}_${cy}`;
+        if (!cellMap.has(key)) cellMap.set(key, booth.id);
+      }
+      sampledIds = new Set(cellMap.values());
+    }
+
+    for (const booth of boothsRef.current) {
+      const el = markers.get(booth.id);
+      if (!el) continue;
+
+      if (!sampledIds.has(booth.id)) {
+        el.style.display = 'none';
+        continue;
+      }
+
+      const wcx = booth.x + booth.width / 2;
+      const wcy = booth.y + booth.height / 2;
+      const { sx, sy } = worldToScreen(wcx, wcy);
+
+      // Update position via CSS transform (GPU-accelerated)
+      el.style.display = '';
+      el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+
+      // Update selection state
+      const isSelected = booth.id === selId;
+      const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#94a3b8';
+      const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
+
+      el.style.opacity = String(opacity);
+      const pin = el.firstElementChild as HTMLElement;
+      if (pin) {
+        pin.style.backgroundColor = fill;
+        pin.style.borderColor = isSelected ? '#4f46e5' : '#ffffff';
+        pin.style.borderWidth = isSelected ? '3px' : '2px';
+      }
+
+      // Show/hide company label based on zoom
+      const label = el.querySelector('[data-label]') as HTMLElement;
+      if (label) {
+        const companyName = lnFn(booth.company?.name) || '';
+        if (sc >= 1.5 && companyName) {
+          label.textContent = companyName;
+          label.style.display = '';
+        } else {
+          label.style.display = 'none';
+        }
+      }
+    }
+  }
+
   useEffect(() => {
-    const layer = boothLayerRef.current;
-    const containers = boothContainersRef.current;
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const markers = markerElementsRef.current;
     const currentIds = new Set(booths.map(b => b.id));
 
     // Remove deleted booths
-    for (const [id, c] of containers) {
+    for (const [id, el] of markers) {
       if (!currentIds.has(id)) {
-        layer.removeChild(c as any);
-        c.destroy({ children: true });
-        containers.delete(id);
+        el.remove();
+        markers.delete(id);
       }
     }
 
-    // Pin marker constants (screen pixels — never changes with zoom)
-    const PIN_RADIUS = 12;
-    const PIN_TAIL = 6;
-    const FONT_SIZE = 10;
-
-    // Create new booth marker objects / update existing
+    // Create new marker DOM elements
     for (const booth of booths) {
-      // Position at booth center
-      const cx = booth.x + booth.width / 2;
-      const cy = booth.y + booth.height / 2;
+      if (!markers.has(booth.id)) {
+        const el = document.createElement('div');
+        el.className = 'booth-marker';
+        el.style.position = 'absolute';
+        el.style.left = '0';
+        el.style.top = '0';
+        el.style.willChange = 'transform';
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
+        el.style.zIndex = '10';
 
-      if (!containers.has(booth.id)) {
-        const container = new PIXI.Container();
-        container.x = cx;
-        container.y = cy;
+        const fill = booth.color || '#94a3b8';
 
-        // [0] Pin shape (circle + tail) — drawn in screen pixels
-        const pinG = new PIXI.Graphics();
-        container.addChild(pinG);
+        // Pin circle
+        const pin = document.createElement('div');
+        pin.style.width = '24px';
+        pin.style.height = '24px';
+        pin.style.borderRadius = '50%';
+        pin.style.backgroundColor = fill;
+        pin.style.border = '2px solid #ffffff';
+        pin.style.display = 'flex';
+        pin.style.alignItems = 'center';
+        pin.style.justifyContent = 'center';
+        pin.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+        pin.style.position = 'relative';
 
-        // [1] Booth number text
-        const numText = new PIXI.Text(booth.booth_number, {
-          fontFamily: 'Inter, sans-serif',
-          fontWeight: 'bold',
-          fontSize: FONT_SIZE,
-          fill: '#ffffff',
-          align: 'center',
+        // Booth number text
+        const text = document.createElement('span');
+        text.textContent = booth.booth_number;
+        text.style.color = '#ffffff';
+        text.style.fontSize = '9px';
+        text.style.fontWeight = '700';
+        text.style.fontFamily = 'Inter, sans-serif';
+        text.style.lineHeight = '1';
+        text.style.overflow = 'hidden';
+        text.style.whiteSpace = 'nowrap';
+        pin.appendChild(text);
+
+        // Pin tail
+        const tail = document.createElement('div');
+        tail.style.width = '0';
+        tail.style.height = '0';
+        tail.style.borderLeft = '5px solid transparent';
+        tail.style.borderRight = '5px solid transparent';
+        tail.style.borderTop = `6px solid ${fill}`;
+        tail.style.margin = '-1px auto 0';
+
+        // Company label (below pin)
+        const label = document.createElement('div');
+        label.setAttribute('data-label', '');
+        label.style.fontSize = '10px';
+        label.style.fontFamily = 'Inter, sans-serif';
+        label.style.color = '#374151';
+        label.style.textAlign = 'center';
+        label.style.whiteSpace = 'nowrap';
+        label.style.maxWidth = '80px';
+        label.style.overflow = 'hidden';
+        label.style.textOverflow = 'ellipsis';
+        label.style.marginTop = '2px';
+        label.style.textShadow = '0 0 3px #fff, 0 0 3px #fff';
+        label.style.display = 'none';
+
+        el.appendChild(pin);
+        el.appendChild(tail);
+        el.appendChild(label);
+
+        // Click handler
+        el.addEventListener('pointerup', (e) => {
+          e.stopPropagation();
+          onBoothClickRef.current(booth);
+          if (typeof window !== 'undefined' && typeof (window as any).onBoothClick === 'function') {
+            (window as any).onBoothClick(booth.id, booth);
+          }
         });
-        numText.anchor.set(0.5, 0.5);
-        numText.y = -PIN_TAIL; // center in circle, offset by tail
-        container.addChild(numText);
 
-        // [2] Label text (company name, shown below pin)
-        const labelText = new PIXI.Text('', {
-          fontFamily: 'Inter, sans-serif',
-          fontSize: 9,
-          fill: '#374151',
-          align: 'center',
-        });
-        labelText.anchor.set(0.5, 0);
-        labelText.y = PIN_RADIUS;
-        labelText.visible = false;
-        container.addChild(labelText);
-
-        layer.addChild(container as any);
-        containers.set(booth.id, container);
-      } else {
-        const c = containers.get(booth.id)!;
-        c.x = cx;
-        c.y = cy;
+        overlay.appendChild(el);
+        markers.set(booth.id, el);
       }
     }
 
-    const doRedraw = () => {
-      const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
-      const { width: cw, height: ch } = canvasDimsRef.current;
-      // Rotation-aware viewport bounds
-      const cosR = Math.cos(rot);
-      const sinR = Math.sin(rot);
-      const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
-      const wCorners = scrCorners.map(([sx, sy]) => ({
-        x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
-        y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
-      }));
-      const bx0 = Math.min(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
-      const by0 = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
-      const bx1 = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
-      const by1 = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
-      const bounds = { x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0 };
-      const show = showBoothsRef.current;
-      const selId = selectedBoothIdRef.current;
-      const actCats = activeCategoriesRef.current;
-      const catColors = categoryColorMapRef.current;
-      const lnFn = lnRef.current;
-
-      // Viewport culling
-      const visibleBooths: typeof boothsRef.current = [];
-      for (const booth of boothsRef.current) {
-        const cx = booth.x + booth.width / 2;
-        const cy = booth.y + booth.height / 2;
-        const inView = cx >= bounds.x && cx <= bounds.x + bounds.width &&
-                       cy >= bounds.y && cy <= bounds.y + bounds.height;
-        if (show && inView) visibleBooths.push(booth);
-      }
-
-      // Grid-based density limiting
-      let sampledIds: Set<number>;
-      if (sc >= 3.0) {
-        sampledIds = new Set(visibleBooths.map(b => b.id));
-      } else {
-        const cellSize = Math.max(30, 100 / sc);
-        const cellMap = new Map<string, number>();
-        for (const booth of visibleBooths) {
-          const cx = Math.floor((booth.x + booth.width / 2) / cellSize);
-          const cy = Math.floor((booth.y + booth.height / 2) / cellSize);
-          const key = `${cx}_${cy}`;
-          if (!cellMap.has(key)) cellMap.set(key, booth.id);
-        }
-        sampledIds = new Set(cellMap.values());
-      }
-
-      // Inverse scale so markers stay fixed screen size
-      const invScale = 1 / sc;
-
-      for (const booth of boothsRef.current) {
-        const container = containers.get(booth.id);
-        if (!container) continue;
-
-        container.visible = sampledIds.has(booth.id);
-        if (!container.visible) continue;
-
-        const isSelected = booth.id === selId;
-        const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#94a3b8';
-        const fillNum = hexStringToNumber(fill);
-        const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-
-        // Position at booth center
-        container.x = booth.x + booth.width / 2;
-        container.y = booth.y + booth.height / 2;
-        container.alpha = opacity;
-
-        // Counter-rotate + counter-scale entire container → fixed screen appearance
-        container.rotation = -rot;
-        container.scale.set(invScale);
-
-        // [0] Redraw pin shape
-        const pinG = container.children[0] as PIXI.Graphics;
-        pinG.clear();
-        const pinColor = isSelected ? 0x4f46e5 : fillNum;
-        // Pin tail (triangle pointing down)
-        pinG.beginFill(pinColor, 0.95);
-        pinG.moveTo(-4, 0);
-        pinG.lineTo(0, PIN_TAIL);
-        pinG.lineTo(4, 0);
-        pinG.endFill();
-        // Pin circle
-        pinG.lineStyle(isSelected ? 2.5 : 1.5, 0xffffff);
-        pinG.beginFill(pinColor, 0.95);
-        pinG.drawCircle(0, -PIN_TAIL, PIN_RADIUS);
-        pinG.endFill();
-
-        // [1] Booth number (always visible, fixed size)
-        const numText = container.children[1] as PIXI.Text;
-        numText.text = booth.booth_number;
-        numText.y = -PIN_TAIL;
-
-        // [2] Label (company name — visible when zoomed in enough)
-        const labelText = container.children[2] as PIXI.Text;
-        if (sc >= 1.5) {
-          const companyName = lnFn(booth.company?.name) || '';
-          if (companyName) {
-            labelText.text = companyName;
-            labelText.y = PIN_RADIUS - 2;
-            labelText.visible = true;
-            // Limit label width to ~80px screen
-            if (labelText.width > 80) {
-              labelText.scale.x = 80 / labelText.width;
-            } else {
-              labelText.scale.x = 1;
-            }
-          } else {
-            labelText.visible = false;
-          }
-        } else {
-          labelText.visible = false;
-        }
-      }
-    };
-
-    redrawBoothsFnRef.current = doRedraw;
-    doRedraw();
+    // Initial position update
+    updateMarkerPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
 
-  // Redraw booths on style/filter changes (no object re-init needed)
+  // Redraw markers on style/filter changes
   useEffect(() => {
-    redrawBoothsFnRef.current();
+    updateMarkerPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBoothId, showBooths, activeCategories, categories, ln]);
 
   // ===== Facilities =====
@@ -1064,6 +1101,7 @@ export default function MapViewer({
     mc.position.set(transformRef.current.x, transformRef.current.y);
     renderTilesFnRef.current();
     redrawBoothsFnRef.current();
+    scheduleMarkerUpdate();
   }
 
   function resetView() {
@@ -1086,6 +1124,7 @@ export default function MapViewer({
     onZoomChangeRef.current?.(fitScale);
     renderTilesFnRef.current();
     redrawBoothsFnRef.current();
+    scheduleMarkerUpdate();
   }
 
   function panToArea(x: number, y: number, width: number, height: number) {
@@ -1106,6 +1145,7 @@ export default function MapViewer({
     onZoomChange?.(clampedScale);
     renderTilesFnRef.current();
     redrawBoothsFnRef.current();
+    scheduleMarkerUpdate();
   }
 
   useEffect(() => {
@@ -1121,6 +1161,12 @@ export default function MapViewer({
 
   return (
     <div ref={containerRef} className="w-full h-full relative" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
+      {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
+      <div
+        ref={markerOverlayRef}
+        className="absolute inset-0 overflow-hidden"
+        style={{ pointerEvents: 'none', zIndex: 5 }}
+      />
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
         <div
