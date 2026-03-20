@@ -178,7 +178,7 @@ def upload_image(
 
 
 @router.put("/{image_id}/reconfigure", response_model=MapImageResponse, dependencies=[Depends(get_current_admin)])
-def reconfigure_image(image_id: int, zoom_size: int = 256, db: Session = Depends(get_db)):
+def reconfigure_image(image_id: int, zoom_size: int = 0, zoom_step_pixels: int = 0, db: Session = Depends(get_db)):
     """Reconfigure zoom levels for an existing image using image pyramid approach."""
     img_record = db.query(MapImage).filter(MapImage.id == image_id).first()
     if not img_record:
@@ -188,6 +188,9 @@ def reconfigure_image(image_id: int, zoom_size: int = 256, db: Session = Depends
     high_path = os.path.join(os.path.dirname(BASE_DIR), img_record.high_path.lstrip("/"))
     if not os.path.exists(high_path):
         raise HTTPException(status_code=400, detail="Original high-res image file not found")
+
+    # zoom_step_pixels is an alias for zoom_size (frontend compatibility)
+    effective_zoom_size = zoom_size or zoom_step_pixels or 256
 
     img = Image.open(high_path)
     img = _prepare_rgb(img)
@@ -203,17 +206,17 @@ def reconfigure_image(image_id: int, zoom_size: int = 256, db: Session = Depends
             if os.path.exists(old_path):
                 os.remove(old_path)
 
-    zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_size)
+    zoom_levels = _generate_zoom_levels(img, prefix, base_name, effective_zoom_size)
     img_record.zoom_levels = json.dumps(zoom_levels)
-    img_record.zoom_step_pixels = zoom_size
+    img_record.zoom_step_pixels = effective_zoom_size
 
     # Generate tile pyramid
     try:
         img_full = Image.open(high_path)
         img_full = _prepare_rgb(img_full)
-        tile_info = generate_tile_pyramid(img_record.id, img_full, zoom_size)
+        tile_info = generate_tile_pyramid(img_record.id, img_full, effective_zoom_size)
         img_record.tile_info = json.dumps(tile_info)
-        print(f"[tiles] Tile pyramid generated for image {img_record.id}: {len(tile_info['levels'])} levels")
+        print(f"[tiles] Tile pyramid generated for image {img_record.id}: {len(tile_info['levels'])} levels, tile_size={effective_zoom_size}")
     except Exception as e:
         print(f"[tiles] Warning: tile generation failed for image {img_record.id}: {e}")
         import traceback; traceback.print_exc()
