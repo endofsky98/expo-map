@@ -327,13 +327,28 @@ def _create_seed_data(db: Session) -> dict | None:
 def _ensure_default_settings(db: Session):
     """Ensure default settings exist."""
     defaults = [
-        ("prefetch_range", "2", "Viewport tile prefetch range (1-5 tiles in each direction)"),
+        ("prefetch_range", "2", "Viewport tile prefetch range (0-5 tiles in each direction, 0=pure lazy load)"),
     ]
     for key, value, desc in defaults:
         existing = db.query(Setting).filter(Setting.key == key).first()
         if not existing:
             db.add(Setting(key=key, value=value, description=desc))
     db.commit()
+
+
+def _migrate_v8(db: Session):
+    """v8 migration: add zoom_size column to floors table."""
+    from sqlalchemy import text
+    try:
+        db.execute(text("SELECT zoom_size FROM floors LIMIT 1"))
+    except Exception:
+        db.rollback()
+        try:
+            db.execute(text("ALTER TABLE floors ADD COLUMN zoom_size INTEGER DEFAULT 256"))
+            db.commit()
+            print("[startup] v8 migration: added zoom_size column to floors")
+        except Exception:
+            db.rollback()
 
 
 @app.on_event("startup")
@@ -350,6 +365,7 @@ def on_startup():
 
     db = next(get_db())
     try:
+        _migrate_v8(db)
         result = _create_seed_data(db)
         if result:
             print(f"[startup] Auto-seeded: {result}")

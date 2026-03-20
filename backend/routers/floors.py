@@ -16,6 +16,7 @@ def _parse_floor(floor: Floor) -> dict:
         "id": floor.id,
         "name": json.loads(floor.name) if isinstance(floor.name, str) else floor.name,
         "order": floor.order,
+        "zoom_size": floor.zoom_size or 256,
         "created_at": floor.created_at,
     }
 
@@ -39,6 +40,7 @@ def create_floor(data: FloorCreate, db: Session = Depends(get_db)):
     floor = Floor(
         name=json.dumps(data.name, ensure_ascii=False),
         order=data.order,
+        zoom_size=data.zoom_size,
     )
     db.add(floor)
     db.commit()
@@ -55,6 +57,8 @@ def update_floor(floor_id: int, data: FloorUpdate, db: Session = Depends(get_db)
         floor.name = json.dumps(data.name, ensure_ascii=False)
     if data.order is not None:
         floor.order = data.order
+    if data.zoom_size is not None:
+        floor.zoom_size = data.zoom_size
     db.commit()
     db.refresh(floor)
     return _parse_floor(floor)

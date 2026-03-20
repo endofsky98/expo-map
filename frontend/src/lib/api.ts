@@ -213,6 +213,10 @@ export async function deleteImage(id: number): Promise<void> {
   await request<void>(`/api/images/${id}`, { method: 'DELETE' });
 }
 
+export async function regenerateFloorTiles(floorId: number): Promise<MapImage[]> {
+  return request<MapImage[]>(`/api/images/regenerate-floor/${floorId}`, { method: 'PUT' });
+}
+
 // Facilities
 export async function fetchFacilities(floorId?: number, hallId?: number, type?: string): Promise<Facility[]> {
   const params = new URLSearchParams();

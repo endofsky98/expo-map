@@ -8,15 +8,18 @@ from pydantic import BaseModel
 class FloorCreate(BaseModel):
     name: dict
     order: int = 0
+    zoom_size: int = 256
 
 class FloorUpdate(BaseModel):
     name: Optional[dict] = None
     order: Optional[int] = None
+    zoom_size: Optional[int] = None
 
 class FloorResponse(BaseModel):
     id: int
     name: Any
     order: int
+    zoom_size: int = 256
     created_at: Optional[datetime] = None
 
     class Config:

@@ -11,7 +11,7 @@ import {
 import AdminLayout from '@/components/AdminLayout';
 import { MapImage } from '@/types';
 import { useI18n } from '@/lib/i18n';
-import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage, updateImageFloor, fetchSetting, updateSetting } from '@/lib/api';
+import { fetchImages, fetchFloors, uploadImage, setCurrentImage, deleteImage, reconfigureImage, updateImageFloor, fetchSetting, updateSetting, updateFloor, regenerateFloorTiles } from '@/lib/api';
 import { Floor } from '@/types';
 
 export default function ImagesPage() {
@@ -26,6 +26,8 @@ export default function ImagesPage() {
   const [uploadZoomStep, setUploadZoomStep] = useState(512);
   const [prefetchRange, setPrefetchRange] = useState(2);
   const [prefetchSaving, setPrefetchSaving] = useState(false);
+  const [zoomSizes, setZoomSizes] = useState<Record<number, number>>({});
+  const [zoomSizeSaving, setZoomSizeSaving] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export default function ImagesPage() {
     try {
       const setting = await fetchSetting('prefetch_range');
       const val = parseInt(setting.value, 10);
-      if (!isNaN(val) && val >= 1 && val <= 5) {
+      if (!isNaN(val) && val >= 0 && val <= 5) {
         setPrefetchRange(val);
       }
     } catch { /* use default */ }
@@ -55,12 +57,33 @@ export default function ImagesPage() {
     }
   }
 
+  async function handleZoomSizeSave(floorId: number) {
+    const newSize = zoomSizes[floorId];
+    if (!newSize || newSize < 64) { setMessage('Zoom size must be at least 64'); return; }
+    setZoomSizeSaving(floorId);
+    try {
+      await updateFloor(floorId, { zoom_size: newSize } as Partial<Floor>);
+      await regenerateFloorTiles(floorId);
+      setMessage(`Zoom size updated to ${newSize}px — tiles regenerated`);
+      await loadImages();
+    } catch {
+      setMessage('Failed to update zoom size');
+    } finally {
+      setZoomSizeSaving(null);
+    }
+  }
+
   async function loadImages() {
     setLoading(true);
     try {
       const [data, floorData] = await Promise.all([fetchImages(), fetchFloors()]);
       setImages(data);
       setFloors(floorData);
+      const sizes: Record<number, number> = {};
+      for (const f of floorData) {
+        sizes[f.id] = (f as Floor & { zoom_size?: number }).zoom_size || 256;
+      }
+      setZoomSizes(sizes);
     } catch (err) {
       console.error(err);
       setMessage('Failed to load images');
@@ -201,12 +224,12 @@ export default function ImagesPage() {
             </h2>
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            Number of tiles to preload around the viewport in each direction (1-5). Higher values reduce loading gaps when panning but increase data usage.
+            Number of tiles to preload around the viewport in each direction (0-5). Set to 0 for pure lazy load (no prefetch). Higher values reduce loading gaps when panning but increase data usage.
           </p>
           <div className="flex items-center gap-3">
             <input
               type="range"
-              min={1}
+              min={0}
               max={5}
               step={1}
               value={prefetchRange}
@@ -225,6 +248,47 @@ export default function ImagesPage() {
             </button>
           </div>
         </div>
+
+        {/* Zoom Size per floor */}
+        {floors.length > 0 && (
+          <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Settings2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Zoom Size (Tile Size per Floor)
+              </h2>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              Tile size in pixels for image pyramid generation. Changing this will regenerate all tiles for that floor.
+            </p>
+            <div className="space-y-3">
+              {floors.map((f) => {
+                const floorName = typeof f.name === 'string' ? f.name : (f.name as Record<string,string>).ko || (f.name as Record<string,string>).en;
+                return (
+                  <div key={f.id} className="flex items-center gap-3">
+                    <span className="text-sm text-gray-700 dark:text-gray-300 w-20 shrink-0">{floorName}</span>
+                    <input
+                      type="number"
+                      value={zoomSizes[f.id] || 256}
+                      onChange={(e) => setZoomSizes((prev) => ({ ...prev, [f.id]: Number(e.target.value) }))}
+                      className="w-24 px-2 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+                      min={64}
+                      step={64}
+                    />
+                    <span className="text-xs text-gray-400">px</span>
+                    <button
+                      onClick={() => handleZoomSizeSave(f.id)}
+                      disabled={zoomSizeSaving === f.id}
+                      className="px-3 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors disabled:opacity-50"
+                    >
+                      {zoomSizeSaving === f.id ? '...' : 'Save & Regenerate'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Upload area */}
         <div

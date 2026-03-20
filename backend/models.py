@@ -10,6 +10,7 @@ class Floor(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(Text, nullable=False)  # JSON i18n: {"ko": "...", "en": "..."}
     order = Column(Integer, default=0)
+    zoom_size = Column(Integer, default=256)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     halls = relationship("Hall", back_populates="floor", cascade="all, delete-orphan")

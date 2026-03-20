@@ -2,6 +2,7 @@ export interface Floor {
   id: number;
   name: string | Record<string, string>;
   order: number;
+  zoom_size?: number;
   created_at?: string;
 }
 
@@ -149,6 +150,7 @@ export interface Setting {
 declare global {
   interface Window {
     onBoothClick?: (boothId: number, boothData: Booth) => void;
+    onMapClick?: (x: number, y: number, floorId: number) => void;
     onRouteReady?: (route: RouteResult) => void;
     setCurrentPosition?: (x: number, y: number, floorId: number, hallId: number) => void;
   }

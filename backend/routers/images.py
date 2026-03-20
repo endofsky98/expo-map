@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from PIL import Image
 
 from database import get_db
-from models import MapImage
+from models import MapImage, Floor
 from schemas import MapImageResponse
 from routers.auth import get_current_admin
 
@@ -26,25 +26,38 @@ def _resize_image(img: Image.Image, max_width: int) -> Image.Image:
     return img.resize((max_width, new_height), Image.LANCZOS)
 
 
-def _generate_zoom_levels(img: Image.Image, prefix: str, base_name: str, zoom_step_pixels: int) -> list:
-    """Generate zoom level images based on zoom_step_pixels."""
+def _generate_zoom_levels(img: Image.Image, prefix: str, base_name: str, zoom_size: int) -> list:
+    """Generate zoom level images using Image Pyramid (halving) approach.
+
+    Process:
+    1. Original image → highest zoom level
+    2. Resize to half → next zoom level
+    3. Repeat until both dimensions <= zoom_size
+    Levels are numbered 0 (smallest) to N (original/largest).
+    """
     os.makedirs(UPLOAD_DIR, exist_ok=True)
-    max_dim = max(img.width, img.height)
-    num_levels = max(1, max_dim // zoom_step_pixels)
-    # Cap at reasonable range
-    num_levels = min(num_levels, 10)
+
+    # Build pyramid from original down to zoom_size
+    pyramid = []  # Will be reversed: index 0 = original, then halved...
+    current = img.copy()
+    pyramid.append(current)
+
+    while current.width > zoom_size or current.height > zoom_size:
+        new_w = max(1, current.width // 2)
+        new_h = max(1, current.height // 2)
+        current = current.resize((new_w, new_h), Image.LANCZOS)
+        pyramid.append(current)
+
+    # Reverse so level 0 = smallest, level N = original (largest)
+    pyramid.reverse()
 
     levels = []
-    for level in range(num_levels):
-        # Level 0 = smallest, level N = largest (original)
-        fraction = (level + 1) / num_levels
-        target_width = max(200, int(img.width * fraction))
-        resized = _resize_image(img, target_width)
-        filename = f"{prefix}_{base_name}_zoom{level}.jpg"
+    for idx, resized in enumerate(pyramid):
+        filename = f"{prefix}_{base_name}_zoom{idx}.jpg"
         filepath = os.path.join(UPLOAD_DIR, filename)
         resized.save(filepath, "JPEG", quality=85)
         levels.append({
-            "level": level,
+            "level": idx,
             "path": f"/uploads/images/{filename}",
             "width": resized.width,
             "height": resized.height,
@@ -100,7 +113,7 @@ def upload_image(
     file: UploadFile = File(...),
     floor_id: Optional[int] = Form(None),
     hall_id: Optional[int] = Form(None),
-    zoom_step_pixels: int = Form(512),
+    zoom_step_pixels: int = Form(256),
     db: Session = Depends(get_db),
 ):
     os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -114,6 +127,13 @@ def upload_image(
     original_name = file.filename or "image.jpg"
     base_name = os.path.splitext(original_name)[0]
 
+    # Determine zoom_size: use floor's zoom_size if floor_id provided, else form value
+    zoom_size = zoom_step_pixels
+    if floor_id:
+        floor = db.query(Floor).filter(Floor.id == floor_id).first()
+        if floor and floor.zoom_size:
+            zoom_size = floor.zoom_size
+
     # Legacy 3-level images (low/medium/high)
     resolutions = {"low": 800, "medium": 2000, "high": 4000}
     paths = {}
@@ -124,8 +144,8 @@ def upload_image(
         resized.save(filepath, "JPEG", quality=85)
         paths[res_name] = f"/uploads/images/{filename}"
 
-    # Dynamic zoom levels
-    zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_step_pixels)
+    # Image pyramid zoom levels
+    zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_size)
 
     map_image = MapImage(
         original_filename=original_name,
@@ -133,7 +153,7 @@ def upload_image(
         medium_path=paths["medium"],
         high_path=paths["high"],
         zoom_levels=json.dumps(zoom_levels),
-        zoom_step_pixels=zoom_step_pixels,
+        zoom_step_pixels=zoom_size,
         width=original_width,
         height=original_height,
         is_current=False,
@@ -147,8 +167,8 @@ def upload_image(
 
 
 @router.put("/{image_id}/reconfigure", response_model=MapImageResponse, dependencies=[Depends(get_current_admin)])
-def reconfigure_image(image_id: int, zoom_step_pixels: int = 512, db: Session = Depends(get_db)):
-    """Reconfigure zoom levels for an existing image without re-uploading."""
+def reconfigure_image(image_id: int, zoom_size: int = 256, db: Session = Depends(get_db)):
+    """Reconfigure zoom levels for an existing image using image pyramid approach."""
     img_record = db.query(MapImage).filter(MapImage.id == image_id).first()
     if not img_record:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -172,12 +192,53 @@ def reconfigure_image(image_id: int, zoom_step_pixels: int = 512, db: Session = 
             if os.path.exists(old_path):
                 os.remove(old_path)
 
-    zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_step_pixels)
+    zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_size)
     img_record.zoom_levels = json.dumps(zoom_levels)
-    img_record.zoom_step_pixels = zoom_step_pixels
+    img_record.zoom_step_pixels = zoom_size
     db.commit()
     db.refresh(img_record)
     return img_record
+
+
+@router.put("/regenerate-floor/{floor_id}", response_model=List[MapImageResponse], dependencies=[Depends(get_current_admin)])
+def regenerate_floor_tiles(floor_id: int, db: Session = Depends(get_db)):
+    """Regenerate all tile pyramids for a floor using its zoom_size setting."""
+    floor = db.query(Floor).filter(Floor.id == floor_id).first()
+    if not floor:
+        raise HTTPException(status_code=404, detail="Floor not found")
+
+    zoom_size = floor.zoom_size or 256
+    images = db.query(MapImage).filter(MapImage.floor_id == floor_id).all()
+    results = []
+
+    for img_record in images:
+        high_path = os.path.join(os.path.dirname(BASE_DIR), img_record.high_path.lstrip("/"))
+        if not os.path.exists(high_path):
+            continue
+
+        img = Image.open(high_path)
+        img = _prepare_rgb(img)
+
+        prefix = uuid.uuid4().hex[:12]
+        base_name = os.path.splitext(img_record.original_filename)[0]
+
+        # Delete old zoom level files
+        if img_record.zoom_levels:
+            old_levels = json.loads(img_record.zoom_levels) if isinstance(img_record.zoom_levels, str) else img_record.zoom_levels
+            for lv in (old_levels or []):
+                old_path = os.path.join(os.path.dirname(BASE_DIR), lv["path"].lstrip("/"))
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+
+        zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_size)
+        img_record.zoom_levels = json.dumps(zoom_levels)
+        img_record.zoom_step_pixels = zoom_size
+        results.append(img_record)
+
+    db.commit()
+    for r in results:
+        db.refresh(r)
+    return results
 
 
 @router.put("/{image_id}/set-current", response_model=MapImageResponse, dependencies=[Depends(get_current_admin)])

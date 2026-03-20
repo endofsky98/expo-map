@@ -67,12 +67,12 @@ export default function HomePage() {
     }
   }, [router.query.showBooths]);
 
-  // v7: Fetch prefetch range setting
+  // v7: Fetch prefetch range setting (v8: allow 0 for pure lazy load)
   useEffect(() => {
     fetchSetting('prefetch_range')
       .then((setting) => {
         const val = parseInt(setting.value, 10);
-        if (!isNaN(val) && val >= 1 && val <= 5) {
+        if (!isNaN(val) && val >= 0 && val <= 5) {
           setPrefetchRange(val);
         }
       })
@@ -188,6 +188,10 @@ export default function HomePage() {
   const handleBoothClick = useCallback((booth: Booth) => {
     setSelectedBoothId(booth.id);
     setBoothPopup(booth);
+  }, []);
+
+  const handleMapClick = useCallback((x: number, y: number, floorId: number) => {
+    console.log(`onMapClick: x=${x}, y=${y}, floorId=${floorId}`);
   }, []);
 
   const handleSearchSelect = useCallback((booth: Booth) => {
@@ -380,6 +384,7 @@ export default function HomePage() {
               showBooths={showBooths}
               prefetchRange={prefetchRange}
               onBoothClick={handleBoothClick}
+              onMapClick={handleMapClick}
               onZoomChange={setZoom}
             />
           )}

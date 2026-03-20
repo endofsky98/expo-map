@@ -27,6 +27,7 @@ interface MapViewerProps {
   showBooths: boolean;
   prefetchRange: number;
   onBoothClick: (booth: Booth) => void;
+  onMapClick?: (x: number, y: number, floorId: number) => void;
   onZoomChange?: (zoom: number) => void;
 }
 
@@ -67,6 +68,7 @@ export default function MapViewer({
   showBooths,
   prefetchRange,
   onBoothClick,
+  onMapClick,
   onZoomChange,
 }: MapViewerProps) {
   const { ln } = useI18n();
@@ -439,22 +441,27 @@ export default function MapViewer({
     }
 
     // Find booth at this map coordinate
-    if (showBooths) {
-      for (const booth of booths) {
-        // Check all booths, not just visible ones, for accurate hit detection
-        if (
-          mapX >= booth.x &&
-          mapX <= booth.x + booth.width &&
-          mapY >= booth.y &&
-          mapY <= booth.y + booth.height
-        ) {
-          onBoothClick(booth);
-          if (typeof window !== 'undefined' && typeof window.onBoothClick === 'function') {
-            window.onBoothClick(booth.id, booth);
-          }
-          return;
+    for (const booth of booths) {
+      if (
+        mapX >= booth.x &&
+        mapX <= booth.x + booth.width &&
+        mapY >= booth.y &&
+        mapY <= booth.y + booth.height
+      ) {
+        onBoothClick(booth);
+        if (typeof window !== 'undefined' && typeof window.onBoothClick === 'function') {
+          window.onBoothClick(booth.id, booth);
         }
+        return;
       }
+    }
+
+    // No booth at click position — fire onMapClick with map coordinates
+    const floorId = currentFloorId || 0;
+    console.log(`onMapClick(${Math.round(mapX)}, ${Math.round(mapY)}, ${floorId})`);
+    onMapClick?.(Math.round(mapX), Math.round(mapY), floorId);
+    if (typeof window !== 'undefined' && typeof window.onMapClick === 'function') {
+      window.onMapClick(Math.round(mapX), Math.round(mapY), floorId);
     }
   }
 
