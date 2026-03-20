@@ -300,18 +300,17 @@ export default function MapViewer({
     const clamped = Math.max(MIN_TILT, Math.min(MAX_TILT, tilt));
     transformRef.current.tilt = clamped;
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    const overlay = markerOverlayRef.current;
     if (clamped === 0) {
-      canvas.style.transform = '';
-      canvas.style.transformOrigin = '';
+      if (canvas) { canvas.style.transform = ''; canvas.style.transformOrigin = ''; }
+      if (overlay) { overlay.style.transform = ''; overlay.style.transformOrigin = ''; }
     } else {
-      // perspective로 기울이면 양옆이 좁아지므로 scaleX로 보상
-      // rotateX(θ)일 때 수평 축소율 ≈ cos(θ) → 1/cos(θ)로 보상
       const rad = (clamped * Math.PI) / 180;
       const scaleX = 1 / Math.cos(rad);
-      canvas.style.transform = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
-      // 기준점을 위쪽(30%)으로 → 기울어졌을 때 지도가 위로 위치
-      canvas.style.transformOrigin = 'center 30%';
+      const tf = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
+      const origin = 'center 30%';
+      if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
+      if (overlay) { overlay.style.transform = tf; overlay.style.transformOrigin = origin; }
     }
   }
 
@@ -883,31 +882,33 @@ export default function MapViewer({
       const { sx, sy } = worldToScreen(wcx, wcy);
 
       // Update position via CSS transform (GPU-accelerated)
-      el.style.display = '';
+      el.style.display = 'flex';
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
 
-      // Update selection state
-      const isSelected = booth.id === selId;
-      const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#94a3b8';
+      // Update opacity based on category filter
       const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-
       el.style.opacity = String(opacity);
-      const pin = el.firstElementChild as HTMLElement;
-      if (pin) {
-        pin.style.backgroundColor = fill;
-        pin.style.borderColor = isSelected ? '#4f46e5' : '#ffffff';
-        pin.style.borderWidth = isSelected ? '3px' : '2px';
+
+      // Update SVG pin color for selection
+      const isSelected = booth.id === selId;
+      const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#ef4444';
+      const pinSvg = el.querySelector('svg path') as SVGPathElement | null;
+      if (pinSvg) {
+        pinSvg.setAttribute('fill', fill);
+        pinSvg.setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
+        pinSvg.setAttribute('stroke-width', isSelected ? '3' : '2');
       }
 
-      // Show/hide company label based on zoom
+      // Update label: booth number + company name when zoomed
       const label = el.querySelector('[data-label]') as HTMLElement;
       if (label) {
         const companyName = lnFn(booth.company?.name) || '';
         if (sc >= 1.5 && companyName) {
-          label.textContent = companyName;
-          label.style.display = '';
+          label.textContent = `${booth.booth_number}\n${companyName}`;
+          label.style.whiteSpace = 'pre-line';
         } else {
-          label.style.display = 'none';
+          label.textContent = booth.booth_number;
+          label.style.whiteSpace = 'nowrap';
         }
       }
     }
@@ -939,60 +940,39 @@ export default function MapViewer({
         el.style.pointerEvents = 'auto';
         el.style.cursor = 'pointer';
         el.style.zIndex = '10';
+        el.style.display = 'flex';
+        el.style.flexDirection = 'column';
+        el.style.alignItems = 'center';
 
-        const fill = booth.color || '#94a3b8';
+        const fill = booth.color || (booth.category_id && categoryColorMap[booth.category_id]) || '#ef4444';
 
-        // Pin circle
-        const pin = document.createElement('div');
-        pin.style.width = '24px';
-        pin.style.height = '24px';
-        pin.style.borderRadius = '50%';
-        pin.style.backgroundColor = fill;
-        pin.style.border = '2px solid #ffffff';
-        pin.style.display = 'flex';
-        pin.style.alignItems = 'center';
-        pin.style.justifyContent = 'center';
-        pin.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-        pin.style.position = 'relative';
+        // SVG map pin (realistic pin shape)
+        const pinSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        pinSvg.setAttribute('width', '28');
+        pinSvg.setAttribute('height', '36');
+        pinSvg.setAttribute('viewBox', '0 0 28 36');
+        pinSvg.style.filter = 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))';
+        pinSvg.innerHTML = `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${fill}" stroke="#fff" stroke-width="2"/>` +
+          `<circle cx="14" cy="14" r="6" fill="#fff" fill-opacity="0.9"/>`;
 
-        // Booth number text
-        const text = document.createElement('span');
-        text.textContent = booth.booth_number;
-        text.style.color = '#ffffff';
-        text.style.fontSize = '9px';
-        text.style.fontWeight = '700';
-        text.style.fontFamily = 'Inter, sans-serif';
-        text.style.lineHeight = '1';
-        text.style.overflow = 'hidden';
-        text.style.whiteSpace = 'nowrap';
-        pin.appendChild(text);
-
-        // Pin tail
-        const tail = document.createElement('div');
-        tail.style.width = '0';
-        tail.style.height = '0';
-        tail.style.borderLeft = '5px solid transparent';
-        tail.style.borderRight = '5px solid transparent';
-        tail.style.borderTop = `6px solid ${fill}`;
-        tail.style.margin = '-1px auto 0';
-
-        // Company label (below pin)
+        // Booth number label — below pin, black text with white outline
         const label = document.createElement('div');
         label.setAttribute('data-label', '');
-        label.style.fontSize = '10px';
+        label.textContent = booth.booth_number;
+        label.style.fontSize = '11px';
+        label.style.fontWeight = '700';
         label.style.fontFamily = 'Inter, sans-serif';
-        label.style.color = '#374151';
+        label.style.color = '#1f2937';
         label.style.textAlign = 'center';
         label.style.whiteSpace = 'nowrap';
-        label.style.maxWidth = '80px';
+        label.style.maxWidth = '90px';
         label.style.overflow = 'hidden';
         label.style.textOverflow = 'ellipsis';
-        label.style.marginTop = '2px';
-        label.style.textShadow = '0 0 3px #fff, 0 0 3px #fff';
-        label.style.display = 'none';
+        label.style.marginTop = '1px';
+        label.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
+        label.style.lineHeight = '1.2';
 
-        el.appendChild(pin);
-        el.appendChild(tail);
+        el.appendChild(pinSvg);
         el.appendChild(label);
 
         // Click handler
