@@ -303,6 +303,16 @@ export default function MapViewer({
     t.y += clampedIcy - icy;
   }
 
+  const tileRenderPendingRef = useRef(false);
+  function scheduleRenderTiles() {
+    if (tileRenderPendingRef.current) return;
+    tileRenderPendingRef.current = true;
+    requestAnimationFrame(() => {
+      tileRenderPendingRef.current = false;
+      renderTilesFnRef.current();
+    });
+  }
+
   function applyTransform(newScale: number, newRotation: number, pivotX: number, pivotY: number) {
     const t = transformRef.current;
     const { width: cw, height: ch } = canvasDimsRef.current;
@@ -332,7 +342,7 @@ export default function MapViewer({
       mc.rotation = newRotation;
     }
     onZoomChangeRef.current?.(clamped);
-    renderTilesFnRef.current();
+    scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
 
@@ -450,7 +460,8 @@ export default function MapViewer({
     let gestureType: 'none' | 'zoom' | 'tilt' = 'none';
     let gestureAccumDist = 0;
     let gestureAccumMidY = 0;
-    const GESTURE_THRESHOLD = 12;
+    const GESTURE_THRESHOLD = 5; // reduced from 12 for snappier response
+    let moveRafPending = false; // rAF throttle for pointermove
 
     let lastDragX = 0, lastDragY = 0, lastDragTime = 0;
 
@@ -482,37 +493,44 @@ export default function MapViewer({
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
       if (pointers.size === 2) {
-        const pts = Array.from(pointers.values());
-        const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
-        const midY = (pts[0].y + pts[1].y) / 2;
-        if (lastPinchDist > 0) {
-          // #2: Classify gesture once, then commit
-          const distDelta = Math.abs(dist - lastPinchDist);
-          const midYDelta = Math.abs(midY - lastPinchMidY);
-          if (gestureType === 'none') {
-            gestureAccumDist += distDelta;
-            gestureAccumMidY += midYDelta;
-            if (gestureAccumDist > GESTURE_THRESHOLD || gestureAccumMidY > GESTURE_THRESHOLD) {
-              gestureType = gestureAccumDist > gestureAccumMidY ? 'zoom' : 'tilt';
+        // rAF throttle for two-finger gestures to prevent jank on high-refresh-rate displays
+        if (moveRafPending) return;
+        moveRafPending = true;
+        requestAnimationFrame(() => {
+          moveRafPending = false;
+          if (pointers.size !== 2) return;
+          const pts = Array.from(pointers.values());
+          const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+          const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+          const midY = (pts[0].y + pts[1].y) / 2;
+          if (lastPinchDist > 0) {
+            // #2: Classify gesture once, then commit
+            const distDelta = Math.abs(dist - lastPinchDist);
+            const midYDelta = Math.abs(midY - lastPinchMidY);
+            if (gestureType === 'none') {
+              gestureAccumDist += distDelta;
+              gestureAccumMidY += midYDelta;
+              if (gestureAccumDist > GESTURE_THRESHOLD || gestureAccumMidY > GESTURE_THRESHOLD) {
+                gestureType = gestureAccumDist > gestureAccumMidY ? 'zoom' : 'tilt';
+              }
+            }
+            if (gestureType !== 'tilt') {
+              const rect = el.getBoundingClientRect();
+              const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
+              const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
+              const newScale = transformRef.current.scale * (dist / lastPinchDist);
+              const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
+              applyTransform(newScale, newRotation, cx, cy);
+            }
+            if (gestureType === 'tilt') {
+              const tiltDelta = -(midY - lastPinchMidY) * 0.3;
+              applyTilt(transformRef.current.tilt + tiltDelta);
             }
           }
-          if (gestureType !== 'tilt') {
-            const rect = el.getBoundingClientRect();
-            const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
-            const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
-            const newScale = transformRef.current.scale * (dist / lastPinchDist);
-            const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
-            applyTransform(newScale, newRotation, cx, cy);
-          }
-          if (gestureType === 'tilt') {
-            const tiltDelta = -(midY - lastPinchMidY) * 0.3;
-            applyTilt(transformRef.current.tilt + tiltDelta);
-          }
-        }
-        lastPinchDist = dist;
-        lastPinchAngle = angle;
-        lastPinchMidY = midY;
+          lastPinchDist = dist;
+          lastPinchAngle = angle;
+          lastPinchMidY = midY;
+        });
         return;
       }
 
@@ -538,7 +556,7 @@ export default function MapViewer({
           t.y = e.clientY - dragStart.y;
           clampPosition(t);
           mainContainer.position.set(t.x, t.y);
-          renderTilesFnRef.current();
+          scheduleRenderTiles();
           scheduleMarkerUpdate();
           // Track velocity for inertia
           const now = Date.now();
