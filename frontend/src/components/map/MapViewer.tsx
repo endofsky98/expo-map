@@ -43,6 +43,7 @@ export default function MapViewer({
 
   // Layer refs
   const tileLayerRef = useRef<PIXI.Container>(new PIXI.Container());
+  const wallLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const obstacleLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const routeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const facilityLayerRef = useRef<PIXI.Container>(new PIXI.Container());
@@ -343,6 +344,10 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
+    // Update wall layer visibility
+    const wallLayer = wallLayerRef.current;
+    if (clamped < 5) { wallLayer.alpha = 0; }
+    else { wallLayer.alpha = Math.min(1, (clamped - 5) / 15); }
     scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
@@ -433,6 +438,7 @@ export default function MapViewer({
     const mainContainer = new PIXI.Container();
     app.stage.addChild(mainContainer);
     mainContainer.addChild(tileLayerRef.current);
+    mainContainer.addChild(wallLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(routeLayerRef.current);
     // boothLayer removed — booths are now HTML DOM markers
@@ -618,6 +624,68 @@ export default function MapViewer({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentImage, tileInfo, useTileMode, imgWidth, imgHeight, prefetchRange]);
+
+  // ===== Walls (booth boundaries as 3D wall effect) =====
+  useEffect(() => {
+    const layer = wallLayerRef.current;
+    layer.removeChildren();
+    const tilt = transformRef.current.tilt;
+    // Only show walls when tilted (bird's-eye view)
+    if (tilt < 5) { layer.alpha = 0; return; }
+
+    layer.alpha = Math.min(1, (tilt - 5) / 15); // fade in between 5°–20°
+
+    const wallHeight = 8; // px in world coords — wall extrusion height
+    const wallColor = 0x4b5563; // gray-600
+    const wallTopColor = 0x9ca3af; // gray-400 — top face
+    const shadowColor = 0x1f2937; // gray-800
+
+    for (const booth of booths) {
+      const { x, y, width, height } = booth;
+
+      // Wall shadow (offset down-right, behind the wall)
+      const shadow = new PIXI.Graphics();
+      shadow.beginFill(shadowColor, 0.15);
+      shadow.drawRect(x + 2, y + 2, width, wallHeight + 2);
+      shadow.endFill();
+      layer.addChild(shadow);
+
+      // Front wall face (bottom edge of booth → extruded downward)
+      const frontWall = new PIXI.Graphics();
+      frontWall.beginFill(wallColor, 0.7);
+      frontWall.drawRect(x, y + height, width, wallHeight);
+      frontWall.endFill();
+      layer.addChild(frontWall);
+
+      // Right wall face (right edge of booth → extruded)
+      const rightWall = new PIXI.Graphics();
+      rightWall.beginFill(wallColor, 0.5);
+      rightWall.drawRect(x + width, y, wallHeight * 0.6, height + wallHeight);
+      rightWall.endFill();
+      layer.addChild(rightWall);
+
+      // Top face (the "roof" of the wall — lighter color)
+      const topFace = new PIXI.Graphics();
+      topFace.beginFill(wallTopColor, 0.3);
+      topFace.drawRect(x, y, width, height);
+      topFace.endFill();
+      layer.addChild(topFace);
+
+      // Wall outline
+      const outline = new PIXI.Graphics();
+      outline.lineStyle(1.5, wallColor, 0.8);
+      outline.drawRect(x, y, width, height);
+      layer.addChild(outline);
+    }
+  }, [booths, dimensions]);
+
+  // Update wall visibility on tilt change
+  useEffect(() => {
+    const layer = wallLayerRef.current;
+    const tilt = transformRef.current.tilt;
+    if (tilt < 5) { layer.alpha = 0; }
+    else { layer.alpha = Math.min(1, (tilt - 5) / 15); }
+  });
 
   // ===== Obstacles =====
   useEffect(() => {
