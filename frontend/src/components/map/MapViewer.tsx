@@ -9,6 +9,7 @@ import {
   maxMarkersForScale, parseZoomLevels, hexStringToNumber, selectTileLevel,
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
+import { TileStateManager } from './TileState';
 
 export default function MapViewer({
   booths,
@@ -56,6 +57,7 @@ export default function MapViewer({
   const renderTilesFnRef = useRef<() => void>(() => {});
   // Track tile load failures to avoid infinite retry loops (max 3 retries per tile)
   const tileFailCountRef = useRef<Map<string, number>>(new Map());
+  const tileStateRef = useRef<TileStateManager | null>(null);
 
   // Callbacks as refs to avoid stale closures
   const onBoothClickRef = useRef(onBoothClick);
@@ -512,6 +514,7 @@ export default function MapViewer({
     if (imageChanged) {
       tileCacheRef.current.forEach((tex) => tex.destroy(true));
       tileCacheRef.current.clear();
+      tileStateRef.current?.clear();
       currentImageIdRef.current = currentImage.id;
     }
 
@@ -536,8 +539,15 @@ export default function MapViewer({
     }
 
     if (useTileMode && tileInfo) {
+      // Initialize TileStateManager if needed
+      if (!tileStateRef.current) {
+        tileStateRef.current = new TileStateManager(
+          layer, tileCacheRef.current, apiBase, tileDirtyRef,
+        );
+      }
+
       const doRender = () => {
-        if (!tileInfo || !currentImage) return;
+        if (!tileInfo || !currentImage || !tileStateRef.current) return;
         const { x: tx, y: ty, scale: sc, rotation: rot } = transformRef.current;
         const { width: canvasW, height: canvasH } = canvasDimsRef.current;
 
@@ -569,123 +579,17 @@ export default function MapViewer({
         const levelChanged = levelIdx !== currentTileLevelRef.current;
         if (levelChanged) {
           currentTileLevelRef.current = levelIdx;
-          tileFailCountRef.current.clear(); // reset retry counts on level change
+          tileStateRef.current.clearLevel(levelIdx);
         }
 
-        const neededKeys = new Set<string>();
-        for (let r = rowStart; r <= rowEnd; r++) {
-          for (let c = colStart; c <= colEnd; c++) {
-            neededKeys.add(`${currentImage.id}_${levelIdx}_${r}_${c}`);
-          }
-        }
-
-        // Remove only tiles from the SAME level that are out of viewport
-        // Keep tiles from OTHER levels as backdrop until new tiles load
-        for (let i = layer.children.length - 1; i >= 0; i--) {
-          const child = layer.children[i];
-          if (!child.name) continue;
-          const parts = child.name.split('_');
-          const childLevel = parseInt(parts[1] ?? '', 10);
-          if (childLevel === levelIdx) {
-            // Same level: remove if out of viewport
-            if (!neededKeys.has(child.name)) layer.removeChildAt(i);
-          }
-          // Other level tiles: keep for now (cleaned up below when all needed tiles are loaded)
-        }
-
-        const existingKeys = new Set<string>();
-        for (const child of layer.children) {
-          if (child.name) existingKeys.add(child.name);
-        }
-
-        for (let r = rowStart; r <= rowEnd; r++) {
-          for (let c = colStart; c <= colEnd; c++) {
-            const key = `${currentImage.id}_${levelIdx}_${r}_${c}`;
-            if (existingKeys.has(key)) continue;
-            // Skip tiles that failed too many times
-            if ((tileFailCountRef.current.get(key) || 0) > 3) continue;
-
-            const x = c * tileSize * sfx;
-            const y = r * tileSize * sfy;
-            const tw = Math.min(tileSize, level.width - c * tileSize);
-            const th = Math.min(tileSize, level.height - r * tileSize);
-            const dw = tw * sfx;
-            const dh = th * sfy;
-
-            const cached = tileCacheRef.current.get(key);
-            if (cached) {
-              const sprite = new PIXI.Sprite(cached);
-              sprite.name = key;
-              sprite.x = x;
-              sprite.y = y;
-              sprite.width = dw;
-              sprite.height = dh;
-              layer.addChild(sprite);
-            } else {
-              const placeholder = new PIXI.Graphics();
-              placeholder.name = key;
-              placeholder.beginFill(0xe5e7eb, 0.3);
-              placeholder.drawRect(0, 0, dw, dh);
-              placeholder.endFill();
-              placeholder.x = x;
-              placeholder.y = y;
-              layer.addChild(placeholder);
-
-              const url = `${apiBase}/api/tiles/${currentImage.id}/${levelIdx}/${r}/${c}`;
-              // Mapbox-style: destroy stale cached texture to force fresh load
-              const staleBase = PIXI.utils.BaseTextureCache[url];
-              if (staleBase && !staleBase.valid) {
-                staleBase.destroy();
-                delete PIXI.utils.BaseTextureCache[url];
-                delete PIXI.utils.TextureCache[url];
-              }
-              const tex = PIXI.Texture.from(url, { resourceOptions: { crossorigin: 'anonymous' } });
-
-              const replacePlaceholder = () => {
-                tileCacheRef.current.set(key, tex);
-                if (placeholder.parent) {
-                  const sprite = new PIXI.Sprite(tex);
-                  sprite.name = key;
-                  sprite.x = x; sprite.y = y; sprite.width = dw; sprite.height = dh;
-                  const idx = layer.getChildIndex(placeholder);
-                  layer.removeChild(placeholder);
-                  layer.addChildAt(sprite, Math.min(idx, layer.children.length));
-                  // Clean up old-level tiles
-                  for (let j = layer.children.length - 1; j >= 0; j--) {
-                    const ch = layer.children[j];
-                    if (!ch.name) continue;
-                    const p = ch.name.split('_');
-                    if (parseInt(p[1] ?? '', 10) !== currentTileLevelRef.current) layer.removeChildAt(j);
-                  }
-                }
-              };
-
-              if (tex.valid) {
-                tileCacheRef.current.set(key, tex);
-                layer.removeChild(placeholder);
-                const sprite = new PIXI.Sprite(tex);
-                sprite.name = key;
-                sprite.x = x; sprite.y = y; sprite.width = dw; sprite.height = dh;
-                layer.addChild(sprite);
-              } else {
-                tex.baseTexture.on('loaded', replacePlaceholder);
-                // Error handling: remove placeholder + stale cache, retry up to 3 times
-                tex.baseTexture.on('error', () => {
-                  tex.baseTexture.destroy();
-                  delete PIXI.utils.BaseTextureCache[url];
-                  delete PIXI.utils.TextureCache[url];
-                  if (placeholder.parent) layer.removeChild(placeholder);
-                  const fails = (tileFailCountRef.current.get(key) || 0) + 1;
-                  tileFailCountRef.current.set(key, fails);
-                  if (fails <= 3) {
-                    // Schedule retry after 500ms backoff
-                    setTimeout(() => { tileDirtyRef.current = true; }, 500 * fails);
-                  }
-                });
-              }
-            }
-          }
-        }
+        // Delegate all tile management to TileStateManager
+        tileStateRef.current.update(
+          currentImage.id, levelIdx,
+          tileSize, sfx, sfy,
+          level.width, level.height,
+          colStart, colEnd, rowStart, rowEnd,
+          currentTileLevelRef,
+        );
       };
 
       renderTilesFnRef.current = doRender;
