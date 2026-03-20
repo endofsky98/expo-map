@@ -45,7 +45,7 @@ interface MapViewerProps {
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8.0;
-const MIN_BOOTH_SCREEN_SIZE = 20;
+const MIN_BOOTH_SCREEN_SIZE = 3;
 const CLICK_THRESHOLD = 5;
 const CLICK_TIME_THRESHOLD = 300;
 
@@ -128,6 +128,8 @@ export default function MapViewer({
   onMapClickRef.current = onMapClick;
   onZoomChangeRef.current = onZoomChange;
 
+  const boothContainersRef = useRef<Map<number, PIXI.Container>>(new Map());
+
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
   function resolveImageUrl(path: string): string {
@@ -151,6 +153,17 @@ export default function MapViewer({
     categories.forEach((cat) => { map[cat.id] = cat.color; });
     return map;
   }, [categories]);
+
+  const selectedBoothIdRef = useRef(selectedBoothId);
+  selectedBoothIdRef.current = selectedBoothId;
+  const showBoothsRef = useRef(showBooths);
+  showBoothsRef.current = showBooths;
+  const activeCategoriesRef = useRef(activeCategories);
+  activeCategoriesRef.current = activeCategories;
+  const categoryColorMapRef = useRef(categoryColorMap);
+  categoryColorMapRef.current = categoryColorMap;
+  const lnRef = useRef(ln);
+  lnRef.current = ln;
 
   const visibleFacilities = useMemo(() => {
     return facilities.filter((f) => {
@@ -710,112 +723,187 @@ export default function MapViewer({
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
-  // ===== Booths =====
+  // ===== Booths (Object Pool) =====
   useEffect(() => {
-    const doRedraw = () => {
-      const layer = boothLayerRef.current;
-      layer.removeChildren();
-      if (!showBooths) return;
-      const sc = transformRef.current.scale;
-      const { x: tx, y: ty } = transformRef.current;
-      const { width: cw, height: ch } = canvasDimsRef.current;
-      const bounds = { x: -tx / sc, y: -ty / sc, width: cw / sc, height: ch / sc };
+    const layer = boothLayerRef.current;
+    const containers = boothContainersRef.current;
+    const currentIds = new Set(booths.map(b => b.id));
 
-      for (const booth of booths) {
-        // Viewport culling
-        if (
-          booth.x + booth.width < bounds.x ||
-          booth.x > bounds.x + bounds.width ||
-          booth.y + booth.height < bounds.y ||
-          booth.y > bounds.y + bounds.height
-        ) continue;
-        const screenWidth = booth.width * sc;
-        const screenHeight = booth.height * sc;
-        if (screenWidth < MIN_BOOTH_SCREEN_SIZE || screenHeight < MIN_BOOTH_SCREEN_SIZE) continue;
+    // Remove deleted booths
+    for (const [id, c] of containers) {
+      if (!currentIds.has(id)) {
+        layer.removeChild(c as any);
+        c.destroy({ children: true });
+        containers.delete(id);
+      }
+    }
 
-        const isSelected = booth.id === selectedBoothId;
-        const opacity = getBoothOpacity(booth);
-        const fill = getBoothFill(booth);
-        const fillNum = hexStringToNumber(fill);
-
+    // Create new booth objects / update existing positions
+    for (const booth of booths) {
+      if (!containers.has(booth.id)) {
         const container = new PIXI.Container();
         container.x = booth.x;
         container.y = booth.y;
-        container.alpha = opacity;
 
-        // Booth rect
         const g = new PIXI.Graphics();
-        g.lineStyle(isSelected ? 3 / sc : 1.5 / sc, isSelected ? 0x4f46e5 : fillNum);
-        g.beginFill(fillNum, sc >= 2.0 ? 0.2 : 0.13);
-        g.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-        g.endFill();
-        container.addChild(g);
+        container.addChild(g); // [0] rect
 
-        // Selected dash overlay
-        if (isSelected) {
-          const dash = new PIXI.Graphics();
-          dash.lineStyle(3 / sc, 0x4f46e5, 1);
-          dash.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-          container.addChild(dash);
-        }
-
-        // Booth number
         const numText = new PIXI.Text(booth.booth_number, {
-          fontSize: sc < 1.0 ? 10 / sc : 11 / sc,
           fontFamily: 'Inter, sans-serif',
           fontWeight: 'bold',
           fill: '#1f2937',
         });
+        container.addChild(numText); // [1] booth number
+
+        const compText = new PIXI.Text('', {
+          fontFamily: 'Inter, sans-serif',
+          fill: '#4b5563',
+        });
+        compText.visible = false;
+        container.addChild(compText); // [2] company name
+
+        const catText = new PIXI.Text('', {
+          fontFamily: 'Inter, sans-serif',
+        });
+        catText.visible = false;
+        container.addChild(catText); // [3] category name
+
+        const dashG = new PIXI.Graphics();
+        dashG.visible = false;
+        container.addChild(dashG); // [4] selected dash
+
+        layer.addChild(container as any);
+        containers.set(booth.id, container);
+      } else {
+        const c = containers.get(booth.id)!;
+        c.x = booth.x;
+        c.y = booth.y;
+      }
+    }
+
+    const doRedraw = () => {
+      const sc = transformRef.current.scale;
+      const { x: tx, y: ty } = transformRef.current;
+      const { width: cw, height: ch } = canvasDimsRef.current;
+      const bounds = { x: -tx / sc, y: -ty / sc, width: cw / sc, height: ch / sc };
+      const show = showBoothsRef.current;
+      const selId = selectedBoothIdRef.current;
+      const actCats = activeCategoriesRef.current;
+      const catColors = categoryColorMapRef.current;
+      const lnFn = lnRef.current;
+
+      for (const booth of boothsRef.current) {
+        const container = containers.get(booth.id);
+        if (!container) continue;
+
+        // Viewport culling
+        const inView = !(
+          booth.x + booth.width < bounds.x ||
+          booth.x > bounds.x + bounds.width ||
+          booth.y + booth.height < bounds.y ||
+          booth.y > bounds.y + bounds.height
+        );
+        const screenW = booth.width * sc;
+        const screenH = booth.height * sc;
+        const tooSmall = screenW < MIN_BOOTH_SCREEN_SIZE || screenH < MIN_BOOTH_SCREEN_SIZE;
+
+        container.visible = show && inView && !tooSmall;
+        if (!container.visible) continue;
+
+        const isSelected = booth.id === selId;
+        const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#94a3b8';
+        const fillNum = hexStringToNumber(fill);
+        const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
+
+        container.x = booth.x;
+        container.y = booth.y;
+        container.alpha = opacity;
+
+        // [0] Graphics rect
+        const g = container.children[0] as PIXI.Graphics;
+        g.clear();
+        g.lineStyle(isSelected ? 3 / sc : 1.5 / sc, isSelected ? 0x4f46e5 : fillNum);
+        g.beginFill(fillNum, sc >= 2.0 ? 0.2 : 0.13);
+        g.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
+        g.endFill();
+
+        // [1] Booth number
+        const numText = container.children[1] as PIXI.Text;
+        numText.scale.set(1);
+        numText.text = booth.booth_number;
+        numText.style.fontSize = sc < 1.0 ? 10 / sc : 11 / sc;
         numText.x = 4 / sc;
         numText.y = 4 / sc;
+        numText.visible = true;
         if (numText.width > booth.width - 8 / sc) {
           numText.width = booth.width - 8 / sc;
         }
-        container.addChild(numText);
 
-        // Company name (at scale >= 1.0)
+        // [2] Company name (visible at scale >= 1.0)
+        const compText = container.children[2] as PIXI.Text;
         if (sc >= 1.0) {
-          const companyName = ln(booth.company?.name) || '';
+          const companyName = lnFn(booth.company?.name) || '';
           if (companyName) {
-            const compText = new PIXI.Text(companyName, {
-              fontSize: 9 / sc,
-              fontFamily: 'Inter, sans-serif',
-              fill: '#4b5563',
-            });
+            compText.scale.set(1);
+            compText.text = companyName;
+            compText.style.fontSize = 9 / sc;
             compText.x = 4 / sc;
             compText.y = 18 / sc;
+            compText.visible = true;
             if (compText.width > booth.width - 8 / sc) {
               compText.width = booth.width - 8 / sc;
             }
-            container.addChild(compText);
+          } else {
+            compText.visible = false;
           }
+        } else {
+          compText.visible = false;
         }
 
-        // Category name (at scale >= 2.0)
+        // [3] Category name (visible at scale >= 2.0)
+        const catText = container.children[3] as PIXI.Text;
         if (sc >= 2.0) {
-          const categoryName = ln(booth.category?.name) || '';
+          const categoryName = lnFn(booth.category?.name) || '';
           if (categoryName) {
-            const catText = new PIXI.Text(categoryName, {
-              fontSize: 7 / sc,
-              fontFamily: 'Inter, sans-serif',
-              fill: fill,
-            });
+            catText.scale.set(1);
+            catText.text = categoryName;
+            catText.style.fontSize = 7 / sc;
+            catText.style.fill = fill;
             catText.x = 4 / sc;
             catText.y = 30 / sc;
+            catText.visible = true;
             if (catText.width > booth.width - 8 / sc) {
               catText.width = booth.width - 8 / sc;
             }
-            container.addChild(catText);
+          } else {
+            catText.visible = false;
           }
+        } else {
+          catText.visible = false;
         }
 
-        layer.addChild(container);
+        // [4] Selected dash overlay
+        const dashG = container.children[4] as PIXI.Graphics;
+        if (isSelected) {
+          dashG.clear();
+          dashG.lineStyle(3 / sc, 0x4f46e5, 1);
+          dashG.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
+          dashG.visible = true;
+        } else if (dashG.visible) {
+          dashG.clear();
+          dashG.visible = false;
+        }
       }
     };
 
     redrawBoothsFnRef.current = doRedraw;
     doRedraw();
-  }, [booths, showBooths, selectedBoothId, activeCategories, categories, categoryColorMap, ln]);
+  }, [booths]);
+
+  // Redraw booths on style/filter changes (no object re-init needed)
+  useEffect(() => {
+    redrawBoothsFnRef.current();
+  }, [selectedBoothId, showBooths, activeCategories, categories, ln]);
 
   // ===== Facilities =====
   useEffect(() => {
