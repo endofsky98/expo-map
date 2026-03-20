@@ -288,9 +288,20 @@ export default function MapViewer({
     });
   }
 
-  // Position clamping disabled — free movement allowed
-  function clampPosition(_t: { x: number; y: number; scale: number; rotation: number }) {
-    // no-op
+  // Clamp: image center must stay within viewport
+  function clampPosition(t: { x: number; y: number; scale: number; rotation: number }) {
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const sc = t.scale;
+    const cosR = Math.cos(t.rotation);
+    const sinR = Math.sin(t.rotation);
+    // Image center in screen coords
+    const icx = t.x + sc * (imgWidth / 2 * cosR - imgHeight / 2 * sinR);
+    const icy = t.y + sc * (imgWidth / 2 * sinR + imgHeight / 2 * cosR);
+    // Clamp image center to viewport bounds
+    const clampedX = Math.max(0, Math.min(cw, icx));
+    const clampedY = Math.max(0, Math.min(ch, icy));
+    t.x += clampedX - icx;
+    t.y += clampedY - icy;
   }
 
   const tileRenderPendingRef = useRef(false);
