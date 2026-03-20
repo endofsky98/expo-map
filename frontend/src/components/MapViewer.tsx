@@ -227,13 +227,36 @@ export default function MapViewer({
   const currentFloorIdRef = useRef(currentFloorId);
   currentFloorIdRef.current = currentFloorId;
 
-  // World coordinate → screen pixel
+  // World coordinate → screen pixel (accounts for tilt via CSS perspective)
   function worldToScreen(wx: number, wy: number): { sx: number; sy: number } {
     const t = transformRef.current;
     const cos = Math.cos(t.rotation);
     const sin = Math.sin(t.rotation);
-    const sx = t.x + t.scale * (wx * cos - wy * sin);
-    const sy = t.y + t.scale * (wx * sin + wy * cos);
+    // Base screen position (before tilt)
+    let sx = t.x + t.scale * (wx * cos - wy * sin);
+    let sy = t.y + t.scale * (wx * sin + wy * cos);
+
+    // If tilted, simulate CSS perspective + rotateX transform
+    // so markers align with the tilted canvas
+    if (t.tilt > 0) {
+      const { height: ch } = canvasDimsRef.current;
+      const rad = (t.tilt * Math.PI) / 180;
+      const cosT = Math.cos(rad);
+      const sinT = Math.sin(rad);
+      const scaleXFactor = 1 / cosT; // same as CSS scaleX compensation
+      const perspective = 800;
+      const originY = ch * 0.3; // matches CSS transformOrigin 'center 30%'
+
+      // Transform point through perspective + rotateX
+      const dy = sy - originY;
+      const z = -dy * sinT;         // Z depth from rotation
+      const yRotated = dy * cosT;   // Y after rotation
+      const pScale = perspective / (perspective + z); // perspective projection
+
+      sx = (sx - canvasDimsRef.current.width / 2) * scaleXFactor * pScale + canvasDimsRef.current.width / 2;
+      sy = yRotated * pScale + originY;
+    }
+
     return { sx, sy };
   }
 
@@ -300,18 +323,17 @@ export default function MapViewer({
     const clamped = Math.max(MIN_TILT, Math.min(MAX_TILT, tilt));
     transformRef.current.tilt = clamped;
     const canvas = canvasRef.current;
-    const overlay = markerOverlayRef.current;
     if (clamped === 0) {
       if (canvas) { canvas.style.transform = ''; canvas.style.transformOrigin = ''; }
-      if (overlay) { overlay.style.transform = ''; overlay.style.transformOrigin = ''; }
     } else {
       const rad = (clamped * Math.PI) / 180;
       const scaleX = 1 / Math.cos(rad);
       const tf = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
       const origin = 'center 30%';
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
-      if (overlay) { overlay.style.transform = tf; overlay.style.transformOrigin = origin; }
     }
+    // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
+    scheduleMarkerUpdate();
   }
 
   function getBoothOpacity(booth: Booth): number {
