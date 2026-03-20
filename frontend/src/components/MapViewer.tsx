@@ -877,20 +877,45 @@ export default function MapViewer({
       }
     }
 
-    // Grid-based density limiting
+    // Center-weighted sampling: max 10, favor booths near screen center-bottom (1/3 from bottom)
+    const MAX_MARKERS = 10;
     let sampledIds: Set<number>;
-    if (sc >= 3.0) {
+    if (visibleBooths.length <= MAX_MARKERS) {
       sampledIds = new Set(visibleBooths.map(b => b.id));
     } else {
-      const cellSize = Math.max(30, 100 / sc);
-      const cellMap = new Map<string, number>();
+      // Focus point: horizontal center, vertical 2/3 down (1/3 from bottom)
+      const focusX = cw / 2;
+      const focusY = ch * (2 / 3);
+      // Max distance for normalization (screen diagonal / 2)
+      const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
+
+      // Score each visible booth: closer to focus → higher weight
+      const scored: { id: number; weight: number }[] = [];
       for (const booth of visibleBooths) {
-        const cx = Math.floor((booth.x + booth.width / 2) / cellSize);
-        const cy = Math.floor((booth.y + booth.height / 2) / cellSize);
-        const key = `${cx}_${cy}`;
-        if (!cellMap.has(key)) cellMap.set(key, booth.id);
+        const wcx = booth.x + booth.width / 2;
+        const wcy = booth.y + booth.height / 2;
+        const { sx, sy } = worldToScreen(wcx, wcy);
+        const dist = Math.sqrt((sx - focusX) ** 2 + (sy - focusY) ** 2);
+        // Weight: 1.0 at center, drops off with distance (gaussian-like)
+        const normalized = dist / maxDist;
+        const weight = Math.exp(-2.5 * normalized * normalized);
+        scored.push({ id: booth.id, weight });
       }
-      sampledIds = new Set(cellMap.values());
+
+      // Weighted random selection without replacement
+      sampledIds = new Set<number>();
+      const pool = [...scored];
+      while (sampledIds.size < MAX_MARKERS && pool.length > 0) {
+        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
+        let r = Math.random() * totalWeight;
+        let picked = pool.length - 1;
+        for (let i = 0; i < pool.length; i++) {
+          r -= pool[i].weight;
+          if (r <= 0) { picked = i; break; }
+        }
+        sampledIds.add(pool[picked].id);
+        pool.splice(picked, 1);
+      }
     }
 
     // Detect zoom change vs drag
