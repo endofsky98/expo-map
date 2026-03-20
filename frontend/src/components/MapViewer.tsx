@@ -460,7 +460,7 @@ export default function MapViewer({
       height: ch,
       backgroundColor: 0xf3f4f6,
       antialias: true,
-      resolution: Math.max(2, window.devicePixelRatio || 1),
+      resolution: window.devicePixelRatio || 1,
       autoDensity: true,
     });
     el.appendChild(app.view as HTMLCanvasElement);
