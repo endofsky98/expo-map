@@ -137,7 +137,8 @@ export default function MapViewer({
   const rafIdRef = useRef<number>(0);
   const prevVisibleIdsRef = useRef<Set<number>>(new Set());
   const prevScaleRef = useRef<number>(1);
-  const isZoomingRef = useRef<boolean>(false);
+  const stableIdsRef = useRef<Set<number>>(new Set()); // confirmed markers (only recalc on settle)
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -841,6 +842,128 @@ export default function MapViewer({
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
   // ===== Booths (HTML DOM markers — Mapbox style) =====
+
+  // recalcMarkers: called after interaction settles (debounced)
+  // Picks up to MAX_MARKERS using center-weighted sampling, applies fade transitions
+  function recalcMarkers() {
+    const MAX_MARKERS = 10;
+    const markers = markerElementsRef.current;
+    const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const show = showBoothsRef.current;
+
+    // Get visible booths in viewport
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+    const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
+    const wCorners = scrCorners.map(([sx, sy]) => ({
+      x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
+      y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
+    }));
+    const bx0 = Math.min(...wCorners.map(c => c.x));
+    const by0 = Math.min(...wCorners.map(c => c.y));
+    const bx1 = Math.max(...wCorners.map(c => c.x));
+    const by1 = Math.max(...wCorners.map(c => c.y));
+
+    const visibleBooths: Booth[] = [];
+    for (const booth of boothsRef.current) {
+      const cx = booth.x + booth.width / 2;
+      const cy = booth.y + booth.height / 2;
+      if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
+        visibleBooths.push(booth);
+      }
+    }
+
+    let newIds: Set<number>;
+    if (visibleBooths.length <= MAX_MARKERS) {
+      newIds = new Set(visibleBooths.map(b => b.id));
+    } else {
+      const focusX = cw / 2;
+      const focusY = ch * (2 / 3);
+      const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
+
+      // Keep existing stable markers that are still in viewport (prioritize stability)
+      const kept = new Set<number>();
+      for (const id of stableIdsRef.current) {
+        if (kept.size >= MAX_MARKERS) break;
+        const inViewport = visibleBooths.some(b => b.id === id);
+        if (inViewport) kept.add(id);
+      }
+
+      // Fill remaining slots with center-weighted sampling from new candidates
+      const candidates = visibleBooths.filter(b => !kept.has(b.id));
+      const scored: { id: number; weight: number }[] = [];
+      for (const booth of candidates) {
+        const wcx = booth.x + booth.width / 2;
+        const wcy = booth.y + booth.height / 2;
+        const { sx, sy } = worldToScreen(wcx, wcy);
+        const dist = Math.sqrt((sx - focusX) ** 2 + (sy - focusY) ** 2);
+        const normalized = dist / maxDist;
+        const weight = Math.exp(-2.5 * normalized * normalized);
+        scored.push({ id: booth.id, weight });
+      }
+
+      const pool = [...scored];
+      while (kept.size < MAX_MARKERS && pool.length > 0) {
+        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
+        let r = Math.random() * totalWeight;
+        let picked = pool.length - 1;
+        for (let i = 0; i < pool.length; i++) {
+          r -= pool[i].weight;
+          if (r <= 0) { picked = i; break; }
+        }
+        kept.add(pool[picked].id);
+        pool.splice(picked, 1);
+      }
+      newIds = kept;
+    }
+
+    const oldIds = stableIdsRef.current;
+
+    // FadeOut markers that are being removed
+    for (const id of oldIds) {
+      if (!newIds.has(id)) {
+        const el = markers.get(id);
+        if (el) {
+          el.style.transition = 'opacity 0.25s ease-out';
+          el.style.opacity = '0';
+          setTimeout(() => {
+            if (!stableIdsRef.current.has(id)) {
+              el.style.display = 'none';
+              el.style.transition = '';
+            }
+          }, 250);
+        }
+      }
+    }
+
+    // FadeIn new markers
+    for (const id of newIds) {
+      if (!oldIds.has(id)) {
+        const el = markers.get(id);
+        if (el) {
+          const booth = boothsRef.current.find(b => b.id === id);
+          if (booth) {
+            const wcx = booth.x + booth.width / 2;
+            const wcy = booth.y + booth.height / 2;
+            const { sx, sy } = worldToScreen(wcx, wcy);
+            el.style.display = 'flex';
+            el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+            el.style.opacity = '0';
+            el.style.transition = '';
+            requestAnimationFrame(() => {
+              el.style.transition = 'opacity 0.3s ease-in';
+              el.style.opacity = '1';
+            });
+          }
+        }
+      }
+    }
+
+    stableIdsRef.current = newIds;
+    prevVisibleIdsRef.current = newIds;
+  }
+
   // updateMarkerPositions: called on every transform change via rAF
   function updateMarkerPositions() {
     const overlay = markerOverlayRef.current;
@@ -877,74 +1000,35 @@ export default function MapViewer({
       }
     }
 
-    // Center-weighted sampling: max 10, favor booths near screen center-bottom (1/3 from bottom)
     const MAX_MARKERS = 10;
-    let sampledIds: Set<number>;
-    if (visibleBooths.length <= MAX_MARKERS) {
-      sampledIds = new Set(visibleBooths.map(b => b.id));
-    } else {
-      // Focus point: horizontal center, vertical 2/3 down (1/3 from bottom)
-      const focusX = cw / 2;
-      const focusY = ch * (2 / 3);
-      // Max distance for normalization (screen diagonal / 2)
-      const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
+    const visibleBoothIds = new Set(visibleBooths.map(b => b.id));
 
-      // Score each visible booth: closer to focus → higher weight
-      const scored: { id: number; weight: number }[] = [];
-      for (const booth of visibleBooths) {
-        const wcx = booth.x + booth.width / 2;
-        const wcy = booth.y + booth.height / 2;
-        const { sx, sy } = worldToScreen(wcx, wcy);
-        const dist = Math.sqrt((sx - focusX) ** 2 + (sy - focusY) ** 2);
-        // Weight: 1.0 at center, drops off with distance (gaussian-like)
-        const normalized = dist / maxDist;
-        const weight = Math.exp(-2.5 * normalized * normalized);
-        scored.push({ id: booth.id, weight });
-      }
-
-      // Weighted random selection without replacement
-      sampledIds = new Set<number>();
-      const pool = [...scored];
-      while (sampledIds.size < MAX_MARKERS && pool.length > 0) {
-        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
-        let r = Math.random() * totalWeight;
-        let picked = pool.length - 1;
-        for (let i = 0; i < pool.length; i++) {
-          r -= pool[i].weight;
-          if (r <= 0) { picked = i; break; }
-        }
-        sampledIds.add(pool[picked].id);
-        pool.splice(picked, 1);
-      }
+    // During interaction: keep stable set, only drop markers that left viewport
+    const stable = stableIdsRef.current;
+    const currentDisplay = new Set<number>();
+    for (const id of stable) {
+      if (visibleBoothIds.has(id)) currentDisplay.add(id);
     }
 
-    // Detect zoom change vs drag
-    const prevScale = prevScaleRef.current;
-    const zoomChanged = Math.abs(sc - prevScale) / Math.max(prevScale, 0.01) > 0.02;
-    prevScaleRef.current = sc;
+    // Schedule a settle recalculation (debounced 300ms after last interaction)
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      recalcMarkers();
+    }, 300);
+
+    const sampledIds = currentDisplay;
     const prevVisible = prevVisibleIdsRef.current;
 
     for (const booth of boothsRef.current) {
       const el = markers.get(booth.id);
       if (!el) continue;
 
-      const wasVisible = prevVisible.has(booth.id);
-      const nowVisible = sampledIds.has(booth.id);
+      const isDisplayed = sampledIds.has(booth.id);
 
-      if (!nowVisible) {
-        if (wasVisible && zoomChanged) {
-          // Zoom out — fadeOut then hide
-          el.style.transition = 'opacity 0.25s ease-out';
-          el.style.opacity = '0';
-          setTimeout(() => {
-            if (!prevVisibleIdsRef.current.has(booth.id)) {
-              el.style.display = 'none';
-              el.style.transition = '';
-            }
-          }, 250);
-        } else {
+      if (!isDisplayed) {
+        // Only hide if not currently fading out (managed by recalcMarkers)
+        if (!prevVisible.has(booth.id)) {
           el.style.display = 'none';
-          el.style.transition = '';
         }
         continue;
       }
@@ -953,27 +1037,14 @@ export default function MapViewer({
       const wcy = booth.y + booth.height / 2;
       const { sx, sy } = worldToScreen(wcx, wcy);
 
-      // Position
+      // Position update only (no fade logic here — recalcMarkers handles transitions)
       el.style.display = 'flex';
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
 
-      // FadeIn for new markers during zoom
-      if (!wasVisible && zoomChanged) {
-        el.style.opacity = '0';
-        el.style.transition = '';
-        requestAnimationFrame(() => {
-          el.style.transition = 'opacity 0.3s ease-in';
-          el.style.opacity = '1';
-        });
-      } else if (!wasVisible) {
-        // Drag — just appear instantly
-        el.style.transition = '';
-        el.style.opacity = '1';
-      }
-
-      // Update opacity based on category filter (override fade for filtered items)
+      // Category filter opacity
       const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-      if (wasVisible) {
+      // Don't override opacity if element is mid-fade (transition active)
+      if (!el.style.transition) {
         el.style.opacity = String(opacity);
       }
 
@@ -1080,8 +1151,8 @@ export default function MapViewer({
       }
     }
 
-    // Initial position update
-    updateMarkerPositions();
+    // Initial marker calculation + position update
+    recalcMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
 
