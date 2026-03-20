@@ -388,6 +388,8 @@ export default function MapViewer({
         animZoomRafRef.current = requestAnimationFrame(step);
       } else {
         animZoomRafRef.current = 0;
+        // Force tile re-render at final zoom level
+        renderTilesFnRef.current();
       }
     }
     animZoomRafRef.current = requestAnimationFrame(step);
