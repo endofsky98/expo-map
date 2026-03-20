@@ -925,14 +925,14 @@ export default function MapViewer({
       if (!newIds.has(id)) {
         const el = markers.get(id);
         if (el) {
-          el.style.transition = 'opacity 0.25s ease-out';
+          el.style.transition = 'opacity 1s ease-out';
           el.style.opacity = '0';
           setTimeout(() => {
             if (!stableIdsRef.current.has(id)) {
               el.style.display = 'none';
               el.style.transition = '';
             }
-          }, 250);
+          }, 1000);
         }
       }
     }
@@ -952,7 +952,7 @@ export default function MapViewer({
             el.style.opacity = '0';
             el.style.transition = '';
             requestAnimationFrame(() => {
-              el.style.transition = 'opacity 0.3s ease-in';
+              el.style.transition = 'opacity 1s ease-in';
               el.style.opacity = '1';
             });
           }
