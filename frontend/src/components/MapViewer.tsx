@@ -573,15 +573,15 @@ export default function MapViewer({
       // --- Single finger: pan or Ctrl+drag ---
       if (isDragging && e.pointerId === primaryId) {
         if (e.ctrlKey || e.metaKey) {
-          // Ctrl+drag: vertical = tilt, horizontal = rotation
+          // Ctrl+drag: vertical = tilt (inverted), horizontal = rotation (inverted)
           const dy = e.clientY - lastDragY;
           const dx = e.clientX - lastDragX;
           if (Math.abs(dy) > 0) {
-            applyTilt(transformRef.current.tilt + dy * 0.3);
+            applyTilt(transformRef.current.tilt - dy * 0.3);
           }
           if (Math.abs(dx) > 0) {
             const { width: cw, height: ch } = canvasDimsRef.current;
-            applyTransform(transformRef.current.scale, transformRef.current.rotation + dx * 0.003, cw / 2, ch / 2);
+            applyTransform(transformRef.current.scale, transformRef.current.rotation - dx * 0.003, cw / 2, ch / 2);
           }
           lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
         } else {
