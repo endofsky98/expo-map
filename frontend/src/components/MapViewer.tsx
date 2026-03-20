@@ -403,7 +403,14 @@ export default function MapViewer({
       const rad = (clamped * Math.PI) / 180;
       const scaleX = 1 / Math.cos(rad);
       const tf = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
-      const origin = 'center 30%';
+      // Origin at visible area center, 30% from top — in oversized canvas coords
+      const pad = canvasPadRef.current;
+      const { width: vw, height: vh } = canvasDimsRef.current;
+      const totalW = vw + pad.left * 2;
+      const totalH = vh + pad.top;
+      const originXPct = totalW > 0 ? ((pad.left + vw / 2) / totalW * 100).toFixed(2) : '50';
+      const originYPct = totalH > 0 ? ((pad.top + vh * 0.3) / totalH * 100).toFixed(2) : '30';
+      const origin = `${originXPct}% ${originYPct}%`;
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
@@ -462,10 +469,17 @@ export default function MapViewer({
     const h = el.offsetHeight || 600;
     canvasDimsRef.current = { width: w, height: h };
 
+    // Moderate overscan: 20% padding (area ×1.68 vs previous 3.5x)
+    const CANVAS_PAD = 0.2;
+    const cw = Math.round(w * (1 + CANVAS_PAD * 2));
+    const ch = Math.round(h * (1 + CANVAS_PAD));
+    const padLeft = Math.round(w * CANVAS_PAD);
+    const padTop = Math.round(h * CANVAS_PAD);
+
     const app = new PIXI.Application({
-      width: w,
-      height: h,
-      backgroundColor: 0xf3f4f6,
+      width: cw,
+      height: ch,
+      backgroundAlpha: 0,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
       autoDensity: true,
@@ -478,9 +492,12 @@ export default function MapViewer({
     canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
     canvas.style.cursor = 'grab';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvasPadRef.current = { left: 0, top: 0 };
+    canvas.style.position = 'absolute';
+    canvas.style.width = `${cw}px`;
+    canvas.style.height = `${ch}px`;
+    canvas.style.left = `${-padLeft}px`;
+    canvas.style.top = `${-padTop}px`;
+    canvasPadRef.current = { left: padLeft, top: padTop };
 
     // Main container (replaces pixi-viewport)
     const mainContainer = new PIXI.Container();
@@ -798,8 +815,22 @@ export default function MapViewer({
       for (const entry of entries) {
         const { width: rw, height: rh } = entry.contentRect;
         if (rw > 0 && rh > 0) {
-          app.renderer.resize(rw, rh);
+          const newCw = Math.round(rw * (1 + CANVAS_PAD * 2));
+          const newCh = Math.round(rh * (1 + CANVAS_PAD));
+          const newPadLeft = Math.round(rw * CANVAS_PAD);
+          const newPadTop = Math.round(rh * CANVAS_PAD);
+          app.renderer.resize(newCw, newCh);
           canvasDimsRef.current = { width: rw, height: rh };
+          canvasPadRef.current = { left: newPadLeft, top: newPadTop };
+          const cv = canvasRef.current;
+          if (cv) {
+            cv.style.width = `${newCw}px`;
+            cv.style.height = `${newCh}px`;
+            cv.style.left = `${-newPadLeft}px`;
+            cv.style.top = `${-newPadTop}px`;
+          }
+          const mc = mainContainerRef.current;
+          if (mc) syncContainerPosition(mc, transformRef.current);
           setDimensions({ width: rw, height: rh });
         }
       }
@@ -1632,7 +1663,24 @@ export default function MapViewer({
   }, [dimensions]);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
+      {/* STK pattern background — fixed, unaffected by tilt/rotation */}
+      <div className="absolute inset-0" style={{
+        backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 80px, rgba(255,255,255,0.03) 80px, rgba(255,255,255,0.03) 82px),
+          repeating-linear-gradient(-45deg, transparent, transparent 80px, rgba(255,255,255,0.03) 80px, rgba(255,255,255,0.03) 82px)`,
+        zIndex: 0,
+      }}>
+        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', inset: 0 }}>
+          <defs>
+            <pattern id="stk-pattern" x="0" y="0" width="200" height="120" patternUnits="userSpaceOnUse">
+              <text x="100" y="60" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.06)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
+              <text x="0" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.06)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
+              <text x="200" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.06)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#stk-pattern)" />
+        </svg>
+      </div>
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
