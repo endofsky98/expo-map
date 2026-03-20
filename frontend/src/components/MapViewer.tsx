@@ -790,7 +790,7 @@ export default function MapViewer({
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
-  // ===== Booths (Object Pool) =====
+  // ===== Booths (Mapbox-style pin markers — fixed screen size) =====
   useEffect(() => {
     const layer = boothLayerRef.current;
     const containers = boothContainersRef.current;
@@ -805,46 +805,56 @@ export default function MapViewer({
       }
     }
 
-    // Create new booth objects / update existing positions
+    // Pin marker constants (screen pixels — never changes with zoom)
+    const PIN_RADIUS = 12;
+    const PIN_TAIL = 6;
+    const FONT_SIZE = 10;
+
+    // Create new booth marker objects / update existing
     for (const booth of booths) {
+      // Position at booth center
+      const cx = booth.x + booth.width / 2;
+      const cy = booth.y + booth.height / 2;
+
       if (!containers.has(booth.id)) {
         const container = new PIXI.Container();
-        container.x = booth.x;
-        container.y = booth.y;
+        container.x = cx;
+        container.y = cy;
 
-        const g = new PIXI.Graphics();
-        container.addChild(g); // [0] rect
+        // [0] Pin shape (circle + tail) — drawn in screen pixels
+        const pinG = new PIXI.Graphics();
+        container.addChild(pinG);
 
+        // [1] Booth number text
         const numText = new PIXI.Text(booth.booth_number, {
           fontFamily: 'Inter, sans-serif',
           fontWeight: 'bold',
-          fill: '#1f2937',
+          fontSize: FONT_SIZE,
+          fill: '#ffffff',
+          align: 'center',
         });
-        container.addChild(numText); // [1] booth number
+        numText.anchor.set(0.5, 0.5);
+        numText.y = -PIN_TAIL; // center in circle, offset by tail
+        container.addChild(numText);
 
-        const compText = new PIXI.Text('', {
+        // [2] Label text (company name, shown below pin)
+        const labelText = new PIXI.Text('', {
           fontFamily: 'Inter, sans-serif',
-          fill: '#4b5563',
+          fontSize: 9,
+          fill: '#374151',
+          align: 'center',
         });
-        compText.visible = false;
-        container.addChild(compText); // [2] company name
-
-        const catText = new PIXI.Text('', {
-          fontFamily: 'Inter, sans-serif',
-        });
-        catText.visible = false;
-        container.addChild(catText); // [3] category name
-
-        const dashG = new PIXI.Graphics();
-        dashG.visible = false;
-        container.addChild(dashG); // [4] selected dash
+        labelText.anchor.set(0.5, 0);
+        labelText.y = PIN_RADIUS;
+        labelText.visible = false;
+        container.addChild(labelText);
 
         layer.addChild(container as any);
         containers.set(booth.id, container);
       } else {
         const c = containers.get(booth.id)!;
-        c.x = booth.x;
-        c.y = booth.y;
+        c.x = cx;
+        c.y = cy;
       }
     }
 
@@ -870,21 +880,17 @@ export default function MapViewer({
       const catColors = categoryColorMapRef.current;
       const lnFn = lnRef.current;
 
-      // Viewport culling: collect visible booths
+      // Viewport culling
       const visibleBooths: typeof boothsRef.current = [];
       for (const booth of boothsRef.current) {
-        const inView = !(
-          booth.x + booth.width < bounds.x ||
-          booth.x > bounds.x + bounds.width ||
-          booth.y + booth.height < bounds.y ||
-          booth.y > bounds.y + bounds.height
-        );
-        const screenW = booth.width * sc;
-        const screenH = booth.height * sc;
-        const tooSmall = screenW < MIN_BOOTH_SCREEN_SIZE || screenH < MIN_BOOTH_SCREEN_SIZE;
-        if (show && inView && !tooSmall) visibleBooths.push(booth);
+        const cx = booth.x + booth.width / 2;
+        const cy = booth.y + booth.height / 2;
+        const inView = cx >= bounds.x && cx <= bounds.x + bounds.width &&
+                       cy >= bounds.y && cy <= bounds.y + bounds.height;
+        if (show && inView) visibleBooths.push(booth);
       }
-      // Grid-based density limiting (zoom-adaptive)
+
+      // Grid-based density limiting
       let sampledIds: Set<number>;
       if (sc >= 3.0) {
         sampledIds = new Set(visibleBooths.map(b => b.id));
@@ -900,6 +906,9 @@ export default function MapViewer({
         sampledIds = new Set(cellMap.values());
       }
 
+      // Inverse scale so markers stay fixed screen size
+      const invScale = 1 / sc;
+
       for (const booth of boothsRef.current) {
         const container = containers.get(booth.id);
         if (!container) continue;
@@ -912,89 +921,55 @@ export default function MapViewer({
         const fillNum = hexStringToNumber(fill);
         const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
 
-        container.x = booth.x;
-        container.y = booth.y;
+        // Position at booth center
+        container.x = booth.x + booth.width / 2;
+        container.y = booth.y + booth.height / 2;
         container.alpha = opacity;
 
-        // [0] Graphics rect
-        const g = container.children[0] as PIXI.Graphics;
-        g.clear();
-        g.lineStyle(isSelected ? 3 / sc : 1.5 / sc, isSelected ? 0x4f46e5 : fillNum);
-        g.beginFill(fillNum, sc >= 2.0 ? 0.2 : 0.13);
-        g.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-        g.endFill();
+        // Counter-rotate + counter-scale entire container → fixed screen appearance
+        container.rotation = -rot;
+        container.scale.set(invScale);
 
-        // [1] Booth number
+        // [0] Redraw pin shape
+        const pinG = container.children[0] as PIXI.Graphics;
+        pinG.clear();
+        const pinColor = isSelected ? 0x4f46e5 : fillNum;
+        // Pin tail (triangle pointing down)
+        pinG.beginFill(pinColor, 0.95);
+        pinG.moveTo(-4, 0);
+        pinG.lineTo(0, PIN_TAIL);
+        pinG.lineTo(4, 0);
+        pinG.endFill();
+        // Pin circle
+        pinG.lineStyle(isSelected ? 2.5 : 1.5, 0xffffff);
+        pinG.beginFill(pinColor, 0.95);
+        pinG.drawCircle(0, -PIN_TAIL, PIN_RADIUS);
+        pinG.endFill();
+
+        // [1] Booth number (always visible, fixed size)
         const numText = container.children[1] as PIXI.Text;
-        numText.scale.set(1);
         numText.text = booth.booth_number;
-        numText.style.fontSize = sc < 1.0 ? 10 / sc : 11 / sc;
-        numText.x = 4 / sc;
-        numText.y = 4 / sc;
-        numText.visible = true;
-        if (numText.width > booth.width - 8 / sc) {
-          numText.width = booth.width - 8 / sc;
-        }
+        numText.y = -PIN_TAIL;
 
-        // [2] Company name (visible at scale >= 1.0)
-        const compText = container.children[2] as PIXI.Text;
-        if (sc >= 1.0) {
+        // [2] Label (company name — visible when zoomed in enough)
+        const labelText = container.children[2] as PIXI.Text;
+        if (sc >= 1.5) {
           const companyName = lnFn(booth.company?.name) || '';
           if (companyName) {
-            compText.scale.set(1);
-            compText.text = companyName;
-            compText.style.fontSize = 9 / sc;
-            compText.x = 4 / sc;
-            compText.y = 18 / sc;
-            compText.visible = true;
-            if (compText.width > booth.width - 8 / sc) {
-              compText.width = booth.width - 8 / sc;
+            labelText.text = companyName;
+            labelText.y = PIN_RADIUS - 2;
+            labelText.visible = true;
+            // Limit label width to ~80px screen
+            if (labelText.width > 80) {
+              labelText.scale.x = 80 / labelText.width;
+            } else {
+              labelText.scale.x = 1;
             }
           } else {
-            compText.visible = false;
+            labelText.visible = false;
           }
         } else {
-          compText.visible = false;
-        }
-
-        // [3] Category name (visible at scale >= 2.0)
-        const catText = container.children[3] as PIXI.Text;
-        if (sc >= 2.0) {
-          const categoryName = lnFn(booth.category?.name) || '';
-          if (categoryName) {
-            catText.scale.set(1);
-            catText.text = categoryName;
-            catText.style.fontSize = 7 / sc;
-            catText.style.fill = fill;
-            catText.x = 4 / sc;
-            catText.y = 30 / sc;
-            catText.visible = true;
-            if (catText.width > booth.width - 8 / sc) {
-              catText.width = booth.width - 8 / sc;
-            }
-          } else {
-            catText.visible = false;
-          }
-        } else {
-          catText.visible = false;
-        }
-
-        // Counter-rotate text to keep upright when map is rotated
-        const counterRot = -rot;
-        numText.rotation = counterRot;
-        compText.rotation = counterRot;
-        catText.rotation = counterRot;
-
-        // [4] Selected dash overlay
-        const dashG = container.children[4] as PIXI.Graphics;
-        if (isSelected) {
-          dashG.clear();
-          dashG.lineStyle(3 / sc, 0x4f46e5, 1);
-          dashG.drawRoundedRect(0, 0, booth.width, booth.height, 2 / sc);
-          dashG.visible = true;
-        } else if (dashG.visible) {
-          dashG.clear();
-          dashG.visible = false;
+          labelText.visible = false;
         }
       }
     };
