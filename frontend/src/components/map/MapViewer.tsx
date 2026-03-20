@@ -10,9 +10,9 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import dynamic from 'next/dynamic';
-
-const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
+// import dynamic from 'next/dynamic';
+// Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
+// const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
 
 export default function MapViewer({
   booths,
@@ -1249,14 +1249,14 @@ export default function MapViewer({
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: '#ffffff' }}>
 
-      {/* Three.js 3D wall overlay — renders booth walls with real 3D */}
+      {/* Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
       <WallOverlay
         booths={booths}
         transformRef={transformRef}
         canvasDimsRef={canvasDimsRef}
         canvasPadRef={canvasPadRef}
         containerRef={containerRef}
-      />
+      /> */}
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
