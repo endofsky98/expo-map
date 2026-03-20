@@ -382,16 +382,7 @@ export default function MapViewer({
       const rad = (clamped * Math.PI) / 180;
       const scaleX = 1 / Math.cos(rad);
       const tf = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
-      // Origin at visible area's center-x, 30% from visible top
-      // Canvas is oversized: padLeft = w*CANVAS_PAD, padTop = h*CANVAS_PAD
-      const { width: vw, height: vh } = canvasDimsRef.current;
-      const padLeft = Math.round(vw * 0.6);  // CANVAS_PAD
-      const padTop = Math.round(vh * 0.6);
-      const cw2 = Math.round(vw * 2.2);      // total canvas width
-      const ch2 = Math.round(vh * 1.6);      // total canvas height
-      const originXPct = cw2 > 0 ? ((padLeft + vw / 2) / cw2 * 100).toFixed(2) : '50';
-      const originYPct = ch2 > 0 ? ((padTop + vh * 0.3) / ch2 * 100).toFixed(2) : '30';
-      const origin = `${originXPct}% ${originYPct}%`;
+      const origin = 'center 30%';
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
@@ -448,16 +439,11 @@ export default function MapViewer({
     const el = containerRef.current;
     const w = el.offsetWidth || 800;
     const h = el.offsetHeight || 600;
-    // Canvas overscan: 1.6x to prevent blank edges during CSS perspective tilt
-    // At tilt 60°, scaleX = 1/cos(60°) = 2x, perspective shrinks top further
-    const CANVAS_PAD = 0.6; // 60% extra on each side (top/left/right)
-    const cw = Math.round(w * (1 + CANVAS_PAD * 2)); // wider for left+right
-    const ch = Math.round(h * (1 + CANVAS_PAD));      // taller for top
-    canvasDimsRef.current = { width: w, height: h };   // visible area stays w×h
+    canvasDimsRef.current = { width: w, height: h };
 
     const app = new PIXI.Application({
-      width: cw,
-      height: ch,
+      width: w,
+      height: h,
       backgroundColor: 0xf3f4f6,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
@@ -471,15 +457,9 @@ export default function MapViewer({
     canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
     canvas.style.cursor = 'grab';
-    // Position canvas centered, overscan hidden by container overflow:hidden
-    canvas.style.position = 'absolute';
-    canvas.style.width = `${cw}px`;
-    canvas.style.height = `${ch}px`;
-    const padLeft = Math.round(w * CANVAS_PAD);
-    const padTop = Math.round(h * CANVAS_PAD);
-    canvas.style.left = `${-padLeft}px`;
-    canvas.style.top = `${-padTop}px`;
-    canvasPadRef.current = { left: padLeft, top: padTop };
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvasPadRef.current = { left: 0, top: 0 };
 
     // Main container (replaces pixi-viewport)
     const mainContainer = new PIXI.Container();
@@ -797,23 +777,8 @@ export default function MapViewer({
       for (const entry of entries) {
         const { width: rw, height: rh } = entry.contentRect;
         if (rw > 0 && rh > 0) {
-          const newCw = Math.round(rw * (1 + CANVAS_PAD * 2));
-          const newCh = Math.round(rh * (1 + CANVAS_PAD));
-          const newPadLeft = Math.round(rw * CANVAS_PAD);
-          const newPadTop = Math.round(rh * CANVAS_PAD);
-          app.renderer.resize(newCw, newCh);
+          app.renderer.resize(rw, rh);
           canvasDimsRef.current = { width: rw, height: rh };
-          canvasPadRef.current = { left: newPadLeft, top: newPadTop };
-          const cv = canvasRef.current;
-          if (cv) {
-            cv.style.width = `${newCw}px`;
-            cv.style.height = `${newCh}px`;
-            cv.style.left = `${-newPadLeft}px`;
-            cv.style.top = `${-newPadTop}px`;
-          }
-          // Re-sync mainContainer position with new padding
-          const mc = mainContainerRef.current;
-          if (mc) syncContainerPosition(mc, transformRef.current);
           setDimensions({ width: rw, height: rh });
         }
       }
