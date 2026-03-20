@@ -1261,25 +1261,8 @@ export default function MapViewer({
   }, [dimensions]);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)' }}>
-      {/* STK pattern background — fixed, unaffected by tilt/rotation */}
-      <div className="absolute inset-0" style={{
-        backgroundImage: `repeating-linear-gradient(45deg, transparent, transparent 80px, rgba(255,255,255,0.03) 80px, rgba(255,255,255,0.03) 82px),
-          repeating-linear-gradient(-45deg, transparent, transparent 80px, rgba(255,255,255,0.03) 80px, rgba(255,255,255,0.03) 82px)`,
-        zIndex: 0,
-      }}>
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', inset: 0 }}>
-          <defs>
-            <pattern id="stk-pattern" x="0" y="0" width="200" height="120" patternUnits="userSpaceOnUse">
-              <text x="100" y="60" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.06)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
-              <text x="0" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.06)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
-              <text x="200" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.06)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#stk-pattern)" />
-        </svg>
-      </div>
-      {/* Horizon sky gradient — visible during tilt (Mapbox-style) */}
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: '#ffffff' }}>
+      {/* Horizon wall — STK pattern band at horizon line, visible during tilt */}
       <div
         ref={horizonRef}
         className="absolute left-0 right-0 top-0 pointer-events-none"
@@ -1287,10 +1270,21 @@ export default function MapViewer({
           zIndex: 3,
           height: '0%',
           opacity: 0,
-          transition: 'opacity 0.3s ease',
-          background: 'linear-gradient(to bottom, #0f172a 0%, #1e3a5f 30%, #2d5a87 60%, rgba(45,90,135,0) 100%)',
+          background: '#1a1a2e',
+          overflow: 'hidden',
         }}
-      />
+      >
+        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', inset: 0 }}>
+          <defs>
+            <pattern id="stk-horizon" x="0" y="0" width="200" height="120" patternUnits="userSpaceOnUse">
+              <text x="100" y="60" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.08)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
+              <text x="0" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.08)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
+              <text x="200" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.08)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#stk-horizon)" />
+        </svg>
+      </div>
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
