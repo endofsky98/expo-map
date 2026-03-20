@@ -565,9 +565,24 @@ export default function MapViewer({
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      const rect = el.getBoundingClientRect();
-      applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+wheel: vertical = tilt (bird's-eye), horizontal = rotation
+        if (Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {
+          // Vertical → tilt: scroll down = tilt more, scroll up = tilt less
+          const newTilt = transformRef.current.tilt + e.deltaY * 0.3;
+          applyTilt(newTilt);
+        } else {
+          // Horizontal → rotation (pivot at canvas center)
+          const newRotation = transformRef.current.rotation + e.deltaX * 0.003;
+          const { width: cw, height: ch } = canvasDimsRef.current;
+          applyTransform(transformRef.current.scale, newRotation, cw / 2, ch / 2);
+        }
+      } else {
+        // Normal wheel: zoom
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        const rect = el.getBoundingClientRect();
+        applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
+      }
     }, { passive: false });
 
     function handleClick(e: PointerEvent) {
