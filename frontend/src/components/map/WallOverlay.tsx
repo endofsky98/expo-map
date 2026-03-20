@@ -150,11 +150,7 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, canva
         }
       }
 
-      // hide when no tilt (walls only visible tilted)
-      if (t.tilt < 3) {
-        renderer.clear();
-        return;
-      }
+      if (t.tilt < 3) { renderer.clear(); return; }
 
       // Resize renderer to match pixi canvas (including overscan)
       const totalW = vw + pad.left * 2;
@@ -166,7 +162,6 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, canva
         }
       }
 
-      // Opacity
       const alpha = Math.min(1, (t.tilt - 3) / 12);
       wallGroupRef.current.traverse(ch => {
         const m = ch as THREE.Mesh;
@@ -202,11 +197,13 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, canva
     return () => cancelAnimationFrame(rafRef.current);
   }, [transformRef, canvasDimsRef, canvasPadRef]);
 
+  // Sync canvas position with pixi (overscan offset)
+  const pad = canvasPadRef.current;
   return (
     <canvas
       ref={canvasRef}
       className="absolute pointer-events-none"
-      style={{ zIndex: 2, top: 0, left: 0 }}
+      style={{ zIndex: 2, left: `${-pad.left}px`, top: `${-pad.top}px` }}
     />
   );
 }
