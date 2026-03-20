@@ -4,6 +4,19 @@ import Konva from 'konva';
 import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
+interface TileLevelInfo {
+  level: number;
+  width: number;
+  height: number;
+  cols: number;
+  rows: number;
+}
+
+interface TileInfo {
+  tile_size: number;
+  levels: TileLevelInfo[];
+}
+
 interface CurrentPosition {
   x: number;
   y: number;
@@ -90,11 +103,27 @@ export default function MapViewer({
   const currentImageIdRef = useRef<number | null>(null);
   // Prefetch cache: stores preloaded images by zoom level index
   const prefetchCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
+  // Tile rendering state
+  const tileCacheRef = useRef<Map<string, HTMLImageElement | 'loading' | 'error'>>(new Map());
+  const [, setTileVersion] = useState(0);
+
+  // Parse tile_info from current image
+  const tileInfo = useMemo((): TileInfo | null => {
+    if (!currentImage?.tile_info) return null;
+    try {
+      return typeof currentImage.tile_info === 'string'
+        ? JSON.parse(currentImage.tile_info)
+        : currentImage.tile_info;
+    } catch { return null; }
+  }, [currentImage]);
+
+  const useTileMode = !!tileInfo;
 
   // Cleanup prefetch cache and images on unmount (floor memory management)
   useEffect(() => {
     return () => {
       prefetchCacheRef.current.clear();
+      tileCacheRef.current.clear();
       setBgImage(null);
       setNextBgImage(null);
       if (crossfadeTimerRef.current) cancelAnimationFrame(crossfadeTimerRef.current);
@@ -127,7 +156,7 @@ export default function MapViewer({
 
   // Prefetch adjacent zoom level images in background
   useEffect(() => {
-    if (!currentImage) return;
+    if (!currentImage || useTileMode) return;
     const zoomLevels = parseZoomLevels(currentImage);
     if (zoomLevels.length === 0) return;
 
@@ -163,7 +192,7 @@ export default function MapViewer({
 
   // Crossfade zoom: pick the right zoom level image based on current scale
   useEffect(() => {
-    if (!currentImage) { setBgImage(null); setNextBgImage(null); return; }
+    if (!currentImage || useTileMode) { setBgImage(null); setNextBgImage(null); return; }
     const zoomLevels = parseZoomLevels(currentImage);
 
     let imageUrl: string;
@@ -240,6 +269,73 @@ export default function MapViewer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentImage, scale]);
+
+  // ===== Tile pyramid rendering =====
+
+  // Clear tile cache on image change
+  useEffect(() => {
+    tileCacheRef.current.clear();
+  }, [currentImage?.id]);
+
+  // Select tile level based on scale
+  const currentTileLevelIdx = useMemo(() => {
+    if (!tileInfo) return 0;
+    const idx = Math.round(-Math.log2(Math.max(0.01, scale)));
+    return Math.max(0, Math.min(tileInfo.levels.length - 1, idx));
+  }, [tileInfo, scale]);
+
+  // Calculate visible tile coordinates
+  const visibleTileCoords = useMemo(() => {
+    if (!tileInfo || !currentImage) return [];
+    const level = tileInfo.levels[currentTileLevelIdx];
+    if (!level) return [];
+    const tileSize = tileInfo.tile_size;
+    const sfx = currentImage.width / level.width;
+    const sfy = currentImage.height / level.height;
+
+    const left = -position.x / scale;
+    const top = -position.y / scale;
+    const right = left + dimensions.width / scale;
+    const bottom = top + dimensions.height / scale;
+
+    const colStart = Math.max(0, Math.floor((left / sfx) / tileSize) - prefetchRange);
+    const colEnd = Math.min(level.cols - 1, Math.ceil((right / sfx) / tileSize) + prefetchRange);
+    const rowStart = Math.max(0, Math.floor((top / sfy) / tileSize) - prefetchRange);
+    const rowEnd = Math.min(level.rows - 1, Math.ceil((bottom / sfy) / tileSize) + prefetchRange);
+
+    const tiles: { row: number; col: number }[] = [];
+    for (let r = rowStart; r <= rowEnd; r++) {
+      for (let c = colStart; c <= colEnd; c++) {
+        tiles.push({ row: r, col: c });
+      }
+    }
+    return tiles;
+  }, [tileInfo, currentImage, currentTileLevelIdx, position, scale, dimensions, prefetchRange]);
+
+  // Load visible tiles
+  useEffect(() => {
+    if (!tileInfo || !currentImage) return;
+    const level = tileInfo.levels[currentTileLevelIdx];
+    if (!level) return;
+    const imageId = currentImage.id;
+
+    for (const { row, col } of visibleTileCoords) {
+      const key = `${imageId}_${currentTileLevelIdx}_${row}_${col}`;
+      if (tileCacheRef.current.has(key)) continue;
+
+      tileCacheRef.current.set(key, 'loading');
+      const img = new window.Image();
+      img.crossOrigin = 'anonymous';
+      img.src = `${apiBase}/api/tiles/${imageId}/${currentTileLevelIdx}/${row}/${col}`;
+      img.onload = () => {
+        tileCacheRef.current.set(key, img);
+        setTileVersion(v => v + 1);
+      };
+      img.onerror = () => {
+        tileCacheRef.current.set(key, 'error');
+      };
+    }
+  }, [visibleTileCoords, tileInfo, currentImage, currentTileLevelIdx, apiBase]);
 
   const updateViewport = useCallback(() => {
     const stage = stageRef.current;
@@ -575,13 +671,37 @@ export default function MapViewer({
           if (stage) setPosition(stage.position());
         }}
       >
-        {/* Background image layer with crossfade */}
+        {/* Background image layer */}
         <Layer>
-          {bgImage && (
-            <KonvaImage image={bgImage} x={0} y={0} width={imgWidth} height={imgHeight} />
-          )}
-          {nextBgImage && (
-            <KonvaImage image={nextBgImage} x={0} y={0} width={imgWidth} height={imgHeight} opacity={crossfadeOpacity} />
+          {useTileMode && tileInfo ? (() => {
+            const level = tileInfo.levels[currentTileLevelIdx];
+            if (!level) return null;
+            const tileSize = tileInfo.tile_size;
+            const sfx = imgWidth / level.width;
+            const sfy = imgHeight / level.height;
+            return visibleTileCoords.map(({ row, col }) => {
+              const key = `${currentImage!.id}_${currentTileLevelIdx}_${row}_${col}`;
+              const cached = tileCacheRef.current.get(key);
+              const x = col * tileSize * sfx;
+              const y = row * tileSize * sfy;
+              const tw = Math.min(tileSize, level.width - col * tileSize);
+              const th = Math.min(tileSize, level.height - row * tileSize);
+              const dw = tw * sfx;
+              const dh = th * sfy;
+              if (cached && typeof cached !== 'string') {
+                return <KonvaImage key={key} image={cached} x={x} y={y} width={dw} height={dh} listening={false} />;
+              }
+              return <Rect key={key} x={x} y={y} width={dw} height={dh} fill="#e5e7eb" opacity={0.3} listening={false} />;
+            });
+          })() : (
+            <>
+              {bgImage && (
+                <KonvaImage image={bgImage} x={0} y={0} width={imgWidth} height={imgHeight} />
+              )}
+              {nextBgImage && (
+                <KonvaImage image={nextBgImage} x={0} y={0} width={imgWidth} height={imgHeight} opacity={crossfadeOpacity} />
+              )}
+            </>
           )}
         </Layer>
 

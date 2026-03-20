@@ -75,6 +75,7 @@ export interface MapImage {
   width: number;
   height: number;
   is_current: boolean;
+  tile_info?: string | null;
   floor_id?: number;
   hall_id?: number;
   created_at?: string;
