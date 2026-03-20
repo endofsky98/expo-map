@@ -1418,6 +1418,14 @@ export default function MapViewer({
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(() => {
       recalcMarkers();
+      // Snap zoom to nearest 0.5 level for crisp tile alignment
+      const curLevel = Math.log2(transformRef.current.scale);
+      const snapped = Math.round(curLevel * 2) / 2;
+      const snappedScale = Math.pow(2, snapped);
+      if (Math.abs(snappedScale - transformRef.current.scale) > 0.01) {
+        const { width: cw, height: ch } = canvasDimsRef.current;
+        animateZoom(snappedScale, cw / 2, ch / 2, 150);
+      }
     }, 300);
 
     const sampledIds = currentDisplay;
@@ -1643,12 +1651,18 @@ export default function MapViewer({
   // ===== Window-exposed functions =====
   function zoomIn() {
     const { width: cw, height: ch } = canvasDimsRef.current;
-    applyZoom(transformRef.current.scale * 1.3, cw / 2, ch / 2);
+    // +0.5 zoom level (×√2 ≈ 1.414), snap to nearest 0.5
+    const curLevel = Math.log2(transformRef.current.scale);
+    const targetLevel = Math.ceil(curLevel * 2 + 0.01) / 2; // next 0.5 step up
+    animateZoom(Math.pow(2, targetLevel), cw / 2, ch / 2, 200);
   }
 
   function zoomOut() {
     const { width: cw, height: ch } = canvasDimsRef.current;
-    applyZoom(transformRef.current.scale / 1.3, cw / 2, ch / 2);
+    // -0.5 zoom level, snap to nearest 0.5
+    const curLevel = Math.log2(transformRef.current.scale);
+    const targetLevel = Math.floor(curLevel * 2 - 0.01) / 2; // next 0.5 step down
+    animateZoom(Math.pow(2, targetLevel), cw / 2, ch / 2, 200);
   }
 
   function panToBooth(booth: Booth) {
