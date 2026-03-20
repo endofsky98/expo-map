@@ -1254,6 +1254,7 @@ export default function MapViewer({
         booths={booths}
         transformRef={transformRef}
         canvasDimsRef={canvasDimsRef}
+        canvasPadRef={canvasPadRef}
         containerRef={containerRef}
       />
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}

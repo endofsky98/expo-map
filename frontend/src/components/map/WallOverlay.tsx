@@ -1,7 +1,12 @@
 /**
  * WallOverlay — Three.js 3D wall rendering overlaid on pixi map canvas.
- * Uses OrthographicCamera synced pixel-perfect with pixi transform.
- * Renders booth boundaries as extruded 3D boxes.
+ *
+ * Strategy:
+ * - Fixed orthographic camera looking straight down (top-down, pixel-space).
+ * - wallGroup transformed identically to pixi mainContainer (position, scale, rotation).
+ * - Tilt is NOT done in Three.js — instead, the same CSS perspective+rotateX
+ *   that pixi canvas uses is applied to our canvas element too.
+ *   This guarantees pixel-perfect alignment at all tilt angles.
  */
 import { useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
@@ -12,8 +17,6 @@ interface Booth {
   y: number;
   width: number;
   height: number;
-  booth_number?: string;
-  company_name?: string;
 }
 
 interface Transform {
@@ -24,16 +27,22 @@ interface Transform {
   tilt: number;
 }
 
+interface CanvasPad {
+  left: number;
+  top: number;
+}
+
 interface WallOverlayProps {
   booths: Booth[];
   transformRef: React.MutableRefObject<Transform>;
   canvasDimsRef: React.MutableRefObject<{ width: number; height: number }>;
+  canvasPadRef: React.MutableRefObject<CanvasPad>;
   containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-const WALL_HEIGHT = 10; // world units height of wall boxes
+const WALL_H = 12;
 
-export default function WallOverlay({ booths, transformRef, canvasDimsRef, containerRef }: WallOverlayProps) {
+export default function WallOverlay({ booths, transformRef, canvasDimsRef, canvasPadRef }: WallOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -41,61 +50,47 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, conta
   const wallGroupRef = useRef<THREE.Group>(new THREE.Group());
   const rafRef = useRef<number>(0);
 
-  // Build wall meshes from booth data
-  const buildWalls = useCallback((scene: THREE.Scene, boothList: Booth[]) => {
-    const oldGroup = wallGroupRef.current;
-    scene.remove(oldGroup);
-    oldGroup.traverse((child) => {
-      if ((child as THREE.Mesh).geometry) (child as THREE.Mesh).geometry.dispose();
-      if ((child as THREE.Mesh).material) {
-        const mat = (child as THREE.Mesh).material;
-        if (Array.isArray(mat)) mat.forEach(m => m.dispose());
-        else (mat as THREE.Material).dispose();
+  const buildWalls = useCallback((scene: THREE.Scene, list: Booth[]) => {
+    const old = wallGroupRef.current;
+    scene.remove(old);
+    old.traverse(c => {
+      const m = c as THREE.Mesh;
+      if (m.geometry) m.geometry.dispose();
+      if (m.material) {
+        if (Array.isArray(m.material)) m.material.forEach(x => x.dispose());
+        else (m.material as THREE.Material).dispose();
       }
     });
 
-    const group = new THREE.Group();
-
-    const wallMat = new THREE.MeshLambertMaterial({ color: 0x5b6b7d, transparent: true });
-    const topMat = new THREE.MeshLambertMaterial({ color: 0x8899aa, transparent: true });
-    const bottomMat = new THREE.MeshLambertMaterial({ color: 0x3a4a5a, transparent: true });
-
-    for (const booth of boothList) {
-      const { x, y, width, height } = booth;
-      const geo = new THREE.BoxGeometry(width, WALL_HEIGHT, height);
-      const materials = [
-        wallMat.clone(), // +x right
-        wallMat.clone(), // -x left
-        topMat.clone(),  // +y top
-        bottomMat.clone(), // -y bottom
-        wallMat.clone(), // +z front
-        wallMat.clone(), // -z back
+    const g = new THREE.Group();
+    for (const b of list) {
+      const geo = new THREE.BoxGeometry(b.width, WALL_H, b.height);
+      const mats = [
+        new THREE.MeshLambertMaterial({ color: 0x5b6b7d, transparent: true }),
+        new THREE.MeshLambertMaterial({ color: 0x5b6b7d, transparent: true }),
+        new THREE.MeshLambertMaterial({ color: 0x8899aa, transparent: true }),
+        new THREE.MeshLambertMaterial({ color: 0x3a4a5a, transparent: true }),
+        new THREE.MeshLambertMaterial({ color: 0x5b6b7d, transparent: true }),
+        new THREE.MeshLambertMaterial({ color: 0x5b6b7d, transparent: true }),
       ];
-      const mesh = new THREE.Mesh(geo, materials);
-      // Pixi world: (x, y) where y goes down.
-      // Three.js: we keep x as-is, use z for pixi-y (same direction: +z = down on screen at rotation=0).
-      // y-axis is "up" (wall height).
-      // Box center at (cx, halfH, cy) in Three.js coords.
-      mesh.position.set(x + width / 2, WALL_HEIGHT / 2, y + height / 2);
-      group.add(mesh);
-
-      // Wireframe edges
-      const edges = new THREE.EdgesGeometry(geo);
-      const lineMat = new THREE.LineBasicMaterial({ color: 0x3a4a5a, transparent: true, opacity: 0.4 });
-      const wireframe = new THREE.LineSegments(edges, lineMat);
-      wireframe.position.copy(mesh.position);
-      group.add(wireframe);
+      const mesh = new THREE.Mesh(geo, mats);
+      // World coords: Three x = pixi x, Three z = pixi y, Three y = height
+      mesh.position.set(b.x + b.width / 2, WALL_H / 2, b.y + b.height / 2);
+      g.add(mesh);
+      const edge = new THREE.LineSegments(
+        new THREE.EdgesGeometry(geo),
+        new THREE.LineBasicMaterial({ color: 0x3a4a5a, transparent: true, opacity: 0.5 })
+      );
+      edge.position.copy(mesh.position);
+      g.add(edge);
     }
-
-    scene.add(group);
-    wallGroupRef.current = group;
+    scene.add(g);
+    wallGroupRef.current = g;
   }, []);
 
-  // Init Three.js
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(window.devicePixelRatio || 1);
     renderer.setClearColor(0x000000, 0);
@@ -104,178 +99,114 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, conta
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    // OrthographicCamera — frustum set each frame to match pixi viewport
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100000);
-    cameraRef.current = camera;
+    // Camera: ortho, looking down -Y, screen-pixel space
+    // up = (0,0,-1) so: screen-x = Three +x, screen-y(down) = Three +z
+    const cam = new THREE.OrthographicCamera(0, 1, 0, -1, -50000, 50000);
+    cam.position.set(0, 1000, 0);
+    cam.up.set(0, 0, -1);
+    cam.lookAt(0, 0, 0);
+    cameraRef.current = cam;
 
-    // Lighting
-    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambient);
-    const dir1 = new THREE.DirectionalLight(0xffffff, 0.7);
-    dir1.position.set(-200, 500, -300);
-    scene.add(dir1);
-    const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);
-    dir2.position.set(200, 300, 200);
-    scene.add(dir2);
+    // Lights — in scene (move with world rotation)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const d = new THREE.DirectionalLight(0xffffff, 0.8);
+    d.position.set(-1, 2, -1).normalize();
+    scene.add(d);
 
     buildWalls(scene, booths);
-
-    return () => {
-      cancelAnimationFrame(rafRef.current);
-      renderer.dispose();
-      rendererRef.current = null;
-    };
+    return () => { cancelAnimationFrame(rafRef.current); renderer.dispose(); rendererRef.current = null; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Rebuild walls when booths change
-  useEffect(() => {
-    const scene = sceneRef.current;
-    if (scene) buildWalls(scene, booths);
-  }, [booths, buildWalls]);
+  useEffect(() => { if (sceneRef.current) buildWalls(sceneRef.current, booths); }, [booths, buildWalls]);
 
-  // Render loop — sync camera with pixi transform
   useEffect(() => {
-    const renderer = rendererRef.current;
-    const scene = sceneRef.current;
-    const camera = cameraRef.current;
-    if (!renderer || !scene || !camera) return;
-
-    let prevTilt = -1;
+    const renderer = rendererRef.current, scene = sceneRef.current, cam = cameraRef.current;
+    if (!renderer || !scene || !cam) return;
 
     const loop = () => {
       rafRef.current = requestAnimationFrame(loop);
-
       const t = transformRef.current;
       const { width: vw, height: vh } = canvasDimsRef.current;
+      const pad = canvasPadRef.current;
       if (vw === 0 || vh === 0) return;
 
-      // Resize
-      const canvas = canvasRef.current;
-      if (canvas) {
-        const dpr = window.devicePixelRatio || 1;
-        const needW = Math.round(vw * dpr);
-        const needH = Math.round(vh * dpr);
-        if (canvas.width !== needW || canvas.height !== needH) {
-          renderer.setSize(vw, vh);
+      // ---- Sync CSS tilt with pixi canvas ----
+      const el = canvasRef.current;
+      if (el) {
+        if (t.tilt === 0) {
+          el.style.transform = '';
+          el.style.transformOrigin = '';
+        } else {
+          const rad = (t.tilt * Math.PI) / 180;
+          const scaleX = 1 / Math.cos(rad);
+          const tf = `perspective(800px) rotateX(${t.tilt}deg) scaleX(${scaleX.toFixed(4)})`;
+          const totalW = vw + pad.left * 2;
+          const totalH = vh + pad.top;
+          const originXPct = totalW > 0 ? ((pad.left + vw / 2) / totalW * 100).toFixed(2) : '50';
+          const originYPct = totalH > 0 ? ((pad.top + vh * 0.3) / totalH * 100).toFixed(2) : '30';
+          el.style.transform = tf;
+          el.style.transformOrigin = `${originXPct}% ${originYPct}%`;
         }
       }
 
-      // Only render when tilted
+      // hide when no tilt (walls only visible tilted)
       if (t.tilt < 3) {
-        if (prevTilt >= 3) { renderer.clear(); }
-        prevTilt = t.tilt;
+        renderer.clear();
         return;
       }
-      prevTilt = t.tilt;
 
-      // Fade in walls
+      // Resize renderer to match pixi canvas (including overscan)
+      const totalW = vw + pad.left * 2;
+      const totalH = vh + pad.top;
+      if (el) {
+        const dpr = window.devicePixelRatio || 1;
+        if (el.width !== Math.round(totalW * dpr) || el.height !== Math.round(totalH * dpr)) {
+          renderer.setSize(totalW, totalH);
+        }
+      }
+
+      // Opacity
       const alpha = Math.min(1, (t.tilt - 3) / 12);
-      wallGroupRef.current.traverse((child) => {
-        if ((child as THREE.Mesh).material) {
-          const mat = (child as THREE.Mesh).material;
-          if (Array.isArray(mat)) mat.forEach(m => { m.opacity = alpha; });
-          else { (mat as THREE.Material).opacity = alpha; }
+      wallGroupRef.current.traverse(ch => {
+        const m = ch as THREE.Mesh;
+        if (m.material) {
+          if (Array.isArray(m.material)) m.material.forEach(x => { x.opacity = alpha; });
+          else (m.material as THREE.Material).opacity = alpha;
         }
       });
 
-      // === Camera sync with pixi ===
-      // Pixi draws world with: position=(t.x, t.y), scale, rotation (CW).
-      // A world point (wx, wy) appears on screen at:
-      //   sx = t.x + scale * (wx*cos(rot) - wy*sin(rot))
-      //   sy = t.y + scale * (wx*sin(rot) + wy*cos(rot))
-      //
-      // We use OrthographicCamera looking down -Y axis (top-down).
-      // Three.js world: x=pixi-x, z=pixi-y, y=height.
-      // The camera "viewport" in world units = screen / scale.
+      // ---- Transform wallGroup = pixi mainContainer ----
+      // pixi: mc.position.set(t.x + pad.left, t.y + pad.top)
+      //        mc.scale.set(scale), mc.rotation = rotation (CW rad)
+      // Our camera: x=screen-x, z=screen-y(down). So:
+      const g = wallGroupRef.current;
+      g.position.set(t.x + pad.left, 0, t.y + pad.top);
+      g.scale.set(t.scale, t.scale, t.scale);
+      g.rotation.set(0, 0, 0);
+      // pixi rotation CW in screen plane. Camera looks down -Y with up=(0,0,-1).
+      // Y-rotation in Three.js: positive = CCW from above → use -rotation for CW.
+      g.rotateY(-t.rotation);
 
-      const halfW = (vw / t.scale) / 2;
-      const halfH = (vh / t.scale) / 2;
+      // Camera frustum = full canvas size (with overscan)
+      cam.left = 0;
+      cam.right = totalW;
+      cam.top = 0;
+      cam.bottom = -totalH;
+      cam.updateProjectionMatrix();
 
-      // Screen center in pixi world coords
-      const cosR = Math.cos(-t.rotation);
-      const sinR = Math.sin(-t.rotation);
-      const scx = vw / 2 - t.x;
-      const scy = vh / 2 - t.y;
-      const worldCX = (scx * cosR + scy * sinR) / t.scale;
-      const worldCY = (-scx * sinR + scy * cosR) / t.scale;
-
-      // Tilt angle
-      const tiltRad = (t.tilt * Math.PI) / 180;
-
-      // Camera at world center, high above, tilted
-      // For top-down (tilt=0): camera at (cx, far, cz), looking at (cx, 0, cz)
-      // For tilt: orbit camera backward
-      const camDist = 5000;
-      const camY = camDist * Math.cos(tiltRad);
-      // "backward" = in the direction of screen-top in world space
-      // screen-top at rotation=0 is -z direction (pixi y decreases = upward)
-      // Rotated by map rotation:
-      const backDir = camDist * Math.sin(tiltRad);
-      const camOffX = backDir * Math.sin(t.rotation);
-      const camOffZ = -backDir * Math.cos(t.rotation);
-
-      camera.position.set(worldCX + camOffX, camY, worldCY + camOffZ);
-      camera.lookAt(worldCX, 0, worldCY);
-
-      // Set orthographic frustum to match pixi scale
-      // After lookAt, camera.up is (0,1,0). We need to also apply map rotation.
-      // The camera's local "right" should align with pixi's screen-right.
-      // We do this by rolling the camera by the rotation angle.
-      // lookAt sets the camera matrix, then we rotate around the view axis.
-      camera.left = -halfW;
-      camera.right = halfW;
-      camera.top = halfH;
-      camera.bottom = -halfH;
-
-      // Apply rotation as camera roll (rotate around view direction)
-      // After lookAt, we modify the up vector and re-lookAt
-      const upX = -Math.sin(t.rotation) * Math.cos(tiltRad);
-      const upY = Math.cos(tiltRad); // stays mostly up when no tilt... but we need more precision
-      const upZ = Math.cos(t.rotation) * Math.cos(tiltRad);
-      // Actually, simpler: set up vector, then lookAt recalculates
-      // For a tilted orthographic camera:
-      // up = direction of "screen up" in world space
-      // screen-up (no rotation) = -z (pixi y decreases going up)
-      // with rotation: rotate (-z) by rotation around y
-      // This is actually the "forward tilt" direction, not "up"...
-
-      // Let's use the matrix approach:
-      // 1. Set camera to look straight down
-      // 2. Rotate by tilt (pitch forward)
-      // 3. Rotate by map rotation (yaw)
-
-      // Reset camera
-      camera.position.set(0, camDist, 0);
-      camera.up.set(0, 0, -1); // looking down, "up" = toward -z (screen top = pixi y=0)
-      camera.lookAt(0, 0, 0);
-
-      // Build rotation: yaw (map rotation) then pitch (tilt)
-      const euler = new THREE.Euler(tiltRad, -t.rotation, 0, 'YXZ');
-      const quat = new THREE.Quaternion().setFromEuler(euler);
-
-      // Offset: rotate the (0, camDist, 0) position
-      const offset = new THREE.Vector3(0, camDist, 0).applyQuaternion(quat);
-      camera.position.set(worldCX + offset.x, offset.y, worldCY + offset.z);
-
-      // Up vector: rotate (0, 0, -1) by the same quaternion
-      const up = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
-      camera.up.copy(up);
-      camera.lookAt(worldCX, 0, worldCY);
-
-      camera.updateProjectionMatrix();
-      renderer.render(scene, camera);
+      renderer.render(scene, cam);
     };
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [transformRef, canvasDimsRef]);
+  }, [transformRef, canvasDimsRef, canvasPadRef]);
 
   return (
     <canvas
       ref={canvasRef}
-      className="absolute inset-0 pointer-events-none"
-      style={{ zIndex: 2 }}
+      className="absolute pointer-events-none"
+      style={{ zIndex: 2, top: 0, left: 0 }}
     />
   );
 }
