@@ -45,6 +45,8 @@ interface MapViewerProps {
 
 const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 8.0;
+const MIN_TILT = 0;
+const MAX_TILT = 60;
 const MIN_BOOTH_SCREEN_SIZE = 3;
 const CLICK_THRESHOLD = 5;
 const CLICK_TIME_THRESHOLD = 300;
@@ -98,7 +100,8 @@ export default function MapViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
   const mainContainerRef = useRef<PIXI.Container | null>(null);
-  const transformRef = useRef({ x: 0, y: 0, scale: 1, rotation: 0 });
+  const transformRef = useRef({ x: 0, y: 0, scale: 1, rotation: 0, tilt: 0 });
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasDimsRef = useRef({ width: 800, height: 600 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -268,6 +271,19 @@ export default function MapViewer({
     }
   }
 
+  function applyTilt(tilt: number) {
+    const clamped = Math.max(MIN_TILT, Math.min(MAX_TILT, tilt));
+    transformRef.current.tilt = clamped;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (clamped === 0) {
+      canvas.style.transform = '';
+    } else {
+      canvas.style.transform = `perspective(800px) rotateX(${clamped}deg)`;
+      canvas.style.transformOrigin = 'center center';
+    }
+  }
+
   function getBoothOpacity(booth: Booth): number {
     if (activeCategories.size === 0) return 1;
     if (booth.category_id && activeCategories.has(booth.category_id)) return 1;
@@ -299,6 +315,7 @@ export default function MapViewer({
     el.appendChild(app.view as HTMLCanvasElement);
 
     const canvas = app.view as HTMLCanvasElement;
+    canvasRef.current = canvas;
     canvas.style.touchAction = 'none';
     canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
@@ -323,6 +340,7 @@ export default function MapViewer({
     const pointers = new Map<number, { x: number; y: number }>();
     let lastPinchDist = 0;
     let lastPinchAngle = 0;
+    let lastPinchMidY = 0; // 버드뷰: 두 손가락 중점 Y
 
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -339,6 +357,7 @@ export default function MapViewer({
         const pts = Array.from(pointers.values());
         lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
         lastPinchAngle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+        lastPinchMidY = (pts[0].y + pts[1].y) / 2;
       }
     });
 
@@ -349,16 +368,21 @@ export default function MapViewer({
         const pts = Array.from(pointers.values());
         const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
         const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
+        const midY = (pts[0].y + pts[1].y) / 2;
         if (lastPinchDist > 0) {
-          const rect = canvas.getBoundingClientRect();
+          const rect = el.getBoundingClientRect();
           const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
           const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
           const newScale = transformRef.current.scale * (dist / lastPinchDist);
           const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
           applyTransform(newScale, newRotation, cx, cy);
+          // Bird's eye tilt: vertical midpoint movement
+          const tiltDelta = -(midY - lastPinchMidY) * 0.3;
+          applyTilt(transformRef.current.tilt + tiltDelta);
         }
         lastPinchDist = dist;
         lastPinchAngle = angle;
+        lastPinchMidY = midY;
         return;
       }
 
@@ -384,24 +408,24 @@ export default function MapViewer({
           handleClick(e);
         }
       }
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; }
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; }
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       pointers.delete(e.pointerId);
       isDragging = false;
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; }
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; }
     });
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
       const factor = e.deltaY > 0 ? 0.9 : 1.1;
-      const rect = canvas.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       applyZoom(transformRef.current.scale * factor, e.clientX - rect.left, e.clientY - rect.top);
     }, { passive: false });
 
     function handleClick(e: PointerEvent) {
-      const rect = canvas.getBoundingClientRect();
+      const rect = el.getBoundingClientRect();
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       const t = transformRef.current;
@@ -474,6 +498,7 @@ export default function MapViewer({
       app.destroy(true);
       pixiApp.current = null;
       mainContainerRef.current = null;
+      canvasRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -501,10 +526,12 @@ export default function MapViewer({
         x: (cw - imgWidth * fitScale) / 2,
         y: (ch - imgHeight * fitScale) / 2,
         rotation: 0,
+        tilt: 0,
       };
       mc.position.set(transformRef.current.x, transformRef.current.y);
       mc.scale.set(fitScale);
       mc.rotation = 0;
+      applyTilt(0);
       lastBoothRedrawScaleRef.current = fitScale;
       onZoomChangeRef.current?.(fitScale);
     }
@@ -1058,6 +1085,28 @@ export default function MapViewer({
     redrawBoothsFnRef.current();
   }
 
+  function resetView() {
+    const mc = mainContainerRef.current;
+    if (!mc) return;
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const fitScale = Math.min(cw / imgWidth, ch / imgHeight) * 0.9;
+    transformRef.current = {
+      scale: fitScale,
+      x: (cw - imgWidth * fitScale) / 2,
+      y: (ch - imgHeight * fitScale) / 2,
+      rotation: 0,
+      tilt: 0,
+    };
+    mc.position.set(transformRef.current.x, transformRef.current.y);
+    mc.scale.set(fitScale);
+    mc.rotation = 0;
+    applyTilt(0);
+    lastBoothRedrawScaleRef.current = fitScale;
+    onZoomChangeRef.current?.(fitScale);
+    renderTilesFnRef.current();
+    redrawBoothsFnRef.current();
+  }
+
   function panToArea(x: number, y: number, width: number, height: number) {
     const mc = mainContainerRef.current;
     if (!mc) return;
@@ -1084,6 +1133,7 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerPanToArea = panToArea;
       (window as unknown as Record<string, unknown>).__mapViewerZoomIn = zoomIn;
       (window as unknown as Record<string, unknown>).__mapViewerZoomOut = zoomOut;
+      (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimensions]);
