@@ -449,19 +449,23 @@ export default function MapViewer({
     mainContainerRef.current = mainContainer;
 
     // ===== Pointer events for drag/zoom =====
-    let isDragging = false;
-    let dragStart = { x: 0, y: 0 };
     let pointerDownInfo = { x: 0, y: 0, time: 0 };
     const pointers = new Map<number, { x: number; y: number }>();
+    let primaryId: number | null = null; // first touch — controls pan
+    let secondaryId: number | null = null; // second touch — controls zoom/rotation OR tilt
+    let lastPrimaryPos = { x: 0, y: 0 };
+    let dragStart = { x: 0, y: 0 };
+    let isDragging = false;
+    // Two-finger state
     let lastPinchDist = 0;
     let lastPinchAngle = 0;
     let lastPinchMidY = 0;
-    // #2: Gesture classification
+    // Gesture classification: zoom/rotation vs tilt (exclusive after 2nd touch)
     let gestureType: 'none' | 'zoom' | 'tilt' = 'none';
     let gestureAccumDist = 0;
     let gestureAccumMidY = 0;
-    const GESTURE_THRESHOLD = 5; // reduced from 12 for snappier response
-    let moveRafPending = false; // rAF throttle for pointermove
+    const GESTURE_THRESHOLD = 5;
+    let moveRafPending = false;
 
     let lastDragX = 0, lastDragY = 0, lastDragTime = 0;
 
@@ -471,18 +475,23 @@ export default function MapViewer({
       canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-      if (pointers.size === 1 && e.isPrimary) {
+      if (primaryId === null) {
+        // First touch → pan control
+        primaryId = e.pointerId;
         const t = transformRef.current;
         dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
         isDragging = true;
         pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
         lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
-      } else if (pointers.size === 2) {
-        isDragging = false;
-        const pts = Array.from(pointers.values());
-        lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-        lastPinchAngle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
-        lastPinchMidY = (pts[0].y + pts[1].y) / 2;
+        lastPrimaryPos = { x: e.clientX, y: e.clientY };
+      } else if (secondaryId === null) {
+        // Second touch → zoom/rotation or tilt
+        secondaryId = e.pointerId;
+        const p1 = pointers.get(primaryId)!;
+        const p2 = { x: e.clientX, y: e.clientY };
+        lastPinchDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+        lastPinchAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+        lastPinchMidY = (p1.y + p2.y) / 2;
         gestureType = 'none';
         gestureAccumDist = 0;
         gestureAccumMidY = 0;
@@ -492,21 +501,42 @@ export default function MapViewer({
     canvas.addEventListener('pointermove', (e) => {
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
-      if (pointers.size === 2) {
-        // rAF throttle for two-finger gestures to prevent jank on high-refresh-rate displays
+      // --- Two-finger active: primary=pan, secondary=zoom/rot or tilt ---
+      if (primaryId !== null && secondaryId !== null) {
         if (moveRafPending) return;
         moveRafPending = true;
         requestAnimationFrame(() => {
           moveRafPending = false;
-          if (pointers.size !== 2) return;
-          const pts = Array.from(pointers.values());
-          const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-          const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
-          const midY = (pts[0].y + pts[1].y) / 2;
+          const p1 = pointers.get(primaryId!);
+          const p2 = pointers.get(secondaryId!);
+          if (!p1 || !p2) return;
+
+          // A) Pan: follow primary touch movement
+          const t = transformRef.current;
+          const panDx = p1.x - lastPrimaryPos.x;
+          const panDy = p1.y - lastPrimaryPos.y;
+          if (panDx !== 0 || panDy !== 0) {
+            t.x += panDx;
+            t.y += panDy;
+            clampPosition(t);
+            const mc = mainContainerRef.current;
+            if (mc) mc.position.set(t.x, t.y);
+            // Also update dragStart so single-finger resume works
+            dragStart.x = p1.x - t.x;
+            dragStart.y = p1.y - t.y;
+          }
+          lastPrimaryPos = { x: p1.x, y: p1.y };
+
+          // B) Zoom/rotation OR tilt from distance between two touches
+          const dist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+          const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+          const midY = (p1.y + p2.y) / 2;
+
           if (lastPinchDist > 0) {
-            // #2: Classify gesture once, then commit
             const distDelta = Math.abs(dist - lastPinchDist);
             const midYDelta = Math.abs(midY - lastPinchMidY);
+
+            // Classify gesture once, then lock
             if (gestureType === 'none') {
               gestureAccumDist += distDelta;
               gestureAccumMidY += midYDelta;
@@ -514,36 +544,41 @@ export default function MapViewer({
                 gestureType = gestureAccumDist > gestureAccumMidY ? 'zoom' : 'tilt';
               }
             }
-            if (gestureType !== 'tilt') {
+
+            if (gestureType === 'zoom' || gestureType === 'none') {
+              // Zoom + rotation — pivot at midpoint of two touches
               const rect = el.getBoundingClientRect();
-              const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
-              const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
+              const cx = (p1.x + p2.x) / 2 - rect.left;
+              const cy = (p1.y + p2.y) / 2 - rect.top;
               const newScale = transformRef.current.scale * (dist / lastPinchDist);
               const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
               applyTransform(newScale, newRotation, cx, cy);
             }
+
             if (gestureType === 'tilt') {
               const tiltDelta = -(midY - lastPinchMidY) * 0.3;
               applyTilt(transformRef.current.tilt + tiltDelta);
             }
           }
+
           lastPinchDist = dist;
           lastPinchAngle = angle;
           lastPinchMidY = midY;
+          scheduleRenderTiles();
+          scheduleMarkerUpdate();
         });
         return;
       }
 
-      if (isDragging && e.isPrimary) {
+      // --- Single finger: pan or Ctrl+drag ---
+      if (isDragging && e.pointerId === primaryId) {
         if (e.ctrlKey || e.metaKey) {
           // Ctrl+drag: vertical = tilt, horizontal = rotation
           const dy = e.clientY - lastDragY;
           const dx = e.clientX - lastDragX;
-          // Vertical movement → tilt (drag down = tilt more)
           if (Math.abs(dy) > 0) {
             applyTilt(transformRef.current.tilt + dy * 0.3);
           }
-          // Horizontal movement → rotation (center pivot)
           if (Math.abs(dx) > 0) {
             const { width: cw, height: ch } = canvasDimsRef.current;
             applyTransform(transformRef.current.scale, transformRef.current.rotation + dx * 0.003, cw / 2, ch / 2);
@@ -567,6 +602,7 @@ export default function MapViewer({
           }
           lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = now;
         }
+        lastPrimaryPos = { x: e.clientX, y: e.clientY };
       }
     });
 
@@ -574,28 +610,63 @@ export default function MapViewer({
       canvas.releasePointerCapture(e.pointerId);
       pointers.delete(e.pointerId);
 
-      if (e.isPrimary && isDragging) {
-        isDragging = false;
-        const dx = e.clientX - pointerDownInfo.x;
-        const dy = e.clientY - pointerDownInfo.y;
-        const dt = Date.now() - pointerDownInfo.time;
-        if (Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD) {
-          handleClick(e);
-        } else {
-          // Start inertia
-          const v = velocityRef.current;
-          if (Math.abs(v.vx) > 0.5 || Math.abs(v.vy) > 0.5) {
-            startInertia(v.vx, v.vy);
+      if (e.pointerId === secondaryId) {
+        // Second finger released — reset gesture, keep primary drag
+        secondaryId = null;
+        lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0;
+        gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0;
+        // Re-anchor drag to primary position
+        if (primaryId !== null) {
+          const p = pointers.get(primaryId);
+          if (p) {
+            const t = transformRef.current;
+            dragStart = { x: p.x - t.x, y: p.y - t.y };
+            isDragging = true;
           }
         }
+      } else if (e.pointerId === primaryId) {
+        primaryId = null;
+        if (isDragging) {
+          isDragging = false;
+          const dx = e.clientX - pointerDownInfo.x;
+          const dy = e.clientY - pointerDownInfo.y;
+          const dt = Date.now() - pointerDownInfo.time;
+          if (Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD) {
+            handleClick(e);
+          } else if (secondaryId === null) {
+            // Start inertia only if single-finger drag ended
+            const v = velocityRef.current;
+            if (Math.abs(v.vx) > 0.5 || Math.abs(v.vy) > 0.5) {
+              startInertia(v.vx, v.vy);
+            }
+          }
+        }
+        // If secondary still active, promote it to primary
+        if (secondaryId !== null) {
+          primaryId = secondaryId;
+          secondaryId = null;
+          const p = pointers.get(primaryId);
+          if (p) {
+            const t = transformRef.current;
+            dragStart = { x: p.x - t.x, y: p.y - t.y };
+            lastPrimaryPos = { x: p.x, y: p.y };
+            isDragging = true;
+          }
+          lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0;
+          gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0;
+        }
       }
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       pointers.delete(e.pointerId);
-      isDragging = false;
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
+      if (e.pointerId === primaryId) { primaryId = null; isDragging = false; }
+      if (e.pointerId === secondaryId) { secondaryId = null; }
+      if (primaryId === null && secondaryId === null) {
+        isDragging = false;
+      }
+      lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0;
+      gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0;
     });
 
     canvas.addEventListener('wheel', (e) => {
