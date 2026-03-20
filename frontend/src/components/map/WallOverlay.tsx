@@ -75,7 +75,8 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, conta
       ];
       const mesh = new THREE.Mesh(geo, materials);
       // Position: center of booth, y inverted, box centered at half height
-      mesh.position.set(x + width / 2, WALL_HEIGHT / 2, -(y + height / 2));
+      // Map coords (x-right, y-down) → Three.js (x-right, y-up, z = map-y)
+      mesh.position.set(x + width / 2, WALL_HEIGHT / 2, y + height / 2);
       group.add(mesh);
 
       // Edge wireframe for definition
@@ -177,35 +178,49 @@ export default function WallOverlay({ booths, transformRef, canvasDimsRef, conta
         }
       });
 
-      // Camera: orthographic-like by placing far away and using FOV to match pixi scale
-      // The pixi transform gives us: x, y (screen offset), scale, rotation, tilt
-      // We need the camera to look at the same world area
+      // === Sync Three.js camera with pixi transform ===
+      // Pixi: y-down, rotation CW. Three.js: y-up, z-out-of-screen.
+      // Map world: x-right, y-down → Three.js: x-right, z-down (y=up for height)
 
-      // Center of screen in world coords (inverse of pixi transform)
-      const cos = Math.cos(-t.rotation);
-      const sin = Math.sin(-t.rotation);
+      // Screen center → pixi world coords (inverse transform)
       const screenCX = vw / 2;
       const screenCY = vh / 2;
       const dx = screenCX - t.x;
       const dy = screenCY - t.y;
-      const worldCX = (dx * cos + dy * sin) / t.scale;
-      const worldCY = (-dx * sin + dy * cos) / t.scale;
+      const cosR = Math.cos(-t.rotation);
+      const sinR = Math.sin(-t.rotation);
+      const worldX = (dx * cosR + dy * sinR) / t.scale;
+      const worldY = (-dx * sinR + dy * cosR) / t.scale;
+      // Three.js target: map(x,y) → three(x, 0, y)
+      // y is flipped: map y-down → three z-positive-down
+      const lookX = worldX;
+      const lookZ = worldY;
 
-      // Camera distance to make world units match screen pixels at current scale
+      // Camera distance: match pixi scale to Three.js FOV
       const fovRad = (camera.fov * Math.PI) / 180;
       const dist = (vh / t.scale) / (2 * Math.tan(fovRad / 2));
 
-      // Tilt: rotate camera around the look-at point
+      // Tilt: camera orbits around look target
+      // tilt=0 → camera directly above (top-down), tilt=60 → angled
       const tiltRad = (t.tilt * Math.PI) / 180;
 
-      // Camera position: above and behind the center
-      const camX = worldCX + dist * Math.sin(tiltRad) * Math.sin(-t.rotation);
-      const camY = dist * Math.cos(tiltRad);
-      const camZ = -(worldCY) + dist * Math.sin(tiltRad) * Math.cos(-t.rotation);
+      // Camera offset from look target (in un-rotated space)
+      // tilt rotates camera "backward" (toward -z in un-rotated view = toward top of screen)
+      const camOffsetUp = dist * Math.cos(tiltRad);     // y (height)
+      const camOffsetBack = dist * Math.sin(tiltRad);   // distance "behind"
 
-      camera.position.set(camX, camY, camZ);
-      camera.lookAt(worldCX, 0, -worldCY);
-      camera.rotation.z = -t.rotation;
+      // Apply map rotation to the "back" offset direction
+      // In pixi, rotation=0 means no rotation, positive = CW
+      // Camera should move in the opposite direction of where map top is pointing
+      const backX = -camOffsetBack * Math.sin(t.rotation);
+      const backZ = -camOffsetBack * Math.cos(t.rotation);
+
+      camera.position.set(lookX + backX, camOffsetUp, lookZ + backZ);
+      camera.lookAt(lookX, 0, lookZ);
+
+      // Match map rotation: pixi rotation CW → Three.js camera roll
+      camera.rotation.z = t.rotation;
+
       camera.aspect = vw / vh;
       camera.updateProjectionMatrix();
 
