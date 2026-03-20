@@ -43,7 +43,6 @@ export default function MapViewer({
 
   // Layer refs
   const tileLayerRef = useRef<PIXI.Container>(new PIXI.Container());
-  const wallLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const obstacleLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const routeLayerRef = useRef<PIXI.Container>(new PIXI.Container());
   const facilityLayerRef = useRef<PIXI.Container>(new PIXI.Container());
@@ -79,7 +78,6 @@ export default function MapViewer({
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
-  const horizonRef = useRef<HTMLDivElement | null>(null);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -345,19 +343,6 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
-    // Update horizon line
-    const hz = horizonRef.current;
-    if (hz) {
-      if (clamped < 3) {
-        hz.style.opacity = '0';
-      } else {
-        // Horizon height: more tilt → horizon drops from top
-        // At 60° tilt, horizon at ~30% from top; at 10°, barely visible at top edge
-        const horizonPct = Math.min(35, (clamped / 60) * 35);
-        hz.style.opacity = String(Math.min(1, (clamped - 3) / 10));
-        hz.style.height = `${horizonPct}%`;
-      }
-    }
     scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
@@ -448,7 +433,6 @@ export default function MapViewer({
     const mainContainer = new PIXI.Container();
     app.stage.addChild(mainContainer);
     mainContainer.addChild(tileLayerRef.current);
-    mainContainer.addChild(wallLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(routeLayerRef.current);
     // boothLayer removed — booths are now HTML DOM markers
@@ -635,8 +619,7 @@ export default function MapViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentImage, tileInfo, useTileMode, imgWidth, imgHeight, prefetchRange]);
 
-  // Walls removed — replaced by horizon effect
-  const drawWallsRef = useRef<() => void>(() => {});
+
 
   // ===== Obstacles =====
   useEffect(() => {
@@ -1262,29 +1245,7 @@ export default function MapViewer({
 
   return (
     <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: '#ffffff' }}>
-      {/* Horizon wall — STK pattern band at horizon line, visible during tilt */}
-      <div
-        ref={horizonRef}
-        className="absolute left-0 right-0 top-0 pointer-events-none"
-        style={{
-          zIndex: 3,
-          height: '0%',
-          opacity: 0,
-          background: '#1a1a2e',
-          overflow: 'hidden',
-        }}
-      >
-        <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ position: 'absolute', inset: 0 }}>
-          <defs>
-            <pattern id="stk-horizon" x="0" y="0" width="200" height="120" patternUnits="userSpaceOnUse">
-              <text x="100" y="60" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.08)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
-              <text x="0" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.08)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
-              <text x="200" y="120" textAnchor="middle" dominantBaseline="central" fill="rgba(255,255,255,0.08)" fontSize="32" fontWeight="900" fontFamily="system-ui, sans-serif">STK</text>
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#stk-horizon)" />
-        </svg>
-      </div>
+
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
