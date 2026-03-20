@@ -82,6 +82,13 @@ export function hexStringToNumber(hex: string): number {
 }
 
 export function selectTileLevel(scale: number, ti: TileInfo): number {
-  const idx = Math.round(-Math.log2(Math.max(0.01, scale)));
+  // Mapbox style: always pick the level with resolution >= screen pixel resolution
+  // Account for devicePixelRatio — on retina displays we need higher-res tiles
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+  const effectiveScale = scale * dpr;
+  // Math.floor → always round toward higher resolution level
+  // e.g. scale=0.7, dpr=2 → effective=1.4 → idx=floor(-0.49)=floor(-0.49)=-1→clamped to 0
+  // e.g. scale=0.3, dpr=1 → effective=0.3 → idx=floor(1.74)=1 → Level 1
+  const idx = Math.floor(-Math.log2(Math.max(0.01, effectiveScale)));
   return Math.max(0, Math.min(ti.levels.length - 1, idx));
 }
