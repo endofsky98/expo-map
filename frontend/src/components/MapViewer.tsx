@@ -127,6 +127,8 @@ export default function MapViewer({
 
   // Function refs for pointer event handlers
   const renderTilesFnRef = useRef<() => void>(() => {});
+  // Track tile load failures to avoid infinite retry loops (max 3 retries per tile)
+  const tileFailCountRef = useRef<Map<string, number>>(new Map());
 
   // Callbacks as refs to avoid stale closures
   const onBoothClickRef = useRef(onBoothClick);
@@ -986,7 +988,7 @@ export default function MapViewer({
         const levelChanged = levelIdx !== currentTileLevelRef.current;
         if (levelChanged) {
           currentTileLevelRef.current = levelIdx;
-          // Don't remove old tiles yet — keep them visible until new ones load
+          tileFailCountRef.current.clear(); // reset retry counts on level change
         }
 
         const neededKeys = new Set<string>();
@@ -1019,6 +1021,8 @@ export default function MapViewer({
           for (let c = colStart; c <= colEnd; c++) {
             const key = `${currentImage.id}_${levelIdx}_${r}_${c}`;
             if (existingKeys.has(key)) continue;
+            // Skip tiles that failed too many times
+            if ((tileFailCountRef.current.get(key) || 0) > 3) continue;
 
             const x = c * tileSize * sfx;
             const y = r * tileSize * sfy;
@@ -1047,40 +1051,54 @@ export default function MapViewer({
               layer.addChild(placeholder);
 
               const url = `${apiBase}/api/tiles/${currentImage.id}/${levelIdx}/${r}/${c}`;
+              // Mapbox-style: destroy stale cached texture to force fresh load
+              const staleBase = PIXI.utils.BaseTextureCache[url];
+              if (staleBase && !staleBase.valid) {
+                staleBase.destroy();
+                delete PIXI.utils.BaseTextureCache[url];
+                delete PIXI.utils.TextureCache[url];
+              }
               const tex = PIXI.Texture.from(url, { resourceOptions: { crossorigin: 'anonymous' } });
+
+              const replacePlaceholder = () => {
+                tileCacheRef.current.set(key, tex);
+                if (placeholder.parent) {
+                  const sprite = new PIXI.Sprite(tex);
+                  sprite.name = key;
+                  sprite.x = x; sprite.y = y; sprite.width = dw; sprite.height = dh;
+                  const idx = layer.getChildIndex(placeholder);
+                  layer.removeChild(placeholder);
+                  layer.addChildAt(sprite, Math.min(idx, layer.children.length));
+                  // Clean up old-level tiles
+                  for (let j = layer.children.length - 1; j >= 0; j--) {
+                    const ch = layer.children[j];
+                    if (!ch.name) continue;
+                    const p = ch.name.split('_');
+                    if (parseInt(p[1] ?? '', 10) !== currentTileLevelRef.current) layer.removeChildAt(j);
+                  }
+                }
+              };
+
               if (tex.valid) {
                 tileCacheRef.current.set(key, tex);
                 layer.removeChild(placeholder);
                 const sprite = new PIXI.Sprite(tex);
                 sprite.name = key;
-                sprite.x = x;
-                sprite.y = y;
-                sprite.width = dw;
-                sprite.height = dh;
+                sprite.x = x; sprite.y = y; sprite.width = dw; sprite.height = dh;
                 layer.addChild(sprite);
               } else {
-                tex.baseTexture.on('loaded', () => {
-                  tileCacheRef.current.set(key, tex);
-                  if (placeholder.parent) {
-                    const sprite = new PIXI.Sprite(tex);
-                    sprite.name = key;
-                    sprite.x = x;
-                    sprite.y = y;
-                    sprite.width = dw;
-                    sprite.height = dh;
-                    const idx = layer.getChildIndex(placeholder);
-                    layer.removeChild(placeholder);
-                    layer.addChildAt(sprite, Math.min(idx, layer.children.length));
-                    // Clean up old-level tiles that are behind this newly loaded tile
-                    for (let j = layer.children.length - 1; j >= 0; j--) {
-                      const ch = layer.children[j];
-                      if (!ch.name) continue;
-                      const p = ch.name.split('_');
-                      const chLevel = parseInt(p[1] ?? '', 10);
-                      if (chLevel !== currentTileLevelRef.current) {
-                        layer.removeChildAt(j);
-                      }
-                    }
+                tex.baseTexture.on('loaded', replacePlaceholder);
+                // Error handling: remove placeholder + stale cache, retry up to 3 times
+                tex.baseTexture.on('error', () => {
+                  tex.baseTexture.destroy();
+                  delete PIXI.utils.BaseTextureCache[url];
+                  delete PIXI.utils.TextureCache[url];
+                  if (placeholder.parent) layer.removeChild(placeholder);
+                  const fails = (tileFailCountRef.current.get(key) || 0) + 1;
+                  tileFailCountRef.current.set(key, fails);
+                  if (fails <= 3) {
+                    // Schedule retry after 500ms backoff
+                    setTimeout(() => { tileDirtyRef.current = true; }, 500 * fails);
                   }
                 });
               }
