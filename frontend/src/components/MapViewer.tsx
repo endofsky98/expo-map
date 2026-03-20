@@ -111,7 +111,7 @@ export default function MapViewer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasDimsRef = useRef({ width: 800, height: 600 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
-  const [tiltDeg, setTiltDeg] = useState(0);
+
 
   // Layer refs
   const tileLayerRef = useRef<PIXI.Container>(new PIXI.Container());
@@ -354,7 +354,6 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
-    setTiltDeg(clamped);
     scheduleMarkerUpdate();
   }
 
@@ -1166,9 +1165,17 @@ export default function MapViewer({
       const wcy = booth.y + booth.height / 2;
       const { sx, sy } = worldToScreen(wcx, wcy);
 
+      // Perspective scale: when tilted, markers near top (far) shrink, near bottom (close) grow
+      const tilt = transformRef.current.tilt;
+      let pScale = 1;
+      if (tilt > 0) {
+        const normalizedY = Math.max(0, Math.min(1, sy / ch));
+        pScale = 0.5 + normalizedY * 0.8;
+      }
+
       // Position update only (no fade logic here — recalcMarkers handles transitions)
       el.style.display = 'flex';
-      el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+      el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(${pScale.toFixed(3)})`;
 
       // Category filter opacity — skip if mid-fade
       if (!fadingIdsRef.current.has(booth.id)) {
@@ -1179,11 +1186,17 @@ export default function MapViewer({
       // Update SVG pin color for selection
       const isSelected = booth.id === selId;
       const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#ef4444';
-      const pinSvg = el.querySelector('svg path') as SVGPathElement | null;
-      if (pinSvg) {
-        pinSvg.setAttribute('fill', fill);
-        pinSvg.setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
-        pinSvg.setAttribute('stroke-width', isSelected ? '3' : '2');
+      const paths = el.querySelectorAll('svg path');
+      const circles = el.querySelectorAll('svg circle');
+      if (paths.length >= 2) {
+        paths[0].setAttribute('fill', fill);
+        paths[0].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
+        paths[0].setAttribute('stroke-width', isSelected ? '3' : '2.5');
+        paths[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
+      }
+      if (circles.length >= 2) {
+        circles[0].setAttribute('fill', fill);
+        circles[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
       }
 
       // Update label: booth number + company name when zoomed
@@ -1242,14 +1255,17 @@ export default function MapViewer({
         pinSvg.setAttribute('height', '18');
         pinSvg.setAttribute('viewBox', '0 0 28 36');
         pinSvg.style.filter = 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))';
-        pinSvg.innerHTML = `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${fill}" stroke="#fff" stroke-width="2"/>` +
-          `<circle cx="14" cy="14" r="6" fill="#fff" fill-opacity="0.9"/>`;
+        pinSvg.innerHTML =
+          `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${fill}" stroke="#fff" stroke-width="2.5"/>` +
+          `<circle cx="14" cy="14" r="8" fill="${fill}"/>` +
+          `<circle cx="14" cy="14" r="8" fill="none" stroke="#fff" stroke-width="2"/>` +
+          `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" stroke-width="2"/>`;
 
         // Booth number label — below pin, black text with white outline
         const label = document.createElement('div');
         label.setAttribute('data-label', '');
         label.textContent = booth.booth_number;
-        label.style.fontSize = '8px';
+        label.style.fontSize = '12px';
         label.style.fontWeight = '700';
         label.style.fontFamily = 'Inter, sans-serif';
         label.style.color = '#1f2937';
@@ -1430,68 +1446,8 @@ export default function MapViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimensions]);
 
-  // Wall height: visible when tilted, covers area above horizon line
-  // Horizon is at transformOrigin 30% of canvas height
-  const wallHeight = tiltDeg > 0 ? dimensions.height * 0.3 : 0;
-
   return (
-    <div ref={containerRef} className="w-full h-full relative" style={{ touchAction: 'none', overscrollBehavior: 'none', overflow: 'hidden' }}>
-      {/* Exhibition wall backdrop — visible during bird's eye tilt */}
-      {tiltDeg > 5 && (
-        <div
-          className="absolute left-0 right-0 top-0 pointer-events-none"
-          style={{
-            height: `${wallHeight}px`,
-            zIndex: 1,
-            background: 'linear-gradient(180deg, #1a1a2e 0%, #2d2d44 60%, #3d3d55 100%)',
-            opacity: Math.min(1, tiltDeg / 30),
-            transition: 'opacity 0.3s ease',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Repeating STK logo pattern */}
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              flexWrap: 'wrap',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '20px',
-              padding: '10px',
-            }}
-          >
-            {Array.from({ length: 12 }).map((_, i) => (
-              <span
-                key={i}
-                style={{
-                  fontSize: `${Math.max(20, wallHeight * 0.35)}px`,
-                  fontWeight: 900,
-                  fontFamily: 'Inter, sans-serif',
-                  color: 'rgba(255, 255, 255, 0.08)',
-                  letterSpacing: '8px',
-                  userSelect: 'none',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                STK
-              </span>
-            ))}
-          </div>
-          {/* Bottom edge — subtle light strip like exhibition wall lighting */}
-          <div
-            className="absolute bottom-0 left-0 right-0"
-            style={{
-              height: '3px',
-              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.15) 80%, transparent 100%)',
-            }}
-          />
-        </div>
-      )}
+    <div ref={containerRef} className="w-full h-full relative" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
