@@ -875,6 +875,16 @@ export default function MapViewer({
       }
     }
 
+    // Compute screen positions for all visible booths
+    const boothScreenPos = new Map<number, { sx: number; sy: number }>();
+    for (const booth of visibleBooths) {
+      const wcx = booth.x + booth.width / 2;
+      const wcy = booth.y + booth.height / 2;
+      boothScreenPos.set(booth.id, worldToScreen(wcx, wcy));
+    }
+
+    const MIN_MARKER_DIST = 60; // px minimum distance between markers
+
     let newIds: Set<number>;
     if (visibleBooths.length <= MAX_MARKERS) {
       newIds = new Set(visibleBooths.map(b => b.id));
@@ -883,23 +893,59 @@ export default function MapViewer({
       const focusY = ch * (2 / 3);
       const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
 
-      // Score ALL visible booths by distance to focus point
-      const allScored: { id: number; weight: number }[] = [];
-      for (const booth of visibleBooths) {
-        const wcx = booth.x + booth.width / 2;
-        const wcy = booth.y + booth.height / 2;
-        const { sx, sy } = worldToScreen(wcx, wcy);
-        const dist = Math.sqrt((sx - focusX) ** 2 + (sy - focusY) ** 2);
+      // 1) Keep existing stable markers that are still visible AND not too far from focus
+      const oldIds = stableIdsRef.current;
+      const kept = new Set<number>();
+      const keptPositions: { sx: number; sy: number }[] = [];
+
+      // Score old markers — drop those whose probability fell too low
+      for (const id of oldIds) {
+        const pos = boothScreenPos.get(id);
+        if (!pos) continue; // left viewport
+        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
         const normalized = dist / maxDist;
-        const weight = Math.exp(-2.5 * normalized * normalized);
-        allScored.push({ id: booth.id, weight });
+        // Drop if too far (probability < 15%)
+        if (normalized > 0.85) continue;
+        if (kept.size >= MAX_MARKERS) break;
+        kept.add(id);
+        keptPositions.push(pos);
       }
 
-      // Sort by weight descending, pick top MAX_MARKERS
-      allScored.sort((a, b) => b.weight - a.weight);
-      const kept = new Set<number>();
-      for (let i = 0; i < Math.min(MAX_MARKERS, allScored.length); i++) {
-        kept.add(allScored[i].id);
+      // 2) Fill remaining slots with weighted random selection + minimum distance
+      const candidates = visibleBooths.filter(b => !kept.has(b.id));
+      const scored: { id: number; weight: number; sx: number; sy: number }[] = [];
+      for (const booth of candidates) {
+        const pos = boothScreenPos.get(booth.id)!;
+        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
+        const normalized = dist / maxDist;
+        const weight = Math.exp(-2.5 * normalized * normalized);
+        scored.push({ id: booth.id, weight, ...pos });
+      }
+
+      // Weighted random selection without replacement, respecting min distance
+      const pool = [...scored];
+      while (kept.size < MAX_MARKERS && pool.length > 0) {
+        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
+        if (totalWeight <= 0) break;
+        let r = Math.random() * totalWeight;
+        let picked = pool.length - 1;
+        for (let i = 0; i < pool.length; i++) {
+          r -= pool[i].weight;
+          if (r <= 0) { picked = i; break; }
+        }
+        const candidate = pool[picked];
+        pool.splice(picked, 1);
+
+        // Check minimum distance from all already-placed markers
+        const tooClose = keptPositions.some(p => {
+          const dx = p.sx - candidate.sx;
+          const dy = p.sy - candidate.sy;
+          return dx * dx + dy * dy < MIN_MARKER_DIST * MIN_MARKER_DIST;
+        });
+        if (tooClose) continue;
+
+        kept.add(candidate.id);
+        keptPositions.push({ sx: candidate.sx, sy: candidate.sy });
       }
       newIds = kept;
     }
