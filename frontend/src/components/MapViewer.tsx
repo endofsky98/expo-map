@@ -985,14 +985,14 @@ export default function MapViewer({
             el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
             fadingIdsRef.current.add(id);
             el.style.opacity = '0';
-            el.style.transition = '';
-            requestAnimationFrame(() => {
-              el.style.transition = 'opacity 1s ease-in';
-              el.style.opacity = '1';
-              setTimeout(() => {
-                fadingIdsRef.current.delete(id);
-              }, 1000);
-            });
+            el.style.transition = 'none';
+            // Force layout flush so browser registers opacity:0 before transition starts
+            void el.offsetHeight;
+            el.style.transition = 'opacity 1s ease-in';
+            el.style.opacity = '1';
+            setTimeout(() => {
+              fadingIdsRef.current.delete(id);
+            }, 1000);
           }
         }
       }
