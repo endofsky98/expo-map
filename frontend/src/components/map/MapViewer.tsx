@@ -645,7 +645,7 @@ export default function MapViewer({
 
       // Light direction from rotation — simulates sun angle
       // dx,dy = normalized offset direction for wall extrusion
-      const lightAngle = rot + Math.PI * 0.75; // light from upper-left
+      const lightAngle = -rot + Math.PI * 0.75; // light from upper-left, counter-rotate with map
       const dx = Math.cos(lightAngle) * wallH * 0.4;
       const dy = Math.sin(lightAngle) * wallH * 0.6;
 
@@ -1366,6 +1366,14 @@ export default function MapViewer({
         ref={markerOverlayRef}
         className="absolute inset-0 overflow-hidden"
         style={{ pointerEvents: 'none', zIndex: 5 }}
+      />
+      {/* Edge fog/vignette — always visible, stronger during tilt */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          zIndex: 4,
+          background: 'radial-gradient(ellipse 70% 65% at 50% 50%, transparent 50%, rgba(15,20,35,0.4) 85%, rgba(10,14,28,0.75) 100%)',
+        }}
       />
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
