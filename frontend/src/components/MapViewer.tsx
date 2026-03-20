@@ -146,6 +146,7 @@ export default function MapViewer({
   const fadingIdsRef = useRef<Set<number>>(new Set()); // markers mid-fade, don't touch opacity
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
+  const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -313,6 +314,12 @@ export default function MapViewer({
     });
   }
 
+  // Set mainContainer position with canvas overscan offset
+  function syncContainerPosition(mc: PIXI.Container, t: { x: number; y: number }) {
+    const pad = canvasPadRef.current;
+    mc.position.set(t.x + pad.left, t.y + pad.top);
+  }
+
   function applyTransform(newScale: number, newRotation: number, pivotX: number, pivotY: number) {
     const t = transformRef.current;
     const { width: cw, height: ch } = canvasDimsRef.current;
@@ -337,7 +344,7 @@ export default function MapViewer({
     t.rotation = newRotation;
     const mc = mainContainerRef.current;
     if (mc) {
-      mc.position.set(t.x, t.y);
+      syncContainerPosition(mc, t);
       mc.scale.set(clamped);
       mc.rotation = newRotation;
     }
@@ -360,7 +367,16 @@ export default function MapViewer({
       const rad = (clamped * Math.PI) / 180;
       const scaleX = 1 / Math.cos(rad);
       const tf = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
-      const origin = 'center 30%';
+      // Origin at visible area's center-x, 30% from visible top
+      // Canvas is oversized: padLeft = w*CANVAS_PAD, padTop = h*CANVAS_PAD
+      const { width: vw, height: vh } = canvasDimsRef.current;
+      const padLeft = Math.round(vw * 0.6);  // CANVAS_PAD
+      const padTop = Math.round(vh * 0.6);
+      const cw2 = Math.round(vw * 2.2);      // total canvas width
+      const ch2 = Math.round(vh * 1.6);      // total canvas height
+      const originXPct = cw2 > 0 ? ((padLeft + vw / 2) / cw2 * 100).toFixed(2) : '50';
+      const originYPct = ch2 > 0 ? ((padTop + vh * 0.3) / ch2 * 100).toFixed(2) : '30';
+      const origin = `${originXPct}% ${originYPct}%`;
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
@@ -389,7 +405,7 @@ export default function MapViewer({
       t.y += v.vy;
       clampPosition(t);
       const mc = mainContainerRef.current;
-      if (mc) mc.position.set(t.x, t.y);
+      if (mc) syncContainerPosition(mc, t);
       renderTilesFnRef.current();
       scheduleMarkerUpdate();
       v.vx *= 0.92;
@@ -417,11 +433,16 @@ export default function MapViewer({
     const el = containerRef.current;
     const w = el.offsetWidth || 800;
     const h = el.offsetHeight || 600;
-    canvasDimsRef.current = { width: w, height: h };
+    // Canvas overscan: 1.6x to prevent blank edges during CSS perspective tilt
+    // At tilt 60°, scaleX = 1/cos(60°) = 2x, perspective shrinks top further
+    const CANVAS_PAD = 0.6; // 60% extra on each side (top/left/right)
+    const cw = Math.round(w * (1 + CANVAS_PAD * 2)); // wider for left+right
+    const ch = Math.round(h * (1 + CANVAS_PAD));      // taller for top
+    canvasDimsRef.current = { width: w, height: h };   // visible area stays w×h
 
     const app = new PIXI.Application({
-      width: w,
-      height: h,
+      width: cw,
+      height: ch,
       backgroundColor: 0xf3f4f6,
       antialias: true,
       resolution: window.devicePixelRatio || 1,
@@ -434,8 +455,15 @@ export default function MapViewer({
     canvas.style.touchAction = 'none';
     canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
+    // Position canvas centered, overscan hidden by container overflow:hidden
+    canvas.style.position = 'absolute';
+    canvas.style.width = `${cw}px`;
+    canvas.style.height = `${ch}px`;
+    const padLeft = Math.round(w * CANVAS_PAD);
+    const padTop = Math.round(h * CANVAS_PAD);
+    canvas.style.left = `${-padLeft}px`;
+    canvas.style.top = `${-padTop}px`;
+    canvasPadRef.current = { left: padLeft, top: padTop };
 
     // Main container (replaces pixi-viewport)
     const mainContainer = new PIXI.Container();
@@ -520,7 +548,7 @@ export default function MapViewer({
             t.y += panDy;
             clampPosition(t);
             const mc = mainContainerRef.current;
-            if (mc) mc.position.set(t.x, t.y);
+            if (mc) syncContainerPosition(mc, t);
             // Also update dragStart so single-finger resume works
             dragStart.x = p1.x - t.x;
             dragStart.y = p1.y - t.y;
@@ -590,7 +618,7 @@ export default function MapViewer({
           t.x = e.clientX - dragStart.x;
           t.y = e.clientY - dragStart.y;
           clampPosition(t);
-          mainContainer.position.set(t.x, t.y);
+          syncContainerPosition(mainContainer, t);
           scheduleRenderTiles();
           scheduleMarkerUpdate();
           // Track velocity for inertia
@@ -732,13 +760,28 @@ export default function MapViewer({
     pixiApp.current = app;
     setDimensions({ width: w, height: h });
 
-    // ResizeObserver
+    // ResizeObserver — resize canvas with overscan
     const ro = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width: rw, height: rh } = entry.contentRect;
         if (rw > 0 && rh > 0) {
-          app.renderer.resize(rw, rh);
+          const newCw = Math.round(rw * (1 + CANVAS_PAD * 2));
+          const newCh = Math.round(rh * (1 + CANVAS_PAD));
+          const newPadLeft = Math.round(rw * CANVAS_PAD);
+          const newPadTop = Math.round(rh * CANVAS_PAD);
+          app.renderer.resize(newCw, newCh);
           canvasDimsRef.current = { width: rw, height: rh };
+          canvasPadRef.current = { left: newPadLeft, top: newPadTop };
+          const cv = canvasRef.current;
+          if (cv) {
+            cv.style.width = `${newCw}px`;
+            cv.style.height = `${newCh}px`;
+            cv.style.left = `${-newPadLeft}px`;
+            cv.style.top = `${-newPadTop}px`;
+          }
+          // Re-sync mainContainer position with new padding
+          const mc = mainContainerRef.current;
+          if (mc) syncContainerPosition(mc, transformRef.current);
           setDimensions({ width: rw, height: rh });
         }
       }
@@ -783,7 +826,7 @@ export default function MapViewer({
         tilt: 0,
       };
       clampPosition(transformRef.current);
-      mc.position.set(transformRef.current.x, transformRef.current.y);
+      syncContainerPosition(mc, transformRef.current);
       mc.scale.set(fitScale);
       mc.rotation = 0;
       applyTilt(0);
@@ -1491,7 +1534,7 @@ export default function MapViewer({
     transformRef.current.x = cw / 2 - centerX * sc;
     transformRef.current.y = ch / 2 - centerY * sc;
     clampPosition(transformRef.current);
-    mc.position.set(transformRef.current.x, transformRef.current.y);
+    syncContainerPosition(mc, transformRef.current);
     renderTilesFnRef.current();
     scheduleMarkerUpdate();
   }
@@ -1510,7 +1553,7 @@ export default function MapViewer({
       tilt: 0,
     };
     clampPosition(transformRef.current);
-    mc.position.set(transformRef.current.x, transformRef.current.y);
+    syncContainerPosition(mc, transformRef.current);
     mc.scale.set(fitScale);
     mc.rotation = 0;
     applyTilt(0);
@@ -1534,7 +1577,7 @@ export default function MapViewer({
     transformRef.current.x = cw / 2 - centerX * clampedScale;
     transformRef.current.y = cw / 2 - centerY * clampedScale;
     clampPosition(transformRef.current);
-    mc.position.set(transformRef.current.x, transformRef.current.y);
+    syncContainerPosition(mc, transformRef.current);
     mc.scale.set(clampedScale);
     onZoomChange?.(clampedScale);
     renderTilesFnRef.current();
