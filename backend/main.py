@@ -14,7 +14,7 @@ from models import (
     Facility, CorridorNode, CorridorEdge, Obstacle, Setting,
 )
 from routers import booths, images, categories, companies
-from routers import auth, floors, halls, facilities, corridors, route, obstacles, settings
+from routers import auth, floors, halls, facilities, corridors, route, obstacles, settings, tiles
 from routers.auth import hash_password
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +48,7 @@ app.include_router(corridors.router)
 app.include_router(route.router)
 app.include_router(obstacles.router)
 app.include_router(settings.router)
+app.include_router(tiles.router)
 
 
 def _create_seed_data(db: Session) -> dict | None:
@@ -351,6 +352,21 @@ def _migrate_v8(db: Session):
             db.rollback()
 
 
+def _migrate_v9(db: Session):
+    """v9 migration: add tile_info column to map_images table."""
+    from sqlalchemy import text
+    try:
+        db.execute(text("SELECT tile_info FROM map_images LIMIT 1"))
+    except Exception:
+        db.rollback()
+        try:
+            db.execute(text("ALTER TABLE map_images ADD COLUMN tile_info TEXT"))
+            db.commit()
+            print("[startup] v9 migration: added tile_info column to map_images")
+        except Exception:
+            db.rollback()
+
+
 @app.on_event("startup")
 def on_startup():
     # Check if schema migration needed (v2 -> v4)
@@ -362,10 +378,12 @@ def on_startup():
 
     Base.metadata.create_all(bind=engine)
     os.makedirs(os.path.join(UPLOAD_DIR, "images"), exist_ok=True)
+    os.makedirs(os.path.join(UPLOAD_DIR, "tiles"), exist_ok=True)
 
     db = next(get_db())
     try:
         _migrate_v8(db)
+        _migrate_v9(db)
         result = _create_seed_data(db)
         if result:
             print(f"[startup] Auto-seeded: {result}")

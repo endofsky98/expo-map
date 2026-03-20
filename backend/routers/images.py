@@ -11,6 +11,7 @@ from database import get_db
 from models import MapImage, Floor
 from schemas import MapImageResponse
 from routers.auth import get_current_admin
+from routers.tiles import generate_tile_pyramid, delete_tile_pyramid
 
 router = APIRouter(prefix="/api/images", tags=["images"])
 
@@ -163,6 +164,16 @@ def upload_image(
     db.add(map_image)
     db.commit()
     db.refresh(map_image)
+
+    # Generate tile pyramid
+    try:
+        tile_info = generate_tile_pyramid(map_image.id, img, zoom_size)
+        map_image.tile_info = json.dumps(tile_info)
+        db.commit()
+        db.refresh(map_image)
+    except Exception as e:
+        print(f"[tiles] Warning: tile generation failed for image {map_image.id}: {e}")
+
     return map_image
 
 
@@ -195,6 +206,18 @@ def reconfigure_image(image_id: int, zoom_size: int = 256, db: Session = Depends
     zoom_levels = _generate_zoom_levels(img, prefix, base_name, zoom_size)
     img_record.zoom_levels = json.dumps(zoom_levels)
     img_record.zoom_step_pixels = zoom_size
+
+    # Generate tile pyramid
+    try:
+        img_full = Image.open(high_path)
+        img_full = _prepare_rgb(img_full)
+        tile_info = generate_tile_pyramid(img_record.id, img_full, zoom_size)
+        img_record.tile_info = json.dumps(tile_info)
+        print(f"[tiles] Tile pyramid generated for image {img_record.id}: {len(tile_info['levels'])} levels")
+    except Exception as e:
+        print(f"[tiles] Warning: tile generation failed for image {img_record.id}: {e}")
+        import traceback; traceback.print_exc()
+
     db.commit()
     db.refresh(img_record)
     return img_record

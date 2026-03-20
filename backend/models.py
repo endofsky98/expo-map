@@ -101,6 +101,7 @@ class MapImage(Base):
     high_path = Column(String(500), nullable=False)
     zoom_levels = Column(Text, nullable=True)  # JSON: [{"level":1,"path":"/..","width":800},...]
     zoom_step_pixels = Column(Integer, default=512)
+    tile_info = Column(Text, nullable=True)  # JSON: tile pyramid metadata
     width = Column(Integer, nullable=False)
     height = Column(Integer, nullable=False)
     is_current = Column(Boolean, default=False)

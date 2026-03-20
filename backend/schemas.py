@@ -173,6 +173,7 @@ class MapImageResponse(BaseModel):
     high_path: str
     zoom_levels: Any = None
     zoom_step_pixels: int = 512
+    tile_info: Any = None
     width: int
     height: int
     is_current: bool
