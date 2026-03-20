@@ -278,9 +278,15 @@ export default function MapViewer({
     if (!canvas) return;
     if (clamped === 0) {
       canvas.style.transform = '';
+      canvas.style.transformOrigin = '';
     } else {
-      canvas.style.transform = `perspective(800px) rotateX(${clamped}deg)`;
-      canvas.style.transformOrigin = 'center center';
+      // perspective로 기울이면 양옆이 좁아지므로 scaleX로 보상
+      // rotateX(θ)일 때 수평 축소율 ≈ cos(θ) → 1/cos(θ)로 보상
+      const rad = (clamped * Math.PI) / 180;
+      const scaleX = 1 / Math.cos(rad);
+      canvas.style.transform = `perspective(800px) rotateX(${clamped}deg) scaleX(${scaleX.toFixed(4)})`;
+      // 기준점을 아래쪽(70%)으로 → 기울어졌을 때 지도가 위로 위치
+      canvas.style.transformOrigin = 'center 70%';
     }
   }
 
