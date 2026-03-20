@@ -98,7 +98,7 @@ export default function MapViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
   const mainContainerRef = useRef<PIXI.Container | null>(null);
-  const transformRef = useRef({ x: 0, y: 0, scale: 1 });
+  const transformRef = useRef({ x: 0, y: 0, scale: 1, rotation: 0 });
   const canvasDimsRef = useRef({ width: 800, height: 600 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
@@ -221,21 +221,36 @@ export default function MapViewer({
   const currentFloorIdRef = useRef(currentFloorId);
   currentFloorIdRef.current = currentFloorId;
 
-  function applyZoom(newScale: number, pivotX: number, pivotY: number) {
+  function applyTransform(newScale: number, newRotation: number, pivotX: number, pivotY: number) {
     const t = transformRef.current;
     const clamped = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale));
-    const ratio = clamped / t.scale;
-    t.x = pivotX - ratio * (pivotX - t.x);
-    t.y = pivotY - ratio * (pivotY - t.y);
+    // Convert pivot from screen to world using current transform
+    const cos0 = Math.cos(t.rotation);
+    const sin0 = Math.sin(t.rotation);
+    const dx0 = pivotX - t.x;
+    const dy0 = pivotY - t.y;
+    const wx = (dx0 * cos0 + dy0 * sin0) / t.scale;
+    const wy = (-dx0 * sin0 + dy0 * cos0) / t.scale;
+    // Recompute position so pivot stays fixed after new scale+rotation
+    const cos1 = Math.cos(newRotation);
+    const sin1 = Math.sin(newRotation);
+    t.x = pivotX - clamped * (wx * cos1 - wy * sin1);
+    t.y = pivotY - clamped * (wx * sin1 + wy * cos1);
     t.scale = clamped;
+    t.rotation = newRotation;
     const mc = mainContainerRef.current;
     if (mc) {
       mc.position.set(t.x, t.y);
       mc.scale.set(clamped);
+      mc.rotation = newRotation;
     }
     onZoomChangeRef.current?.(clamped);
     renderTilesFnRef.current();
     checkBoothRedraw();
+  }
+
+  function applyZoom(newScale: number, pivotX: number, pivotY: number) {
+    applyTransform(newScale, transformRef.current.rotation, pivotX, pivotY);
   }
 
   function checkBoothRedraw() {
@@ -307,6 +322,7 @@ export default function MapViewer({
     let pointerDownInfo = { x: 0, y: 0, time: 0 };
     const pointers = new Map<number, { x: number; y: number }>();
     let lastPinchDist = 0;
+    let lastPinchAngle = 0;
 
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -322,6 +338,7 @@ export default function MapViewer({
         isDragging = false;
         const pts = Array.from(pointers.values());
         lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        lastPinchAngle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
       }
     });
 
@@ -331,14 +348,17 @@ export default function MapViewer({
       if (pointers.size === 2) {
         const pts = Array.from(pointers.values());
         const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
         if (lastPinchDist > 0) {
           const rect = canvas.getBoundingClientRect();
           const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
           const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
           const newScale = transformRef.current.scale * (dist / lastPinchDist);
-          applyZoom(newScale, cx, cy);
+          const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
+          applyTransform(newScale, newRotation, cx, cy);
         }
         lastPinchDist = dist;
+        lastPinchAngle = angle;
         return;
       }
 
@@ -364,13 +384,13 @@ export default function MapViewer({
           handleClick(e);
         }
       }
-      if (pointers.size < 2) lastPinchDist = 0;
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; }
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       pointers.delete(e.pointerId);
       isDragging = false;
-      if (pointers.size < 2) lastPinchDist = 0;
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; }
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -385,9 +405,13 @@ export default function MapViewer({
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
       const t = transformRef.current;
-      const wx = (sx - t.x) / t.scale;
-      const wy = (sy - t.y) / t.scale;
       const sc = t.scale;
+      const cosR = Math.cos(t.rotation);
+      const sinR = Math.sin(t.rotation);
+      const dx0 = sx - t.x;
+      const dy0 = sy - t.y;
+      const wx = (dx0 * cosR + dy0 * sinR) / sc;
+      const wy = (-dx0 * sinR + dy0 * cosR) / sc;
 
       // Check facilities first
       for (const fac of visibleFacilitiesRef.current) {
@@ -395,8 +419,8 @@ export default function MapViewer({
         const fdx = wx - fac.x;
         const fdy = wy - fac.y;
         if (fdx * fdx + fdy * fdy <= r * r) {
-          const fsx = fac.x * sc + t.x;
-          const fsy = fac.y * sc + t.y;
+          const fsx = t.x + sc * (fac.x * cosR - fac.y * sinR);
+          const fsy = t.y + sc * (fac.x * sinR + fac.y * cosR);
           setFacilityTooltip((prev) =>
             prev?.facility.id === fac.id ? null : { facility: fac, screenX: fsx, screenY: fsy }
           );
@@ -476,9 +500,11 @@ export default function MapViewer({
         scale: fitScale,
         x: (cw - imgWidth * fitScale) / 2,
         y: (ch - imgHeight * fitScale) / 2,
+        rotation: 0,
       };
       mc.position.set(transformRef.current.x, transformRef.current.y);
       mc.scale.set(fitScale);
+      mc.rotation = 0;
       lastBoothRedrawScaleRef.current = fitScale;
       onZoomChangeRef.current?.(fitScale);
     }
@@ -486,7 +512,7 @@ export default function MapViewer({
     if (useTileMode && tileInfo) {
       const doRender = () => {
         if (!tileInfo || !currentImage) return;
-        const { x: tx, y: ty, scale: sc } = transformRef.current;
+        const { x: tx, y: ty, scale: sc, rotation: rot } = transformRef.current;
         const { width: canvasW, height: canvasH } = canvasDimsRef.current;
 
         const levelIdx = selectTileLevel(sc, tileInfo);
@@ -496,10 +522,18 @@ export default function MapViewer({
         const sfx = imgWidth / level.width;
         const sfy = imgHeight / level.height;
 
-        const boundsX = -tx / sc;
-        const boundsY = -ty / sc;
-        const boundsW = canvasW / sc;
-        const boundsH = canvasH / sc;
+        // Rotation-aware viewport bounds in world space
+        const cosR = Math.cos(rot);
+        const sinR = Math.sin(rot);
+        const scrCorners = [[0, 0], [canvasW, 0], [canvasW, canvasH], [0, canvasH]];
+        const wCorners = scrCorners.map(([sx, sy]) => ({
+          x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
+          y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
+        }));
+        const boundsX = Math.min(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+        const boundsY = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
+        const boundsW = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x) - boundsX;
+        const boundsH = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y) - boundsY;
 
         const colStart = Math.max(0, Math.floor((boundsX / sfx) / tileSize) - prefetchRange);
         const colEnd = Math.min(level.cols - 1, Math.ceil(((boundsX + boundsW) / sfx) / tileSize) + prefetchRange);
@@ -782,21 +816,30 @@ export default function MapViewer({
     }
 
     const doRedraw = () => {
-      const sc = transformRef.current.scale;
-      const { x: tx, y: ty } = transformRef.current;
+      const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
       const { width: cw, height: ch } = canvasDimsRef.current;
-      const bounds = { x: -tx / sc, y: -ty / sc, width: cw / sc, height: ch / sc };
+      // Rotation-aware viewport bounds
+      const cosR = Math.cos(rot);
+      const sinR = Math.sin(rot);
+      const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
+      const wCorners = scrCorners.map(([sx, sy]) => ({
+        x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
+        y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
+      }));
+      const bx0 = Math.min(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+      const by0 = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
+      const bx1 = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+      const by1 = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
+      const bounds = { x: bx0, y: by0, width: bx1 - bx0, height: by1 - by0 };
       const show = showBoothsRef.current;
       const selId = selectedBoothIdRef.current;
       const actCats = activeCategoriesRef.current;
       const catColors = categoryColorMapRef.current;
       const lnFn = lnRef.current;
 
+      // Viewport culling: collect visible booths
+      const visibleBooths: typeof boothsRef.current = [];
       for (const booth of boothsRef.current) {
-        const container = containers.get(booth.id);
-        if (!container) continue;
-
-        // Viewport culling
         const inView = !(
           booth.x + booth.width < bounds.x ||
           booth.x > bounds.x + bounds.width ||
@@ -806,8 +849,29 @@ export default function MapViewer({
         const screenW = booth.width * sc;
         const screenH = booth.height * sc;
         const tooSmall = screenW < MIN_BOOTH_SCREEN_SIZE || screenH < MIN_BOOTH_SCREEN_SIZE;
+        if (show && inView && !tooSmall) visibleBooths.push(booth);
+      }
+      // Grid-based density limiting (zoom-adaptive)
+      let sampledIds: Set<number>;
+      if (sc >= 3.0) {
+        sampledIds = new Set(visibleBooths.map(b => b.id));
+      } else {
+        const cellSize = Math.max(30, 100 / sc);
+        const cellMap = new Map<string, number>();
+        for (const booth of visibleBooths) {
+          const cx = Math.floor((booth.x + booth.width / 2) / cellSize);
+          const cy = Math.floor((booth.y + booth.height / 2) / cellSize);
+          const key = `${cx}_${cy}`;
+          if (!cellMap.has(key)) cellMap.set(key, booth.id);
+        }
+        sampledIds = new Set(cellMap.values());
+      }
 
-        container.visible = show && inView && !tooSmall;
+      for (const booth of boothsRef.current) {
+        const container = containers.get(booth.id);
+        if (!container) continue;
+
+        container.visible = sampledIds.has(booth.id);
         if (!container.visible) continue;
 
         const isSelected = booth.id === selId;
@@ -881,6 +945,12 @@ export default function MapViewer({
         } else {
           catText.visible = false;
         }
+
+        // Counter-rotate text to keep upright when map is rotated
+        const counterRot = -rot;
+        numText.rotation = counterRot;
+        compText.rotation = counterRot;
+        catText.rotation = counterRot;
 
         // [4] Selected dash overlay
         const dashG = container.children[4] as PIXI.Graphics;
