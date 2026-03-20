@@ -111,6 +111,7 @@ export default function MapViewer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasDimsRef = useRef({ width: 800, height: 600 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [tiltDeg, setTiltDeg] = useState(0);
 
   // Layer refs
   const tileLayerRef = useRef<PIXI.Container>(new PIXI.Container());
@@ -353,6 +354,7 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
+    setTiltDeg(clamped);
     scheduleMarkerUpdate();
   }
 
@@ -443,6 +445,7 @@ export default function MapViewer({
     let pointerDownInfo = { x: 0, y: 0, time: 0 };
     const pointers = new Map<number, { x: number; y: number }>();
     let lastPinchDist = 0;
+    let lastPinchAngle = 0;
     let lastPinchMidY = 0;
     // #2: Gesture classification
     let gestureType: 'none' | 'zoom' | 'tilt' = 'none';
@@ -468,6 +471,7 @@ export default function MapViewer({
         isDragging = false;
         const pts = Array.from(pointers.values());
         lastPinchDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        lastPinchAngle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
         lastPinchMidY = (pts[0].y + pts[1].y) / 2;
         gestureType = 'none';
         gestureAccumDist = 0;
@@ -481,6 +485,7 @@ export default function MapViewer({
       if (pointers.size === 2) {
         const pts = Array.from(pointers.values());
         const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+        const angle = Math.atan2(pts[1].y - pts[0].y, pts[1].x - pts[0].x);
         const midY = (pts[0].y + pts[1].y) / 2;
         if (lastPinchDist > 0) {
           // #2: Classify gesture once, then commit
@@ -498,7 +503,8 @@ export default function MapViewer({
             const cx = (pts[0].x + pts[1].x) / 2 - rect.left;
             const cy = (pts[0].y + pts[1].y) / 2 - rect.top;
             const newScale = transformRef.current.scale * (dist / lastPinchDist);
-            applyTransform(newScale, transformRef.current.rotation, cx, cy);
+            const newRotation = transformRef.current.rotation + (angle - lastPinchAngle);
+            applyTransform(newScale, newRotation, cx, cy);
           }
           if (gestureType === 'tilt') {
             const tiltDelta = -(midY - lastPinchMidY) * 0.3;
@@ -506,6 +512,7 @@ export default function MapViewer({
           }
         }
         lastPinchDist = dist;
+        lastPinchAngle = angle;
         lastPinchMidY = midY;
         return;
       }
@@ -548,13 +555,13 @@ export default function MapViewer({
           }
         }
       }
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
     });
 
     canvas.addEventListener('pointercancel', (e) => {
       pointers.delete(e.pointerId);
       isDragging = false;
-      if (pointers.size < 2) { lastPinchDist = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
+      if (pointers.size < 2) { lastPinchDist = 0; lastPinchAngle = 0; lastPinchMidY = 0; gestureType = 'none'; gestureAccumDist = 0; gestureAccumMidY = 0; }
     });
 
     canvas.addEventListener('wheel', (e) => {
@@ -1423,8 +1430,68 @@ export default function MapViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimensions]);
 
+  // Wall height: visible when tilted, covers area above horizon line
+  // Horizon is at transformOrigin 30% of canvas height
+  const wallHeight = tiltDeg > 0 ? dimensions.height * 0.3 : 0;
+
   return (
-    <div ref={containerRef} className="w-full h-full relative" style={{ touchAction: 'none', overscrollBehavior: 'none' }}>
+    <div ref={containerRef} className="w-full h-full relative" style={{ touchAction: 'none', overscrollBehavior: 'none', overflow: 'hidden' }}>
+      {/* Exhibition wall backdrop — visible during bird's eye tilt */}
+      {tiltDeg > 5 && (
+        <div
+          className="absolute left-0 right-0 top-0 pointer-events-none"
+          style={{
+            height: `${wallHeight}px`,
+            zIndex: 1,
+            background: 'linear-gradient(180deg, #1a1a2e 0%, #2d2d44 60%, #3d3d55 100%)',
+            opacity: Math.min(1, tiltDeg / 30),
+            transition: 'opacity 0.3s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+          }}
+        >
+          {/* Repeating STK logo pattern */}
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '20px',
+              padding: '10px',
+            }}
+          >
+            {Array.from({ length: 12 }).map((_, i) => (
+              <span
+                key={i}
+                style={{
+                  fontSize: `${Math.max(20, wallHeight * 0.35)}px`,
+                  fontWeight: 900,
+                  fontFamily: 'Inter, sans-serif',
+                  color: 'rgba(255, 255, 255, 0.08)',
+                  letterSpacing: '8px',
+                  userSelect: 'none',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                STK
+              </span>
+            ))}
+          </div>
+          {/* Bottom edge — subtle light strip like exhibition wall lighting */}
+          <div
+            className="absolute bottom-0 left-0 right-0"
+            style={{
+              height: '3px',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0.25) 50%, rgba(255,255,255,0.15) 80%, transparent 100%)',
+            }}
+          />
+        </div>
+      )}
       {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
       <div
         ref={markerOverlayRef}
