@@ -220,7 +220,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
       const dx = e.clientX - lastDragX;
       const dy = e.clientY - lastDragY;
       if (Math.abs(dx) > 0) {
-        const bearingDelta = dx * 0.8 * (Math.PI / 180);
+        const bearingDelta = dx * -0.8 * (Math.PI / 180);
         const { width: cw, height: ch } = canvasDimsRef.current;
         applyTransform(transformRef.current.scale, transformRef.current.rotation + bearingDelta, cw / 2, ch / 2);
       }

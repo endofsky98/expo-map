@@ -292,6 +292,8 @@ export default function MapViewer({
       mc.rotation = newRotation;
     }
     onZoomChangeRef.current?.(clamped);
+    // Redraw walls if tilted (wall direction changes with rotation)
+    if (transformRef.current.tilt >= 5) drawWallsRef.current();
     scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
@@ -344,10 +346,8 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
-    // Update wall layer visibility
-    const wallLayer = wallLayerRef.current;
-    if (clamped < 5) { wallLayer.alpha = 0; }
-    else { wallLayer.alpha = Math.min(1, (clamped - 5) / 15); }
+    // Redraw walls with new tilt angle
+    drawWallsRef.current();
     scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
@@ -625,67 +625,100 @@ export default function MapViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentImage, tileInfo, useTileMode, imgWidth, imgHeight, prefetchRange]);
 
-  // ===== Walls (booth boundaries as 3D wall effect) =====
+  // ===== Walls (isometric 3D wall effect — responds to tilt & rotation) =====
+  const drawWallsRef = useRef<() => void>(() => {});
+
   useEffect(() => {
-    const layer = wallLayerRef.current;
-    layer.removeChildren();
-    const tilt = transformRef.current.tilt;
-    // Only show walls when tilted (bird's-eye view)
-    if (tilt < 5) { layer.alpha = 0; return; }
+    const draw = () => {
+      const layer = wallLayerRef.current;
+      layer.removeChildren();
 
-    layer.alpha = Math.min(1, (tilt - 5) / 15); // fade in between 5°–20°
+      const tilt = transformRef.current.tilt;
+      const rot = transformRef.current.rotation;
 
-    const wallHeight = 8; // px in world coords — wall extrusion height
-    const wallColor = 0x4b5563; // gray-600
-    const wallTopColor = 0x9ca3af; // gray-400 — top face
-    const shadowColor = 0x1f2937; // gray-800
+      // Fade: invisible below 5°, full at 20°+
+      if (tilt < 5) { layer.alpha = 0; return; }
+      layer.alpha = Math.min(1, (tilt - 5) / 15);
 
-    for (const booth of booths) {
-      const { x, y, width, height } = booth;
+      // Wall height scales with tilt angle (more tilt = taller walls)
+      const wallH = 4 + (tilt / 60) * 18; // 4px at 5° → 22px at 60°
 
-      // Wall shadow (offset down-right, behind the wall)
-      const shadow = new PIXI.Graphics();
-      shadow.beginFill(shadowColor, 0.15);
-      shadow.drawRect(x + 2, y + 2, width, wallHeight + 2);
-      shadow.endFill();
-      layer.addChild(shadow);
+      // Light direction from rotation — simulates sun angle
+      // dx,dy = normalized offset direction for wall extrusion
+      const lightAngle = rot + Math.PI * 0.75; // light from upper-left
+      const dx = Math.cos(lightAngle) * wallH * 0.4;
+      const dy = Math.sin(lightAngle) * wallH * 0.6;
 
-      // Front wall face (bottom edge of booth → extruded downward)
-      const frontWall = new PIXI.Graphics();
-      frontWall.beginFill(wallColor, 0.7);
-      frontWall.drawRect(x, y + height, width, wallHeight);
-      frontWall.endFill();
-      layer.addChild(frontWall);
+      const darkSide = 0x1f2937;  // gray-800
+      const lightSide = 0x6b7280; // gray-500
+      const topColor = 0x9ca3af;  // gray-400
 
-      // Right wall face (right edge of booth → extruded)
-      const rightWall = new PIXI.Graphics();
-      rightWall.beginFill(wallColor, 0.5);
-      rightWall.drawRect(x + width, y, wallHeight * 0.6, height + wallHeight);
-      rightWall.endFill();
-      layer.addChild(rightWall);
+      for (const booth of booths) {
+        const bx = booth.x, by = booth.y, bw = booth.width, bh = booth.height;
 
-      // Top face (the "roof" of the wall — lighter color)
-      const topFace = new PIXI.Graphics();
-      topFace.beginFill(wallTopColor, 0.3);
-      topFace.drawRect(x, y, width, height);
-      topFace.endFill();
-      layer.addChild(topFace);
+        // 4 corners of booth top face
+        const tl = { x: bx, y: by };
+        const tr = { x: bx + bw, y: by };
+        const bl = { x: bx, y: by + bh };
+        const br = { x: bx + bw, y: by + bh };
 
-      // Wall outline
-      const outline = new PIXI.Graphics();
-      outline.lineStyle(1.5, wallColor, 0.8);
-      outline.drawRect(x, y, width, height);
-      layer.addChild(outline);
-    }
+        // Projected base corners (shifted by light direction)
+        const tlB = { x: tl.x + dx, y: tl.y + dy };
+        const trB = { x: tr.x + dx, y: tr.y + dy };
+        const blB = { x: bl.x + dx, y: bl.y + dy };
+        const brB = { x: br.x + dx, y: br.y + dy };
+
+        // Draw 4 wall faces as quads (only visible faces based on direction)
+        const walls = new PIXI.Graphics();
+
+        // Bottom wall (front face) — visible when dy > 0
+        if (dy > 0) {
+          walls.beginFill(darkSide, 0.6);
+          walls.moveTo(bl.x, bl.y); walls.lineTo(br.x, br.y);
+          walls.lineTo(brB.x, brB.y); walls.lineTo(blB.x, blB.y);
+          walls.closePath(); walls.endFill();
+        }
+        // Top wall (back face) — visible when dy < 0
+        if (dy < 0) {
+          walls.beginFill(lightSide, 0.4);
+          walls.moveTo(tl.x, tl.y); walls.lineTo(tr.x, tr.y);
+          walls.lineTo(trB.x, trB.y); walls.lineTo(tlB.x, tlB.y);
+          walls.closePath(); walls.endFill();
+        }
+        // Right wall — visible when dx > 0
+        if (dx > 0) {
+          walls.beginFill(lightSide, 0.5);
+          walls.moveTo(tr.x, tr.y); walls.lineTo(br.x, br.y);
+          walls.lineTo(brB.x, brB.y); walls.lineTo(trB.x, trB.y);
+          walls.closePath(); walls.endFill();
+        }
+        // Left wall — visible when dx < 0
+        if (dx < 0) {
+          walls.beginFill(darkSide, 0.5);
+          walls.moveTo(tl.x, tl.y); walls.lineTo(bl.x, bl.y);
+          walls.lineTo(blB.x, blB.y); walls.lineTo(tlB.x, tlB.y);
+          walls.closePath(); walls.endFill();
+        }
+        layer.addChild(walls);
+
+        // Top face (roof)
+        const top = new PIXI.Graphics();
+        top.beginFill(topColor, 0.12);
+        top.drawRect(bx, by, bw, bh);
+        top.endFill();
+        layer.addChild(top);
+
+        // Outline
+        const outline = new PIXI.Graphics();
+        outline.lineStyle(1.2, darkSide, 0.6);
+        outline.drawRect(bx, by, bw, bh);
+        layer.addChild(outline);
+      }
+    };
+
+    drawWallsRef.current = draw;
+    draw();
   }, [booths, dimensions]);
-
-  // Update wall visibility on tilt change
-  useEffect(() => {
-    const layer = wallLayerRef.current;
-    const tilt = transformRef.current.tilt;
-    if (tilt < 5) { layer.alpha = 0; }
-    else { layer.alpha = Math.min(1, (tilt - 5) / 15); }
-  });
 
   // ===== Obstacles =====
   useEffect(() => {
