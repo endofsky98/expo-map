@@ -135,6 +135,9 @@ export default function MapViewer({
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
+  const prevVisibleIdsRef = useRef<Set<number>>(new Set());
+  const prevScaleRef = useRef<number>(1);
+  const isZoomingRef = useRef<boolean>(false);
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 
@@ -890,12 +893,34 @@ export default function MapViewer({
       sampledIds = new Set(cellMap.values());
     }
 
+    // Detect zoom change vs drag
+    const prevScale = prevScaleRef.current;
+    const zoomChanged = Math.abs(sc - prevScale) / Math.max(prevScale, 0.01) > 0.02;
+    prevScaleRef.current = sc;
+    const prevVisible = prevVisibleIdsRef.current;
+
     for (const booth of boothsRef.current) {
       const el = markers.get(booth.id);
       if (!el) continue;
 
-      if (!sampledIds.has(booth.id)) {
-        el.style.display = 'none';
+      const wasVisible = prevVisible.has(booth.id);
+      const nowVisible = sampledIds.has(booth.id);
+
+      if (!nowVisible) {
+        if (wasVisible && zoomChanged) {
+          // Zoom out — fadeOut then hide
+          el.style.transition = 'opacity 0.25s ease-out';
+          el.style.opacity = '0';
+          setTimeout(() => {
+            if (!prevVisibleIdsRef.current.has(booth.id)) {
+              el.style.display = 'none';
+              el.style.transition = '';
+            }
+          }, 250);
+        } else {
+          el.style.display = 'none';
+          el.style.transition = '';
+        }
         continue;
       }
 
@@ -903,13 +928,29 @@ export default function MapViewer({
       const wcy = booth.y + booth.height / 2;
       const { sx, sy } = worldToScreen(wcx, wcy);
 
-      // Update position via CSS transform (GPU-accelerated)
+      // Position
       el.style.display = 'flex';
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
 
-      // Update opacity based on category filter
+      // FadeIn for new markers during zoom
+      if (!wasVisible && zoomChanged) {
+        el.style.opacity = '0';
+        el.style.transition = '';
+        requestAnimationFrame(() => {
+          el.style.transition = 'opacity 0.3s ease-in';
+          el.style.opacity = '1';
+        });
+      } else if (!wasVisible) {
+        // Drag — just appear instantly
+        el.style.transition = '';
+        el.style.opacity = '1';
+      }
+
+      // Update opacity based on category filter (override fade for filtered items)
       const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-      el.style.opacity = String(opacity);
+      if (wasVisible) {
+        el.style.opacity = String(opacity);
+      }
 
       // Update SVG pin color for selection
       const isSelected = booth.id === selId;
@@ -934,6 +975,9 @@ export default function MapViewer({
         }
       }
     }
+
+    // Save current visible set for next frame comparison
+    prevVisibleIdsRef.current = new Set(sampledIds);
   }
 
   useEffect(() => {
