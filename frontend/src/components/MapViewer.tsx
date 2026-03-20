@@ -513,6 +513,7 @@ export default function MapViewer({
     let moveRafPending = false;
 
     let lastDragX = 0, lastDragY = 0, lastDragTime = 0;
+    let lastTapTime = 0, lastTapX = 0, lastTapY = 0; // double-tap detection
 
     canvas.addEventListener('pointerdown', (e) => {
       e.preventDefault();
@@ -677,7 +678,21 @@ export default function MapViewer({
           const dy = e.clientY - pointerDownInfo.y;
           const dt = Date.now() - pointerDownInfo.time;
           if (Math.abs(dx) < CLICK_THRESHOLD && Math.abs(dy) < CLICK_THRESHOLD && dt < CLICK_TIME_THRESHOLD) {
-            handleClick(e);
+            // Double-tap/click detection
+            const now = Date.now();
+            const tapDx = Math.abs(e.clientX - lastTapX);
+            const tapDy = Math.abs(e.clientY - lastTapY);
+            if (now - lastTapTime < 350 && tapDx < 30 && tapDy < 30) {
+              // Double tap → zoom in 2x at tap position
+              const rect = el.getBoundingClientRect();
+              applyZoom(transformRef.current.scale * 2, e.clientX - rect.left, e.clientY - rect.top);
+              lastTapTime = 0; // reset to prevent triple-tap
+            } else {
+              lastTapTime = now;
+              lastTapX = e.clientX;
+              lastTapY = e.clientY;
+              handleClick(e);
+            }
           } else if (secondaryId === null) {
             // Start inertia only if single-finger drag ended
             const v = velocityRef.current;
