@@ -882,38 +882,23 @@ export default function MapViewer({
       const focusY = ch * (2 / 3);
       const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
 
-      // Keep existing stable markers that are still in viewport (prioritize stability)
-      const kept = new Set<number>();
-      for (const id of stableIdsRef.current) {
-        if (kept.size >= MAX_MARKERS) break;
-        const inViewport = visibleBooths.some(b => b.id === id);
-        if (inViewport) kept.add(id);
-      }
-
-      // Fill remaining slots with center-weighted sampling from new candidates
-      const candidates = visibleBooths.filter(b => !kept.has(b.id));
-      const scored: { id: number; weight: number }[] = [];
-      for (const booth of candidates) {
+      // Score ALL visible booths by distance to focus point
+      const allScored: { id: number; weight: number }[] = [];
+      for (const booth of visibleBooths) {
         const wcx = booth.x + booth.width / 2;
         const wcy = booth.y + booth.height / 2;
         const { sx, sy } = worldToScreen(wcx, wcy);
         const dist = Math.sqrt((sx - focusX) ** 2 + (sy - focusY) ** 2);
         const normalized = dist / maxDist;
         const weight = Math.exp(-2.5 * normalized * normalized);
-        scored.push({ id: booth.id, weight });
+        allScored.push({ id: booth.id, weight });
       }
 
-      const pool = [...scored];
-      while (kept.size < MAX_MARKERS && pool.length > 0) {
-        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
-        let r = Math.random() * totalWeight;
-        let picked = pool.length - 1;
-        for (let i = 0; i < pool.length; i++) {
-          r -= pool[i].weight;
-          if (r <= 0) { picked = i; break; }
-        }
-        kept.add(pool[picked].id);
-        pool.splice(picked, 1);
+      // Sort by weight descending, pick top MAX_MARKERS
+      allScored.sort((a, b) => b.weight - a.weight);
+      const kept = new Set<number>();
+      for (let i = 0; i < Math.min(MAX_MARKERS, allScored.length); i++) {
+        kept.add(allScored[i].id);
       }
       newIds = kept;
     }
