@@ -79,7 +79,8 @@ function hexStringToNumber(hex: string): number {
 }
 
 function selectTileLevel(scale: number, ti: TileInfo): number {
-  const idx = Math.round(-Math.log2(Math.max(0.01, scale)));
+  // Use floor instead of round to prefer higher-resolution tiles (one level sharper)
+  const idx = Math.floor(-Math.log2(Math.max(0.01, scale)));
   return Math.max(0, Math.min(ti.levels.length - 1, idx));
 }
 
@@ -433,7 +434,7 @@ export default function MapViewer({
       height: ch,
       backgroundColor: 0xf3f4f6,
       antialias: true,
-      resolution: window.devicePixelRatio || 1,
+      resolution: Math.max(2, window.devicePixelRatio || 1),
       autoDensity: true,
     });
     el.appendChild(app.view as HTMLCanvasElement);
