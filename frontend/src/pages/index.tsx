@@ -270,56 +270,42 @@ export default function HomePage() {
   return (
     <>
       <Head><title>{t('app.title')}</title></Head>
-      <div className="h-screen w-screen flex flex-col bg-gray-100 dark:bg-[#141414] overflow-hidden">
-        {/* Top bar */}
-        <div className="shrink-0 bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm border-b border-gray-200 dark:border-gray-500/40 px-4 py-3 z-20">
-          <div className="flex items-center gap-3">
+      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden">
+        {/* Top bar — transparent overlay */}
+        <div className="absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none">
+          {/* Row 1: Logo + Floor selector + utilities */}
+          <div className="flex items-center gap-3 pointer-events-auto">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 shrink-0">
               <MapIcon className="h-5 w-5" />
               <span className="font-bold text-sm hidden sm:inline">{t('app.title')}</span>
             </div>
-            <SearchBar booths={allBooths} onSelect={handleSearchSelect} />
+            {floors.length > 0 && (
+              <FloorHallSelector
+                floors={floors}
+                selectedFloorId={selectedFloorId}
+                onFloorChange={handleFloorChange}
+              />
+            )}
+            <div className="flex-1" />
             <PathfindingUI
               booths={allBooths}
               onRouteFound={(route) => { setRouteResult(route); setRouteError(null); }}
               onFloorSwitch={(floorId) => { setSelectedFloorId(floorId); }}
             />
             <LanguageSelector />
-            <Link href="/admin" className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-indigo-400 dark:hover:bg-[#2a2a2a] transition-colors" title={t('nav.admin')}>
+            <Link href="/admin" className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-gray-100/80 dark:text-gray-400 dark:hover:text-indigo-400 dark:hover:bg-[#2a2a2a]/80 transition-colors" title={t('nav.admin')}>
               <Settings className="h-5 w-5" />
             </Link>
           </div>
 
-          {floors.length > 0 && (
-            <div className="mt-2">
-              <FloorHallSelector
-                floors={floors}
-                selectedFloorId={selectedFloorId}
-                onFloorChange={handleFloorChange}
-              />
-            </div>
-          )}
-
-          <div className="mt-2 flex items-center gap-3 overflow-x-auto">
-            {categories.length > 0 && (
-              <CategoryFilter
-                categories={categories}
-                activeCategories={activeCategories}
-                onToggle={handleCategoryToggle}
-                onReset={() => setActiveCategories(new Set())}
-              />
-            )}
-            <div className="w-px h-4 bg-gray-200 dark:bg-gray-600 shrink-0" />
-            <FacilityFilter
-              hiddenTypes={hiddenFacilityTypes}
-              onToggle={handleFacilityToggle}
-              onShowAll={() => setHiddenFacilityTypes(new Set())}
-            />
+          {/* Row 2: Search bar */}
+          <div className="mt-2 pointer-events-auto max-w-md">
+            <SearchBar booths={allBooths} onSelect={handleSearchSelect} />
           </div>
 
           {/* Pathfinding status bar */}
           {(pathFrom || pathTo) && (
-            <div className="mt-2 flex items-center gap-2 text-xs">
+            <div className="mt-2 flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit">
               <Navigation2 className="h-3.5 w-3.5 text-indigo-500" />
               <span className="text-gray-600 dark:text-gray-400">
                 {t('route.from')}: <span className="font-medium text-gray-900 dark:text-gray-200">{fromBooth?.booth_number || '—'}</span>
@@ -333,8 +319,8 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* Map area */}
-        <div className="flex-1 relative">
+        {/* Map area — full screen behind transparent top bar */}
+        <div className="absolute inset-0">
           {loading ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="flex flex-col items-center gap-3">

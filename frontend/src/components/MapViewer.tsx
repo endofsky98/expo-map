@@ -287,21 +287,9 @@ export default function MapViewer({
     });
   }
 
-  function clampPosition(t: { x: number; y: number; scale: number; rotation: number }) {
-    const { width: cw, height: ch } = canvasDimsRef.current;
-    const sc = t.scale;
-    const cosR = Math.cos(t.rotation);
-    const sinR = Math.sin(t.rotation);
-    const absC = Math.abs(cosR);
-    const absS = Math.abs(sinR);
-    const effW = (imgWidth * absC + imgHeight * absS) * sc;
-    const effH = (imgWidth * absS + imgHeight * absC) * sc;
-    const icx = t.x + sc * (imgWidth / 2 * cosR - imgHeight / 2 * sinR);
-    const icy = t.y + sc * (imgWidth / 2 * sinR + imgHeight / 2 * cosR);
-    const clampedIcx = Math.max(cw - effW / 2, Math.min(effW / 2, icx));
-    const clampedIcy = Math.max(ch - effH / 2, Math.min(effH / 2, icy));
-    t.x += clampedIcx - icx;
-    t.y += clampedIcy - icy;
+  // Position clamping disabled — free movement allowed
+  function clampPosition(_t: { x: number; y: number; scale: number; rotation: number }) {
+    // no-op
   }
 
   const tileRenderPendingRef = useRef(false);
@@ -324,7 +312,7 @@ export default function MapViewer({
     const t = transformRef.current;
     const { width: cw, height: ch } = canvasDimsRef.current;
     // Minimum zoom: image must fill canvas (no smaller than fit)
-    const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+    const minFitScale = Math.max(cw / imgWidth, ch / imgHeight) * 0.6;
     const clamped = Math.max(minFitScale, Math.min(MAX_ZOOM, newScale));
     // Convert pivot from screen to world using current transform
     const cos0 = Math.cos(t.rotation);
@@ -408,8 +396,8 @@ export default function MapViewer({
       if (mc) syncContainerPosition(mc, t);
       renderTilesFnRef.current();
       scheduleMarkerUpdate();
-      v.vx *= 0.92;
-      v.vy *= 0.92;
+      v.vx *= 0.85;
+      v.vy *= 0.85;
       inertiaRafRef.current = requestAnimationFrame(step);
     }
     inertiaRafRef.current = requestAnimationFrame(step);
@@ -455,6 +443,7 @@ export default function MapViewer({
     canvas.style.touchAction = 'none';
     canvas.style.userSelect = 'none';
     canvas.style.overscrollBehavior = 'none';
+    canvas.style.cursor = 'grab';
     // Position canvas centered, overscan hidden by container overflow:hidden
     canvas.style.position = 'absolute';
     canvas.style.width = `${cw}px`;
@@ -493,6 +482,7 @@ export default function MapViewer({
     let gestureAccumDist = 0;
     let gestureAccumMidY = 0;
     const GESTURE_THRESHOLD = 5;
+    const TILT_THRESHOLD = 25; // tilt needs more deliberate gesture
     let moveRafPending = false;
 
     let lastDragX = 0, lastDragY = 0, lastDragTime = 0;
@@ -568,8 +558,8 @@ export default function MapViewer({
             if (gestureType === 'none') {
               gestureAccumDist += distDelta;
               gestureAccumMidY += midYDelta;
-              if (gestureAccumDist > GESTURE_THRESHOLD || gestureAccumMidY > GESTURE_THRESHOLD) {
-                gestureType = gestureAccumDist > gestureAccumMidY ? 'zoom' : 'tilt';
+              if (gestureAccumDist > GESTURE_THRESHOLD || gestureAccumMidY > TILT_THRESHOLD) {
+                gestureType = (gestureAccumMidY > TILT_THRESHOLD && gestureAccumMidY > gestureAccumDist) ? 'tilt' : 'zoom';
               }
             }
 
@@ -665,7 +655,7 @@ export default function MapViewer({
             // Start inertia only if single-finger drag ended
             const v = velocityRef.current;
             if (Math.abs(v.vx) > 0.5 || Math.abs(v.vy) > 0.5) {
-              startInertia(v.vx, v.vy);
+              startInertia(v.vx * 0.5, v.vy * 0.5);
             }
           }
         }
