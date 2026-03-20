@@ -319,14 +319,10 @@ export default function MapViewer({
     t.y += dy;
   }
 
-  const tileRenderPendingRef = useRef(false);
+  // Mapbox-style: dirty flag checked every frame by pixi ticker
+  const tileDirtyRef = useRef(false);
   function scheduleRenderTiles() {
-    if (tileRenderPendingRef.current) return;
-    tileRenderPendingRef.current = true;
-    requestAnimationFrame(() => {
-      tileRenderPendingRef.current = false;
-      renderTilesFnRef.current();
-    });
+    tileDirtyRef.current = true;
   }
 
   // Set mainContainer position with canvas overscan offset
@@ -389,7 +385,7 @@ export default function MapViewer({
       } else {
         animZoomRafRef.current = 0;
         // Force tile re-render at final zoom level
-        renderTilesFnRef.current();
+        tileDirtyRef.current = true;
       }
     }
     animZoomRafRef.current = requestAnimationFrame(step);
@@ -416,6 +412,7 @@ export default function MapViewer({
       if (canvas) { canvas.style.transform = tf; canvas.style.transformOrigin = origin; }
     }
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
+    scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
 
@@ -900,7 +897,17 @@ export default function MapViewer({
     });
     ro.observe(el);
 
+    // Mapbox-style render loop: check dirty flag every frame
+    const tickerFn = () => {
+      if (tileDirtyRef.current) {
+        tileDirtyRef.current = false;
+        renderTilesFnRef.current();
+      }
+    };
+    app.ticker.add(tickerFn);
+
     return () => {
+      app.ticker.remove(tickerFn);
       ro.disconnect();
       stopInertia();
       app.destroy(true);
