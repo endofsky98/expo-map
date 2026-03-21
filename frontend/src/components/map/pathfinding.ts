@@ -72,9 +72,11 @@ function segmentIntersectsRect(p1: Point, p2: Point, rx: number, ry: number, rw:
 }
 
 // ===== 그래프 빌드 =====
+export interface GraphSegment { from: Point; to: Point; fromId: string; toId: string }
 export interface PathGraph {
   nodes: Map<string, GraphNode>;
   adj: Map<string, { to: string; cost: number }[]>;
+  segments: GraphSegment[];
 }
 
 export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph {
@@ -134,7 +136,8 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     }
   }
 
-  // 4. 분할된 엣지를 실제 엣지로 변환
+  // 4. 분할된 엣지를 실제 엣지로 변환 + 세그먼트 수집
+  const graphSegments: GraphSegment[] = [];
   for (const seg of segments) {
     const splits = splitPoints.get(seg.edgeId) || [];
     splits.sort((a, b) => a.t - b.t);
@@ -144,6 +147,7 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
       const a = nodes.get(chain[k].nodeId)!;
       const b = nodes.get(chain[k + 1].nodeId)!;
       edges.push({ from: chain[k].nodeId, to: chain[k + 1].nodeId, cost: dist(a, b) });
+      graphSegments.push({ from: a, to: b, fromId: chain[k].nodeId, toId: chain[k + 1].nodeId });
     }
   }
 
@@ -159,7 +163,7 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     adj.get(e.to)!.push({ to: e.from, cost: e.cost });
   }
 
-  return { nodes, adj };
+  return { nodes, adj, segments: graphSegments };
 }
 
 function paramOnSegment(p: Point, a: Point, b: Point): number {
@@ -328,14 +332,8 @@ export function findPath(
   // 1. 그래프 빌드
   const graph = buildGraph(rawNodes, rawEdges);
 
-  // 2. 엣지 세그먼트 목록 (스냅/후보 탐색용)
-  const segments: { from: Point; to: Point; fromId: string; toId: string }[] = [];
-  for (const e of rawEdges) {
-    if (!e.is_open) continue;
-    const fn = graph.nodes.get(`n${e.from_node_id}`);
-    const tn = graph.nodes.get(`n${e.to_node_id}`);
-    if (fn && tn) segments.push({ from: fn, to: tn, fromId: fn.id, toId: tn.id });
-  }
+  // 2. 분할된 세그먼트 사용 (교차점/근접 포함)
+  const segments = graph.segments;
 
   // 3. 출발점 스냅
   const start = snapToGraph(startPoint, graph, segments);
