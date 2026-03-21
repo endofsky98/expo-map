@@ -180,8 +180,9 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       selectedObject: props.selectedObject,
     };
     props.renderLayers(ctx);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    ready, props.halls, props.booths, props.pathNodes, props.pathEdges,
+    ready, props.renderLayers, props.halls, props.booths, props.pathNodes, props.pathEdges,
     props.obstacles, props.amenities, props.selectedObject,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     transformRef.current.scale,
