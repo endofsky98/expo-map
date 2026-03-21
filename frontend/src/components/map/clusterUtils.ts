@@ -195,18 +195,40 @@ export function selectRepresentative(
     .filter((b): b is Booth => !!b);
   if (booths.length === 0) return { name: '', booth: null };
 
-  // 1순위: 홀 이름 — hall_id로 직접 연결되거나, 좌표가 홀 영역 안에 있는 경우
-  const hallList = halls.filter((h) => h.type !== 'zone');
-  for (const h of hallList) {
-    const inside = booths.find((b) => b.hall_id === h.id || boothInsideHall(b, h));
-    if (inside) return { name: hallName(h), booth: inside };
+  // 1순위: 홀/구역 이름 — 클러스터가 2개 이상 다른 홀/구역에 걸쳐 있을 때만
+  const allHalls = halls.filter((h) => h.type !== 'zone');
+  const allZones = halls.filter((h) => h.type === 'zone');
+
+  // 부스→홀/구역 매핑
+  function findContainingHall(b: Booth): Hall | null {
+    for (const h of allHalls) if (b.hall_id === h.id || boothInsideHall(b, h)) return h;
+    for (const z of allZones) if (b.hall_id === z.id || boothInsideHall(b, z)) return z;
+    return null;
+  }
+  const boothHallMap = new Map<number, Hall | null>();
+  const hallIdSet = new Set<number>();
+  for (const b of booths) {
+    const h = findContainingHall(b);
+    boothHallMap.set(b.id, h);
+    if (h) hallIdSet.add(h.id);
   }
 
-  // 2순위: 구역 이름 — hall_id로 직접 연결되거나, 좌표가 구역 영역 안에 있는 경우
-  const zoneList = halls.filter((h) => h.type === 'zone');
-  for (const z of zoneList) {
-    const inside = booths.find((b) => b.hall_id === z.id || boothInsideHall(b, z));
-    if (inside) return { name: hallName(z), booth: inside };
+  // 2개 이상 서로 다른 홀/구역에 걸쳐 있으면 → 홀/구역 이름으로 대표
+  if (hallIdSet.size >= 2) {
+    // 부스가 가장 많이 속한 홀/구역 선택
+    const countMap = new Map<number, number>();
+    for (const [, h] of boothHallMap) {
+      if (h) countMap.set(h.id, (countMap.get(h.id) || 0) + 1);
+    }
+    let bestHallId = 0, bestCount = 0;
+    for (const [hid, cnt] of countMap) {
+      if (cnt > bestCount) { bestHallId = hid; bestCount = cnt; }
+    }
+    const bestHall = halls.find(h => h.id === bestHallId);
+    if (bestHall) {
+      const repBooth = booths.find(b => boothHallMap.get(b.id)?.id === bestHallId) || booths[0];
+      return { name: hallName(bestHall), booth: repBooth };
+    }
   }
 
   // 3순위: 부스 면적 가장 큰 업체 (회사명 있음)
