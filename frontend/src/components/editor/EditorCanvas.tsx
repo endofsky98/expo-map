@@ -136,7 +136,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
 
     // Load image with error handling
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    // No crossOrigin — same-origin or CORS not configured on backend
     img.onload = () => {
       const tex = PIXI.Texture.from(img);
       const sprite = new PIXI.Sprite(tex);
