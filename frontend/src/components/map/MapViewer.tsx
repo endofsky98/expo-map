@@ -34,6 +34,9 @@ export default function MapViewer({
   onBoothClick,
   onMapClick,
   onZoomChange,
+  clientRoute,
+  navMode,
+  onNavTap,
 }: MapViewerProps) {
   const { ln } = useI18n();
   const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
@@ -73,9 +76,13 @@ export default function MapViewer({
   const onBoothClickRef = useRef(onBoothClick);
   const onMapClickRef = useRef(onMapClick);
   const onZoomChangeRef = useRef(onZoomChange);
+  const navModeRef = useRef<'none' | 'waiting_start'>(navMode ?? 'none');
+  const onNavTapRef = useRef(onNavTap);
   onBoothClickRef.current = onBoothClick;
   onMapClickRef.current = onMapClick;
   onZoomChangeRef.current = onZoomChange;
+  navModeRef.current = navMode ?? 'none';
+  onNavTapRef.current = onNavTap;
 
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -191,6 +198,7 @@ export default function MapViewer({
   // PIXI cluster shading layer ref
   const clusterContainerRef = useRef<PIXI.Container | null>(null);
   const clusterGfxRef = useRef<PIXI.Graphics | null>(null);
+  const routeGfxRef = useRef<PIXI.Graphics | null>(null);
   const clusterBadgesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
   // 대표 부스 → 클러스터 중앙 world 좌표 (boothId → {wx, wy})
@@ -461,6 +469,11 @@ export default function MapViewer({
     clusterContainerRef.current = clusterContainer;
     clusterGfxRef.current = clusterGfx;
 
+    // 경로 레이어
+    const routeGfx = new PIXI.Graphics();
+    mainContainer.addChild(routeGfx);
+    routeGfxRef.current = routeGfx;
+
     // boothLayer removed — booths are now HTML DOM markers
     mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(overlayLayerRef.current);
@@ -471,7 +484,7 @@ export default function MapViewer({
       canvas, el, mainContainer, transformRef, canvasDimsRef, mainContainerRef,
       velocityRef, inertiaRafRef, animZoomRafRef,
       boothsRef, visibleFacilitiesRef, currentFloorIdRef,
-      onBoothClickRef, onMapClickRef,
+      onBoothClickRef, onMapClickRef, navModeRef, onNavTapRef,
       stopInertia, applyTransform, applyZoom, animateZoom, applyTilt,
       clampPosition, syncContainerPosition, scheduleRenderTiles, scheduleMarkerUpdate,
       startInertia, setFacilityTooltip,
@@ -749,6 +762,48 @@ export default function MapViewer({
       layer.addChild(text);
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
+
+  // ===== Client Route (A* pathfinding result) =====
+  useEffect(() => {
+    const gfx = routeGfxRef.current;
+    if (!gfx) return;
+    gfx.clear();
+    if (!clientRoute || clientRoute.path.length < 2) return;
+    const path = clientRoute.path;
+    // 레드카펫: 두꺼운 선 (width 10, 반투명 빨간)
+    gfx.lineStyle(10, 0xe53e3e, 0.85);
+    gfx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) {
+      gfx.lineTo(path[i].x, path[i].y);
+    }
+    // 이동 방향 화살표 (5개 정도, 등간격)
+    const totalLen = path.reduce((acc, p, i) => i === 0 ? 0 : acc + Math.hypot(p.x - path[i-1].x, p.y - path[i-1].y), 0);
+    const step = totalLen / 6;
+    let traveled = 0;
+    let arrowAt = step;
+    for (let i = 1; i < path.length; i++) {
+      const dx = path[i].x - path[i-1].x;
+      const dy = path[i].y - path[i-1].y;
+      const segLen = Math.hypot(dx, dy);
+      while (arrowAt <= traveled + segLen && arrowAt < totalLen) {
+        const t = (arrowAt - traveled) / segLen;
+        const ax = path[i-1].x + dx * t;
+        const ay = path[i-1].y + dy * t;
+        const angle = Math.atan2(dy, dx);
+        // 화살표 삼각형 (30px)
+        const arrowSize = 30;
+        gfx.beginFill(0xe53e3e, 0.9);
+        gfx.drawPolygon([
+          ax + Math.cos(angle) * arrowSize, ay + Math.sin(angle) * arrowSize,
+          ax + Math.cos(angle + 2.4) * arrowSize * 0.6, ay + Math.sin(angle + 2.4) * arrowSize * 0.6,
+          ax + Math.cos(angle - 2.4) * arrowSize * 0.6, ay + Math.sin(angle - 2.4) * arrowSize * 0.6,
+        ]);
+        gfx.endFill();
+        arrowAt += step;
+      }
+      traveled += segLen;
+    }
+  }, [clientRoute]);
 
   // ===== Booths (HTML DOM markers — Mapbox style) =====
 

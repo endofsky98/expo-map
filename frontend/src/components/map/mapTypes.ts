@@ -42,6 +42,9 @@ export interface MapViewerProps {
   onBoothClick: (booth: Booth) => void;
   onMapClick?: (x: number, y: number, floorId: number) => void;
   onZoomChange?: (zoom: number) => void;
+  clientRoute?: { path: { x: number; y: number }[]; distance: number } | null;
+  navMode?: 'none' | 'waiting_start';
+  onNavTap?: (worldX: number, worldY: number) => void;
 }
 
 export const MIN_ZOOM = 0.1;

@@ -21,6 +21,8 @@ export interface PointerEventDeps {
   currentFloorIdRef: React.MutableRefObject<number | null>;
   onBoothClickRef: React.MutableRefObject<(booth: Booth) => void>;
   onMapClickRef: React.MutableRefObject<((x: number, y: number, floorId: number) => void) | undefined>;
+  navModeRef: React.MutableRefObject<'none' | 'waiting_start'>;
+  onNavTapRef: React.MutableRefObject<((wx: number, wy: number) => void) | undefined>;
   stopInertia: () => void;
   applyTransform: (newScale: number, newRotation: number, pivotX: number, pivotY: number) => void;
   applyZoom: (newScale: number, pivotX: number, pivotY: number) => void;
@@ -44,7 +46,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     canvas, el, mainContainer, transformRef, canvasDimsRef, mainContainerRef,
     velocityRef, inertiaRafRef, animZoomRafRef,
     boothsRef, visibleFacilitiesRef, currentFloorIdRef,
-    onBoothClickRef, onMapClickRef,
+    onBoothClickRef, onMapClickRef, navModeRef, onNavTapRef,
     stopInertia, applyTransform, applyZoom, animateZoom, applyTilt,
     clampPosition, syncContainerPosition, scheduleRenderTiles, scheduleMarkerUpdate,
     startInertia, setFacilityTooltip,
@@ -341,6 +343,12 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     const dy0 = sy - t.y;
     const wx = (dx0 * cosR + dy0 * sinR) / sc;
     const wy = (-dx0 * sinR + dy0 * cosR) / sc;
+
+    // Navigation mode: waiting_start — fire onNavTap and return
+    if (navModeRef.current === 'waiting_start') {
+      onNavTapRef.current?.(wx, wy);
+      return;
+    }
 
     // Check facilities first
     for (const fac of visibleFacilitiesRef.current) {

@@ -81,6 +81,16 @@ export async function deleteFloor(id: number): Promise<void> {
   await request(`/api/floors/${id}`, { method: 'DELETE' });
 }
 
+// Path Nodes & Edges
+export async function fetchPathNodes(floorId?: number): Promise<any[]> {
+  const params = floorId ? `?floor_id=${floorId}` : '';
+  return request<any[]>(`/api/path-nodes${params}`);
+}
+export async function fetchPathEdges(floorId?: number): Promise<any[]> {
+  const params = floorId ? `?floor_id=${floorId}` : '';
+  return request<any[]>(`/api/path-edges${params}`);
+}
+
 // Halls
 export async function fetchHalls(floorId?: number): Promise<Hall[]> {
   const params = floorId ? `?floor_id=${floorId}` : '';

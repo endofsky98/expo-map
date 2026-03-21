@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
 import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle, RouteResult } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchRoute, fetchSetting } from '@/lib/api';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchRoute, fetchSetting } from '@/lib/api';
+import { findPath, type PathResult } from '@/components/map/pathfinding';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
@@ -47,6 +48,10 @@ export default function HomePage() {
   const [hiddenFacilityTypes, setHiddenFacilityTypes] = useState<Set<string>>(new Set());
   const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
   const [routeError, setRouteError] = useState<string | null>(null);
+  const [pathNodes, setPathNodes] = useState<any[]>([]);
+  const [pathEdges, setPathEdges] = useState<any[]>([]);
+  const [navMode, setNavMode] = useState<'none' | 'waiting_start'>('none');
+  const [clientRoute, setClientRoute] = useState<PathResult | null>(null);
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -120,18 +125,22 @@ export default function HomePage() {
     setObstacles([]);
 
     async function loadFloorData() {
-      const [filteredBooths, img, facs, obs, hs] = await Promise.all([
+      const [filteredBooths, img, facs, obs, hs, pn, pe] = await Promise.all([
         fetchBooths(selectedFloorId!).catch(() => []),
         fetchCurrentImage(selectedFloorId!).catch(() => null),
         fetchFacilities(selectedFloorId!).catch(() => []),
         fetchObstacles(selectedFloorId!).catch(() => []),
         fetchHalls(selectedFloorId!).catch(() => []),
+        fetchPathNodes(selectedFloorId!).catch(() => []),
+        fetchPathEdges(selectedFloorId!).catch(() => []),
       ]);
       setBooths(filteredBooths);
       setCurrentImage(img);
       setFacilities(facs);
       setObstacles(obs);
       setHalls(hs);
+      setPathNodes(pn);
+      setPathEdges(pe);
     }
     loadFloorData();
   }, [selectedFloorId]);
@@ -235,8 +244,10 @@ export default function HomePage() {
 
   function setAsDestination(boothId: number) {
     setPathTo(boothId);
+    setSelectedBoothId(boothId);
     setBoothPopup(null);
-    if (pathFrom) doPathfinding(pathFrom, boothId);
+    setNavMode('waiting_start');
+    setClientRoute(null);
   }
 
   async function doPathfinding(from: number, to: number) {
@@ -255,6 +266,16 @@ export default function HomePage() {
       setRouteError(t('route.notFound'));
       setRouteResult(null);
     }
+  }
+
+  // 길찾기: 출발점 선택 시 경로 계산
+  function handleNavStart(worldX: number, worldY: number) {
+    if (navMode !== 'waiting_start' || !selectedBoothId) return;
+    const destBooth = allBooths.find(b => b.id === selectedBoothId);
+    if (!destBooth) return;
+    const result = findPath({ x: worldX, y: worldY }, destBooth, pathNodes, pathEdges, allBooths, obstacles);
+    setClientRoute(result);
+    setNavMode('none');
   }
 
   function handleFontUp() {
@@ -385,7 +406,29 @@ export default function HomePage() {
               onBoothClick={handleBoothClick}
               onMapClick={handleMapClick}
               onZoomChange={setZoom}
+              clientRoute={clientRoute}
+              navMode={navMode}
+              onNavTap={handleNavStart}
             />
+          )}
+
+          {/* 네비게이션 출발점 선택 안내 오버레이 */}
+          {navMode === 'waiting_start' && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-medium pointer-events-none">
+              출발점을 터치하세요
+            </div>
+          )}
+
+          {/* 경로 지우기 버튼 */}
+          {clientRoute && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+              <button
+                onClick={() => setClientRoute(null)}
+                className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-full shadow-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
+              >
+                ✕ 경로 지우기
+              </button>
+            </div>
           )}
 
           {/* Booth popup with start/destination buttons */}
