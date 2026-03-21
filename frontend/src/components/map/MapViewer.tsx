@@ -1326,6 +1326,19 @@ export default function MapViewer({
         el.appendChild(pinSvg);
         el.appendChild(label);
 
+        // 마커 위에서도 드래그 가능하게 — pointerdown을 캔버스로 전달
+        el.addEventListener('pointerdown', (e) => {
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const synth = new PointerEvent('pointerdown', {
+              clientX: e.clientX, clientY: e.clientY,
+              pointerId: e.pointerId, pointerType: e.pointerType,
+              isPrimary: e.isPrimary, bubbles: true, cancelable: true,
+            });
+            canvas.dispatchEvent(synth);
+          }
+        });
+
         // Click handler
         el.addEventListener('pointerup', (e) => {
           e.stopPropagation();
