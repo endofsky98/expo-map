@@ -368,7 +368,7 @@ export default function HomePage() {
     const rot = dirAtDist(0);
     // 줌 2배, 틸트 없음 (회전이 있으므로 틸트는 혼란)
     const panTo = (window as any).__mapViewerPanToWorld;
-    if (panTo) panTo(pos.x, pos.y, 2);
+    if (panTo) panTo(pos.x, pos.y, 1.5);
     // 약간의 딜레이 후 회전 애니메이션 시작
     setTimeout(() => {
       const animNav = (window as any).__mapViewerAnimateNav;

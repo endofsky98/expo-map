@@ -1708,7 +1708,13 @@ export default function MapViewer({
         if (navAnimRaf) cancelAnimationFrame(navAnimRaf);
         const t = transformRef.current;
         const { width: cw, height: ch } = canvasDimsRef.current;
+        const sc = t.scale;
         const startRot = t.rotation;
+        // 현재 화면 중심의 world 좌표 역산
+        const cosS = Math.cos(startRot), sinS = Math.sin(startRot);
+        const dxS = cw / 2 - t.x, dyS = ch / 2 - t.y;
+        const startWx = (dxS * cosS + dyS * sinS) / sc;
+        const startWy = (-dxS * sinS + dyS * cosS) / sc;
         // 최단 회전 방향
         let dRot = rotation - startRot;
         while (dRot > Math.PI) dRot -= 2 * Math.PI;
@@ -1718,13 +1724,15 @@ export default function MapViewer({
           const elapsed = now - startTime;
           const progress = Math.min(1, elapsed / durationMs);
           const ease = 1 - Math.pow(1 - progress, 3);
+          // world 좌표 보간
+          const curWx = startWx + (wx - startWx) * ease;
+          const curWy = startWy + (wy - startWy) * ease;
           // 회전 보간
           t.rotation = startRot + dRot * ease;
-          // 매 프레임 현재 rotation 기준으로 (wx,wy)가 화면 중심에 오도록 tx,ty 계산
-          const sc = t.scale;
+          // 현재 rotation 기준으로 보간된 world좌표가 화면 중심에 오도록
           const cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
-          t.x = cw / 2 - sc * (wx * cosR - wy * sinR);
-          t.y = ch / 2 - sc * (wx * sinR + wy * cosR);
+          t.x = cw / 2 - sc * (curWx * cosR - curWy * sinR);
+          t.y = ch / 2 - sc * (curWx * sinR + curWy * cosR);
           clampPosition(t);
           syncContainerPosition(mc, t);
           renderTilesFnRef.current();
