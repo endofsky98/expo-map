@@ -173,15 +173,15 @@ export const AMENITY_COLORS: Record<AmenityType, number> = {
 };
 
 export const AMENITY_LABELS: Record<AmenityType, string> = {
-  restroom:       '🚻',
-  nursing_room:   '🤱',
-  info_desk:      'ℹ️',
-  first_aid:      '🏥',
-  locker:         '🔐',
-  atm:            '💰',
-  cafe:           '☕',
-  charging:       '🔌',
-  wifi:           '📶',
-  smoking:        '🚬',
-  emergency_exit: '🚨',
+  restroom:       '화장실',
+  nursing_room:   '수유실',
+  info_desk:      '안내데스크',
+  first_aid:      '응급처치',
+  locker:         '보관함',
+  atm:            'ATM',
+  cafe:           '카페',
+  charging:       '충전소',
+  wifi:           'WiFi',
+  smoking:        '흡연실',
+  emergency_exit: '비상구',
 };
