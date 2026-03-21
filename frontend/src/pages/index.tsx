@@ -370,7 +370,9 @@ export default function HomePage() {
     const rot = dirAtDist(0);
     // 줌 1.5배 + 회전 즉시 설정 후 애니메이션
     const panTo = (window as any).__mapViewerPanToWorld;
-    if (panTo) panTo(pos.x, pos.y, 1.5, rot);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(60);
+    if (panTo) panTo(pos.x, pos.y, 1, rot);
   }
 
   // 다음 (100px 전진)
@@ -414,17 +416,19 @@ export default function HomePage() {
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
-    // 회전 초기화 (0도로 부드럽게)
-    const pos = posAtDist(navCurDist) || { x: 0, y: 0 };
+    const pos = posAtDist(navCurDistRef.current) || { x: 0, y: 0 };
     const animNav = (window as any).__mapViewerAnimateNav;
     if (animNav) animNav(pos.x, pos.y, 0, 400);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(0);
   }
 
-  // 도착 — 경로 삭제 질문
   function navArrivedDeleteRoute() {
-    const pos = posAtDist(navCurDist) || { x: 0, y: 0 };
+    const pos = posAtDist(navCurDistRef.current) || { x: 0, y: 0 };
     const animNav = (window as any).__mapViewerAnimateNav;
     if (animNav) animNav(pos.x, pos.y, 0, 400);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(0);
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
@@ -434,9 +438,11 @@ export default function HomePage() {
   }
 
   function navArrivedKeepRoute() {
-    const pos = posAtDist(navCurDist) || { x: 0, y: 0 };
+    const pos = posAtDist(navCurDistRef.current) || { x: 0, y: 0 };
     const animNav = (window as any).__mapViewerAnimateNav;
     if (animNav) animNav(pos.x, pos.y, 0, 400);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(0);
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
