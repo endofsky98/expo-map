@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -60,6 +60,7 @@ export default function HomePage() {
   // 네비게이션 모드
   const [navActive, setNavActive] = useState(false);
   const [navCurDist, setNavCurDist] = useState(0); // 현재 위치 (경로상 거리 px)
+  const navCurDistRef = useRef(0);
   const [navConfirm, setNavConfirm] = useState<'cancel' | 'arrived' | null>(null);
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -363,6 +364,7 @@ export default function HomePage() {
   function startNavigation() {
     if (!clientRoute) return;
     setNavActive(true);
+    navCurDistRef.current = 0;
     setNavCurDist(0);
     const pos = clientRoute.path[0];
     const rot = dirAtDist(0);
@@ -374,7 +376,8 @@ export default function HomePage() {
   // 다음 (100px 전진)
   function navNext() {
     if (!clientRoute) return;
-    const newDist = Math.min(navCurDist + 100, clientRoute.distance);
+    const newDist = Math.min(navCurDistRef.current + 100, clientRoute.distance);
+    navCurDistRef.current = newDist;
     setNavCurDist(newDist);
     const pos = posAtDist(newDist);
     const rot = dirAtDist(newDist);
@@ -390,10 +393,11 @@ export default function HomePage() {
   // 이전 (100px 후퇴) — 방향은 다음 방향으로
   function navPrev() {
     if (!clientRoute) return;
-    const newDist = Math.max(navCurDist - 100, 0);
+    const newDist = Math.max(navCurDistRef.current - 100, 0);
+    navCurDistRef.current = newDist;
     setNavCurDist(newDist);
     const pos = posAtDist(newDist);
-    const rot = dirAtDist(newDist); // 다음 방향
+    const rot = dirAtDist(newDist);
     if (pos) {
       const animNav = (window as any).__mapViewerAnimateNav;
       if (animNav) animNav(pos.x, pos.y, rot, 500);

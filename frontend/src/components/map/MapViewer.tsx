@@ -1736,7 +1736,7 @@ export default function MapViewer({
           t.y = ch / 2 - sc * (curWx * sinR + curWy * cosR);
           clampPosition(t);
           syncContainerPosition(mc, t);
-          scheduleRenderTiles();
+          renderTilesFnRef.current();
           scheduleMarkerUpdate();
           if (progress < 1) {
             navAnimRaf = requestAnimationFrame(step);
