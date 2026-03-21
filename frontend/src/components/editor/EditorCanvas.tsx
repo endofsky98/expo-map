@@ -142,6 +142,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       bgSpriteRef.current = null;
     }
 
+    console.log('[EditorCanvas] Image:', props.imageUrl, 'sprite size:', props.imageWidth, 'x', props.imageHeight);
     const tex = PIXI.Texture.from(props.imageUrl);
     const sprite = new PIXI.Sprite(tex);
     sprite.width = props.imageWidth;
