@@ -691,6 +691,42 @@ export default function MapViewer({
     }
   }, [obstacles]);
 
+  // ===== 부스 바닥 (불투명 흰색, 테두리 없음) =====
+  const boothFloorGfxRef = useRef<PIXI.Graphics | null>(null);
+  useEffect(() => {
+    let gfx = boothFloorGfxRef.current;
+    if (!gfx) {
+      gfx = new PIXI.Graphics();
+      boothFloorGfxRef.current = gfx;
+      // mainContainer에 추가 — obstacles 뒤, route 앞
+      const mc = mainContainerRef.current;
+      if (mc) {
+        const routeIdx = mc.children.indexOf(routeGfxRef.current!);
+        if (routeIdx >= 0) mc.addChildAt(gfx, routeIdx);
+        else mc.addChild(gfx);
+      }
+    }
+    gfx.clear();
+    for (const b of booths) {
+      if (!b.is_active) continue;
+      gfx.beginFill(0xffffff, 1);
+      if (b.shape === 'polygon' && b.points) {
+        const pts: { x: number; y: number }[] = typeof b.points === 'string' ? JSON.parse(b.points) : b.points;
+        if (pts.length > 0) {
+          gfx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) gfx.lineTo(pts[i].x, pts[i].y);
+          gfx.closePath();
+        }
+      } else if (b.shape === 'circle' && b.radius) {
+        const { cx, cy } = getBoothCenter(b);
+        gfx.drawCircle(cx, cy, b.radius);
+      } else {
+        gfx.drawRect(b.x, b.y, b.width, b.height);
+      }
+      gfx.endFill();
+    }
+  }, [booths]);
+
   // ===== Route =====
   useEffect(() => {
     const layer = routeLayerRef.current;
@@ -782,13 +818,13 @@ export default function MapViewer({
     if (!clientRoute || clientRoute.path.length < 2) return;
     const path = clientRoute.path;
 
-    // 배경: 두꺼운 반투명 선
-    gfx.lineStyle(20, 0x4f46e5, 0.3);
+    // 배경: 두꺼운 반투명 빨간 선
+    gfx.lineStyle(30, 0xe53e3e, 0.25);
     gfx.moveTo(path[0].x, path[0].y);
     for (let i = 1; i < path.length; i++) gfx.lineTo(path[i].x, path[i].y);
 
-    // 전경: 실선
-    gfx.lineStyle(8, 0x4f46e5, 0.9);
+    // 전경: 빨간 실선
+    gfx.lineStyle(14, 0xe53e3e, 0.9);
     gfx.moveTo(path[0].x, path[0].y);
     for (let i = 1; i < path.length; i++) gfx.lineTo(path[i].x, path[i].y);
 
@@ -828,7 +864,7 @@ export default function MapViewer({
       const headEnd = headStart + headLen;
 
       // 경로 위에 밝은 선 그리기
-      animGfx.lineStyle(12, 0x818cf8, 0.7);
+      animGfx.lineStyle(16, 0xfca5a5, 0.8);
       let drawing = false;
       let traveled = 0;
       for (let i = 1; i < anim.path.length; i++) {
