@@ -4,8 +4,8 @@ import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
-import { Booth, Category, MapImage, Floor, Facility, Obstacle, RouteResult } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchFacilities, fetchObstacles, fetchRoute, fetchSetting } from '@/lib/api';
+import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle, RouteResult } from '@/types';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchRoute, fetchSetting } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
@@ -40,6 +40,7 @@ export default function HomePage() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const [halls, setHalls] = useState<Hall[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
   const [selectedBoothId, setSelectedBoothId] = useState<number | null>(null);
   const [activeCategories, setActiveCategories] = useState<Set<number>>(new Set());
@@ -119,16 +120,18 @@ export default function HomePage() {
     setObstacles([]);
 
     async function loadFloorData() {
-      const [filteredBooths, img, facs, obs] = await Promise.all([
+      const [filteredBooths, img, facs, obs, hs] = await Promise.all([
         fetchBooths(selectedFloorId!).catch(() => []),
         fetchCurrentImage(selectedFloorId!).catch(() => null),
         fetchFacilities(selectedFloorId!).catch(() => []),
         fetchObstacles(selectedFloorId!).catch(() => []),
+        fetchHalls(selectedFloorId!).catch(() => []),
       ]);
       setBooths(filteredBooths);
       setCurrentImage(img);
       setFacilities(facs);
       setObstacles(obs);
+      setHalls(hs);
     }
     loadFloorData();
   }, [selectedFloorId]);
@@ -364,6 +367,7 @@ export default function HomePage() {
               facilities={facilities}
               hiddenFacilityTypes={hiddenFacilityTypes}
               obstacles={obstacles}
+              halls={halls}
               routePath={routeResult?.path || null}
               routeResult={routeResult}
               currentFloorId={selectedFloorId}

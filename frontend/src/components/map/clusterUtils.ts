@@ -175,6 +175,16 @@ export function getBoothDisplayName(booth: Booth): string {
  * 4순위: 회사 정보 있는 첫 번째 업체
  * 5순위: 첫 번째 부스
  */
+/** 부스 중심이 홀/구역 영역 안에 있는지 체크 */
+function boothInsideHall(b: Booth, h: Hall): boolean {
+  const cx = b.x + b.width / 2;
+  const cy = b.y + b.height / 2;
+  if (h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null) {
+    return cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height;
+  }
+  return false;
+}
+
 export function selectRepresentative(
   boothIds: number[],
   allBooths: Booth[],
@@ -185,20 +195,18 @@ export function selectRepresentative(
     .filter((b): b is Booth => !!b);
   if (booths.length === 0) return { name: '', booth: null };
 
-  // 1순위: 홀 이름 (type !== 'zone' 또는 type 없음)
-  for (const b of booths) {
-    if (b.hall_id) {
-      const hall = halls.find((h) => h.id === b.hall_id && h.type !== 'zone');
-      if (hall) return { name: hallName(hall), booth: b };
-    }
+  // 1순위: 홀 이름 — hall_id로 직접 연결되거나, 좌표가 홀 영역 안에 있는 경우
+  const hallList = halls.filter((h) => h.type !== 'zone');
+  for (const h of hallList) {
+    const inside = booths.find((b) => b.hall_id === h.id || boothInsideHall(b, h));
+    if (inside) return { name: hallName(h), booth: inside };
   }
 
-  // 2순위: 구역 이름 (type === 'zone')
-  for (const b of booths) {
-    if (b.hall_id) {
-      const zone = halls.find((h) => h.id === b.hall_id && h.type === 'zone');
-      if (zone) return { name: hallName(zone), booth: b };
-    }
+  // 2순위: 구역 이름 — hall_id로 직접 연결되거나, 좌표가 구역 영역 안에 있는 경우
+  const zoneList = halls.filter((h) => h.type === 'zone');
+  for (const z of zoneList) {
+    const inside = booths.find((b) => b.hall_id === z.id || boothInsideHall(b, z));
+    if (inside) return { name: hallName(z), booth: inside };
   }
 
   // 3순위: 부스 면적 가장 큰 업체 (회사명 있음)
