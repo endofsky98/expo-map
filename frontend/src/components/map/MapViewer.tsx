@@ -1697,6 +1697,7 @@ export default function MapViewer({
         clampPosition(transformRef.current);
         syncContainerPosition(mc, transformRef.current);
         mc.scale.set(sc);
+        mc.rotation = transformRef.current.rotation;
         onZoomChange?.(sc);
         renderTilesFnRef.current();
         scheduleMarkerUpdate();
@@ -1726,8 +1727,9 @@ export default function MapViewer({
           const cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
           t.x = cw / 2 - sc * (wx * cosR - wy * sinR);
           t.y = ch / 2 - sc * (wx * sinR + wy * cosR);
-          clampPosition(t);
+          // clampPosition 생략 — 네비 중 목표점이 정확히 화면 중심에 와야 함
           syncContainerPosition(mc, t);
+          mc.rotation = t.rotation;
           renderTilesFnRef.current();
           scheduleMarkerUpdate();
           if (progress < 1) {
