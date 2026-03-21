@@ -216,13 +216,9 @@ export default function MapViewer({
     return { sx, sy };
   }
 
-  // Schedule marker position update via rAF (debounced)
+  // 마커 위치 즉시 업데이트 (rAF 지연 제거 — 드래그 시 즉시 따라감)
   function scheduleMarkerUpdate() {
-    if (rafIdRef.current) return;
-    rafIdRef.current = requestAnimationFrame(() => {
-      rafIdRef.current = 0;
-      updateMarkerPositions();
-    });
+    updateMarkerPositions();
   }
 
   // Clamp: image must overlap screen center — image cannot leave the center point
