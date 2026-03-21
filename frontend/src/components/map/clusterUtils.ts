@@ -1,5 +1,18 @@
 import { Booth, Hall } from '@/types';
 
+/** 부스 중심 좌표 — 다각형이면 centroid, 아니면 x+w/2, y+h/2 */
+export function getBoothCenter(b: Booth): { cx: number; cy: number } {
+  if (b.shape === 'polygon' && b.points) {
+    const pts: { x: number; y: number }[] = typeof b.points === 'string' ? JSON.parse(b.points) : b.points;
+    if (pts.length > 0) {
+      let sx = 0, sy = 0;
+      for (const p of pts) { sx += p.x; sy += p.y; }
+      return { cx: sx / pts.length, cy: sy / pts.length };
+    }
+  }
+  return { cx: b.x + b.width / 2, cy: b.y + b.height / 2 };
+}
+
 // ===== Cluster types =====
 export interface ClusterItem {
   id: string;           // 'cluster-{index}' or 'booth-{boothId}'
@@ -39,8 +52,7 @@ export function clusterBooths(
 
   // 1. 모든 부스를 화면 좌표로 변환
   const positions: { booth: Booth; sx: number; sy: number }[] = booths.map((booth) => {
-    const cx = booth.x + booth.width / 2;
-    const cy = booth.y + booth.height / 2;
+    const { cx, cy } = getBoothCenter(booth);
     const { sx, sy } = screenPosFn(cx, cy);
     return { booth, sx, sy };
   });
@@ -91,10 +103,13 @@ export function clusterBooths(
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const idx of group) {
       const b = positions[idx].booth;
-      if (b.x < minX) minX = b.x;
-      if (b.y < minY) minY = b.y;
-      if (b.x + b.width > maxX) maxX = b.x + b.width;
-      if (b.y + b.height > maxY) maxY = b.y + b.height;
+      if (b.shape === 'polygon' && b.points) {
+        const pts: { x: number; y: number }[] = typeof b.points === 'string' ? JSON.parse(b.points) : b.points;
+        for (const p of pts) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }
+      } else {
+        if (b.x < minX) minX = b.x; if (b.y < minY) minY = b.y;
+        if (b.x + b.width > maxX) maxX = b.x + b.width; if (b.y + b.height > maxY) maxY = b.y + b.height;
+      }
     }
 
     if (n === 1) {
@@ -177,8 +192,7 @@ export function getBoothDisplayName(booth: Booth): string {
  */
 /** 부스 중심이 홀/구역 영역 안에 있는지 체크 */
 function boothInsideHall(b: Booth, h: Hall): boolean {
-  const cx = b.x + b.width / 2;
-  const cy = b.y + b.height / 2;
+  const { cx, cy } = getBoothCenter(b);
   if (h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null) {
     return cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height;
   }

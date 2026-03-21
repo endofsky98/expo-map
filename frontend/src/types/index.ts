@@ -55,6 +55,9 @@ export interface Booth {
   color?: string;
   is_active: boolean;
   corridor_node_id?: number;
+  shape?: string;
+  points?: { x: number; y: number }[] | string;
+  radius?: number;
   created_at?: string;
 }
 

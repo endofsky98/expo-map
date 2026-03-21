@@ -10,7 +10,7 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import { clusterBooths, selectRepresentative, getBoothDisplayName, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
+import { clusterBooths, selectRepresentative, getBoothDisplayName, getBoothCenter, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -776,8 +776,8 @@ export default function MapViewer({
 
     const visibleBooths: Booth[] = [];
     for (const booth of boothsRef.current) {
-      const cx = booth.x + booth.width / 2;
-      const cy = booth.y + booth.height / 2;
+      const { cx, cy } = getBoothCenter(booth);
+      
       if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
         visibleBooths.push(booth);
       }
@@ -899,7 +899,7 @@ export default function MapViewer({
         // 이 클러스터가 완전히 속하는 홀/구역 찾기
         for (const h of hallsList) {
           const allInside = cBooths.length > 0 && cBooths.every(b => {
-            const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+            const { cx, cy } = getBoothCenter(b);
             return insideHall(cx, cy, h);
           });
           if (allInside) {
@@ -931,8 +931,7 @@ export default function MapViewer({
     function findNearestClusterCenter(boothId: number): { wx: number; wy: number } | null {
       const booth = boothMapRef.current.get(boothId);
       if (!booth) return null;
-      const bx = booth.x + booth.width / 2;
-      const by = booth.y + booth.height / 2;
+      const { cx: bx, cy: by } = getBoothCenter(booth);
       let best: { wx: number; wy: number } | null = null;
       let bestDist = Infinity;
       for (const c of clusters) {
@@ -982,8 +981,8 @@ export default function MapViewer({
         const booth = boothMapRef.current.get(id);
         if (booth) {
           const center = clusterRepCenterRef.current.get(id);
-          const wcx = center ? center.wx : booth.x + booth.width / 2;
-          const wcy = center ? center.wy : booth.y + booth.height / 2;
+          const wcx = center ? center.wx : getBoothCenter(booth).cx;
+          const wcy = center ? center.wy : getBoothCenter(booth).cy;
           const { sx, sy } = worldToScreen(wcx, wcy);
           // 이전 클러스터 중심에서 시작 (나뉘는 효과)
           const prevCenter = findNearestClusterCenter(id);
@@ -1080,8 +1079,8 @@ export default function MapViewer({
     // Viewport culling
     const visibleBooths: Booth[] = [];
     for (const booth of boothsRef.current) {
-      const cx = booth.x + booth.width / 2;
-      const cy = booth.y + booth.height / 2;
+      const { cx, cy } = getBoothCenter(booth);
+      
       if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
         visibleBooths.push(booth);
       }
@@ -1121,8 +1120,8 @@ export default function MapViewer({
 
       // 클러스터 대표면 영역 중앙, 아니면 부스 중심
       const center = clusterRepCenterRef.current.get(booth.id);
-      const wcx = center ? center.wx : booth.x + booth.width / 2;
-      const wcy = center ? center.wy : booth.y + booth.height / 2;
+      const wcx = center ? center.wx : getBoothCenter(booth).cx;
+      const wcy = center ? center.wy : getBoothCenter(booth).cy;
       const { sx, sy } = worldToScreen(wcx, wcy);
 
       // Perspective scale: when tilted, markers near top (far) shrink, near bottom (close) grow
@@ -1399,8 +1398,7 @@ export default function MapViewer({
     if (!mc) return;
     const { width: cw, height: ch } = canvasDimsRef.current;
     const sc = transformRef.current.scale;
-    const centerX = booth.x + booth.width / 2;
-    const centerY = booth.y + booth.height / 2;
+    const { cx: centerX, cy: centerY } = getBoothCenter(booth);
     transformRef.current.x = cw / 2 - centerX * sc;
     transformRef.current.y = ch / 2 - centerY * sc;
     clampPosition(transformRef.current);
