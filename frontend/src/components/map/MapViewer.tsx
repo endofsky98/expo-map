@@ -992,22 +992,26 @@ export default function MapViewer({
         circles[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
       }
 
-      // Update label: 회사명 우선 표시, 없으면 부스번호
-      const label = el.querySelector('[data-label]') as HTMLElement;
-      if (label) {
+      // Update label: 부스번호(위 작은) + 회사명(아래 큰)
+      const nameEl = el.querySelector('[data-name]') as HTMLElement;
+      const numEl = el.querySelector('[data-num]') as HTMLElement;
+      const labelEl = el.querySelector('[data-label]') as HTMLElement;
+      if (nameEl) {
         const companyName = lnFn(booth.company?.name) || '';
-        if (companyName) {
-          // 회사명 항상 표시, 줌인 시 부스번호도 추가
-          if (sc >= 1.5) {
-            label.textContent = `${companyName}\n${booth.booth_number}`;
-            label.style.whiteSpace = 'pre-line';
-          } else {
-            label.textContent = companyName;
-            label.style.whiteSpace = 'nowrap';
-          }
-        } else {
-          label.textContent = booth.booth_number;
-          label.style.whiteSpace = 'nowrap';
+        nameEl.textContent = companyName || booth.booth_number;
+        // 회사명이 있으면 부스번호 표시, 없으면 숨기기
+        if (numEl) {
+          numEl.textContent = booth.booth_number;
+          numEl.style.display = companyName ? '' : 'none';
+        } else if (companyName && labelEl) {
+          // numEl 없으면 생성
+          const ns = document.createElement('div');
+          ns.setAttribute('data-num', '');
+          ns.textContent = booth.booth_number;
+          ns.style.fontSize = '12px'; ns.style.fontWeight = '500';
+          ns.style.color = '#6b7280'; ns.style.whiteSpace = 'nowrap';
+          ns.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
+          labelEl.insertBefore(ns, nameEl);
         }
       }
     }
@@ -1060,21 +1064,41 @@ export default function MapViewer({
           `<circle cx="14" cy="14" r="8" fill="none" stroke="#fff" stroke-width="2"/>` +
           `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" stroke-width="2"/>`;
 
-        // Label — 회사명 우선, 없으면 부스번호
+        // Label wrapper
         const label = document.createElement('div');
         label.setAttribute('data-label', '');
-        const initCompanyName = lnRef.current(booth.company?.name) || '';
-        label.textContent = initCompanyName || booth.booth_number;
-        label.style.fontSize = '24px';
-        label.style.fontWeight = '700';
-        label.style.fontFamily = 'Inter, sans-serif';
-        label.style.color = '#1f2937';
         label.style.textAlign = 'center';
-        label.style.whiteSpace = 'nowrap';
-        label.style.overflow = 'visible';
         label.style.marginTop = '1px';
-        label.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
         label.style.lineHeight = '1.2';
+
+        // 부스번호 (위, 작은 글씨)
+        const numSpan = document.createElement('div');
+        numSpan.setAttribute('data-num', '');
+        numSpan.textContent = booth.booth_number;
+        numSpan.style.fontSize = '12px';
+        numSpan.style.fontWeight = '500';
+        numSpan.style.color = '#6b7280';
+        numSpan.style.whiteSpace = 'nowrap';
+        numSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
+
+        // 회사명 (아래, 큰 글씨)
+        const nameSpan = document.createElement('div');
+        nameSpan.setAttribute('data-name', '');
+        const initCompanyName = lnRef.current(booth.company?.name) || '';
+        nameSpan.textContent = initCompanyName || booth.booth_number;
+        nameSpan.style.fontSize = '24px';
+        nameSpan.style.fontWeight = '700';
+        nameSpan.style.fontFamily = 'Inter, sans-serif';
+        nameSpan.style.color = '#1f2937';
+        nameSpan.style.whiteSpace = 'nowrap';
+        nameSpan.style.overflow = 'visible';
+        nameSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
+
+        // 회사명 있으면 부스번호+회사명, 없으면 회사명 자리에 부스번호만
+        if (initCompanyName) {
+          label.appendChild(numSpan);
+        }
+        label.appendChild(nameSpan);
 
         el.appendChild(pinSvg);
         el.appendChild(label);
