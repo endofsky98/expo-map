@@ -19,6 +19,7 @@ interface ToolbarProps {
 }
 
 const BUTTONS: { mode: EditorMode; label: string; group: string }[] = [
+  { mode: 'pan',              label: '이동',     group: 'general' },
   { mode: 'select',           label: '선택',     group: 'general' },
   { mode: 'delete',           label: '삭제',     group: 'general' },
   { mode: 'hall_rect',        label: '홀□',      group: 'hall' },

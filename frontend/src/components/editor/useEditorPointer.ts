@@ -80,6 +80,7 @@ export default function useEditorPointer(deps: PointerDeps) {
     if (!canvas) return;
 
     let isDragging = false;
+    let isPanning = false;
     let dragStart = { x: 0, y: 0 };
     let downInfo = { x: 0, y: 0, time: 0 };
     const pointers = new Map<number, Point>();
@@ -126,6 +127,7 @@ export default function useEditorPointer(deps: PointerDeps) {
       const m = d.mode;
       const w = wp(e);
 
+      if (m === 'pan') { isPanning = true; return; } // 이동 모드: 팬만
       if (isDrawMode(m)) { isDrawing = true; drawPoints = [w]; return; }
       if (isPolygonMode(m)) return; // click 처리는 pointerup에서
 
@@ -278,11 +280,13 @@ export default function useEditorPointer(deps: PointerDeps) {
       }
 
       isDragging = false;
+      isPanning = false;
       if (!isClick) { if (pointers.size < 2) lastPinchDist = 0; return; }
 
       // 클릭 처리
       const scale = d.transformRef.current!.scale;
 
+      if (m === 'pan') return; // 이동 모드: 클릭해도 선택 안 함
       if (m === 'select') { d.onObjectSelect(hitTestAll(w.x, w.y, scale, getData())); return; }
       if (m === 'delete') { const h = hitTestAll(w.x, w.y, scale, getData()); if (h) d.onObjectDelete(h.kind, h.id); return; }
       if (m === 'path_node' || m === 'amenity') { d.onShapeComplete(m, { shape: 'point', x: Math.round(w.x), y: Math.round(w.y) }); return; }

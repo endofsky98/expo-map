@@ -61,7 +61,7 @@ export default function EditorPage() {
   const [imageHeight, setImageHeight] = useState(0);
 
   // ===== Editor state =====
-  const [mode, setMode] = useState<EditorMode>('select');
+  const [mode, setMode] = useState<EditorMode>('pan');
   const [selectedObject, setSelectedObject] = useState<SelectedObject>(null);
   const [connectFromId, setConnectFromId] = useState<number | null>(null);
   const [pathNodeType, setPathNodeType] = useState<PathNodeType>('waypoint');

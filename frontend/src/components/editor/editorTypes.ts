@@ -90,6 +90,7 @@ export interface EditorHall {
 
 // ===== Editor Mode =====
 export type EditorMode =
+  | 'pan'
   | 'select'
   | 'hall_rect' | 'hall_polygon'
   | 'zone_rect' | 'zone_polygon'
