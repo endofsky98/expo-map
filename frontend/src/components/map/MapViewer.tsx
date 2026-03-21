@@ -405,7 +405,7 @@ export default function MapViewer({
       clampPosition(t);
       const mc = mainContainerRef.current;
       if (mc) syncContainerPosition(mc, t);
-      renderTilesFnRef.current();
+      scheduleRenderTiles();
       scheduleMarkerUpdate();
       v.vx *= 0.85;
       v.vy *= 0.85;
@@ -1625,7 +1625,7 @@ export default function MapViewer({
     transformRef.current.y = ch / 2 - centerY * sc;
     clampPosition(transformRef.current);
     syncContainerPosition(mc, transformRef.current);
-    renderTilesFnRef.current();
+    scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
 
@@ -1648,7 +1648,7 @@ export default function MapViewer({
     mc.rotation = 0;
     applyTilt(0);
     onZoomChangeRef.current?.(fitScale);
-    renderTilesFnRef.current();
+    scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
 
@@ -1670,7 +1670,7 @@ export default function MapViewer({
     syncContainerPosition(mc, transformRef.current);
     mc.scale.set(clampedScale);
     onZoomChange?.(clampedScale);
-    renderTilesFnRef.current();
+    scheduleRenderTiles();
     scheduleMarkerUpdate();
   }
 
@@ -1698,7 +1698,7 @@ export default function MapViewer({
         syncContainerPosition(mc, transformRef.current);
         mc.scale.set(sc);
         onZoomChange?.(sc);
-        renderTilesFnRef.current();
+        scheduleRenderTiles();
         scheduleMarkerUpdate();
       };
       // 부드러운 이동 + 회전 애니메이션
@@ -1736,7 +1736,7 @@ export default function MapViewer({
           t.y = ch / 2 - sc * (curWx * sinR + curWy * cosR);
           clampPosition(t);
           syncContainerPosition(mc, t);
-          renderTilesFnRef.current();
+          scheduleRenderTiles();
           scheduleMarkerUpdate();
           if (progress < 1) {
             navAnimRaf = requestAnimationFrame(step);
