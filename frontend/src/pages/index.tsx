@@ -7,6 +7,7 @@ import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, 
 import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle, RouteResult } from '@/types';
 import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchRoute, fetchSetting } from '@/lib/api';
 import { findPath, type PathResult } from '@/components/map/pathfinding';
+import { getBoothCenter } from '@/components/map/clusterUtils';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
 import CategoryFilter from '@/components/CategoryFilter';
@@ -274,16 +275,16 @@ export default function HomePage() {
   // 부스 클릭 → 출발/도착 선택
   function setAsStart(boothId: number) {
     const b = allBooths.find(bb => bb.id === boothId);
-    const cx = b ? b.x + b.width / 2 : 0, cy = b ? b.y + b.height / 2 : 0;
-    setNavStart({ boothId, x: cx, y: cy });
+    const c = b ? getBoothCenter(b) : { cx: 0, cy: 0 };
+    setNavStart({ boothId, x: c.cx, y: c.cy });
     setBoothPopup(null);
     setLongPressChoice(null);
   }
 
   function setAsDestination(boothId: number) {
     const b = allBooths.find(bb => bb.id === boothId);
-    const cx = b ? b.x + b.width / 2 : 0, cy = b ? b.y + b.height / 2 : 0;
-    setNavEnd({ boothId, x: cx, y: cy });
+    const c = b ? getBoothCenter(b) : { cx: 0, cy: 0 };
+    setNavEnd({ boothId, x: c.cx, y: c.cy });
     setBoothPopup(null);
     setLongPressChoice(null);
   }

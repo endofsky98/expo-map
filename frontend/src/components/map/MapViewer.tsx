@@ -199,6 +199,12 @@ export default function MapViewer({
   const clusterContainerRef = useRef<PIXI.Container | null>(null);
   const clusterGfxRef = useRef<PIXI.Graphics | null>(null);
   const routeGfxRef = useRef<PIXI.Graphics | null>(null);
+  const navStartMarkerRef = useRef<HTMLDivElement | null>(null);
+  const navEndMarkerRef = useRef<HTMLDivElement | null>(null);
+  const navStartPointRef = useRef(navStartPoint);
+  const navEndPointRef = useRef(navEndPoint);
+  navStartPointRef.current = navStartPoint;
+  navEndPointRef.current = navEndPoint;
   const clusterBadgesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
   // 대표 부스 → 클러스터 중앙 world 좌표 (boothId → {wx, wy})
@@ -1328,6 +1334,30 @@ export default function MapViewer({
 
     // Save current visible set for next frame comparison
     prevVisibleIdsRef.current = new Set(sampledIds);
+
+    // 출발/도착 핀 마커 위치 업데이트
+    const startEl = navStartMarkerRef.current;
+    const endEl = navEndMarkerRef.current;
+    const nsp = navStartPointRef.current;
+    const nep = navEndPointRef.current;
+    if (startEl) {
+      if (nsp) {
+        const sp = worldToScreen(nsp.x, nsp.y);
+        startEl.style.display = 'flex';
+        startEl.style.transform = `translate(${sp.sx - 7}px, ${sp.sy - 18}px)`;
+      } else {
+        startEl.style.display = 'none';
+      }
+    }
+    if (endEl) {
+      if (nep) {
+        const sp = worldToScreen(nep.x, nep.y);
+        endEl.style.display = 'flex';
+        endEl.style.transform = `translate(${sp.sx - 7}px, ${sp.sy - 18}px)`;
+      } else {
+        endEl.style.display = 'none';
+      }
+    }
   }
 
   useEffect(() => {
@@ -1458,6 +1488,12 @@ export default function MapViewer({
     updateMarkerPositions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBoothId, showBooths, activeCategories, categories, ln]);
+
+  // 출발/도착 마커 위치 업데이트
+  useEffect(() => {
+    updateMarkerPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navStartPoint, navEndPoint]);
 
   // ===== Facilities =====
   useEffect(() => {
@@ -1627,39 +1663,21 @@ export default function MapViewer({
 
       {/* 글자 크기 조절은 외부(index.tsx)에서 제어 */}
 
-      {/* 출발/도착 핀 마커 — 부스 핀과 동일한 스타일 */}
-      {navStartPoint && (() => {
-        const t = transformRef.current;
-        const sc = t.scale, cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
-        const sx = t.x + sc * (navStartPoint.x * cosR - navStartPoint.y * sinR);
-        const sy = t.y + sc * (navStartPoint.x * sinR + navStartPoint.y * cosR);
-        return (
-          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 7, top: sy - 18, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
-              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#22c55e" stroke="#fff" strokeWidth="2.5"/>
-              <circle cx="14" cy="14" r="8" fill="#22c55e"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
-              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" strokeWidth="2"/>
-            </svg>
-            <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>출발</span>
-          </div>
-        );
-      })()}
-      {navEndPoint && (() => {
-        const t = transformRef.current;
-        const sc = t.scale, cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
-        const sx = t.x + sc * (navEndPoint.x * cosR - navEndPoint.y * sinR);
-        const sy = t.y + sc * (navEndPoint.x * sinR + navEndPoint.y * cosR);
-        return (
-          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 7, top: sy - 18, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-            <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
-              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#ef4444" stroke="#fff" strokeWidth="2.5"/>
-              <circle cx="14" cy="14" r="8" fill="#ef4444"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
-              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" strokeWidth="2"/>
-            </svg>
-            <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>도착</span>
-          </div>
-        );
-      })()}
+      {/* 출발/도착 핀 마커 — DOM refs로 매 프레임 위치 업데이트 */}
+      <div ref={navStartMarkerRef} className="absolute z-20 pointer-events-none" style={{ display: 'none', flexDirection: 'column', alignItems: 'center' }}>
+        <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
+          <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#22c55e" stroke="#fff" strokeWidth="2.5"/>
+          <circle cx="14" cy="14" r="8" fill="#22c55e"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
+        </svg>
+        <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>출발</span>
+      </div>
+      <div ref={navEndMarkerRef} className="absolute z-20 pointer-events-none" style={{ display: 'none', flexDirection: 'column', alignItems: 'center' }}>
+        <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
+          <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#ef4444" stroke="#fff" strokeWidth="2.5"/>
+          <circle cx="14" cy="14" r="8" fill="#ef4444"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
+        </svg>
+        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>도착</span>
+      </div>
 
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
