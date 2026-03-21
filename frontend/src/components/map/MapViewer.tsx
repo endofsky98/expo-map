@@ -78,6 +78,7 @@ export default function MapViewer({
   const stableIdsRef = useRef<Set<number>>(new Set()); // confirmed markers (only recalc on settle)
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadingIdsRef = useRef<Set<number>>(new Set()); // markers mid-fade, don't touch opacity
+  const clusterCountsRef = useRef<Map<number, number>>(new Map()); // cluster counts per visible marker
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
@@ -801,7 +802,20 @@ export default function MapViewer({
         const pos = boothScreenPos.get(booth.id)!;
         const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
         const normalized = dist / maxDist;
-        const weight = Math.exp(-2.5 * normalized * normalized);
+
+        // 1순위: 부스 면적 (width * height 비례, 최대 3배 가중)
+        const area = booth.width * booth.height;
+        const maxArea = 10000; // 정규화 기준
+        const areaWeight = 1 + Math.min(area / maxArea, 1) * 2; // 1~3
+
+        // 2순위: 회사 정보 유무 (company_id 있으면 2배)
+        const companyWeight = booth.company_id || booth.company ? 2 : 1;
+
+        // 3순위: 화면 중심 가까운 순 (기존 가우시안)
+        const distWeight = Math.exp(-2.5 * normalized * normalized);
+
+        // 최종 가중치
+        const weight = distWeight * areaWeight * companyWeight;
         scored.push({ id: booth.id, weight, ...pos });
       }
 
@@ -832,6 +846,25 @@ export default function MapViewer({
       }
       newIds = kept;
     }
+
+    // 클러스터 카운트 계산: newIds에 없는 부스를 가장 가까운 선택된 마커에 할당
+    const clusterCounts = new Map<number, number>();
+    for (const id of newIds) clusterCounts.set(id, 0);
+
+    for (const booth of visibleBooths) {
+      if (newIds.has(booth.id)) continue;
+      const pos = boothScreenPos.get(booth.id)!;
+      if (!pos) continue;
+      let nearestId = -1, nearestDist = Infinity;
+      for (const id of newIds) {
+        const p = boothScreenPos.get(id)!;
+        if (!p) continue;
+        const d = (p.sx - pos.sx) ** 2 + (p.sy - pos.sy) ** 2;
+        if (d < nearestDist) { nearestDist = d; nearestId = id; }
+      }
+      if (nearestId >= 0) clusterCounts.set(nearestId, (clusterCounts.get(nearestId) || 0) + 1);
+    }
+    clusterCountsRef.current = clusterCounts;
 
     const oldIds = stableIdsRef.current;
 
@@ -1014,6 +1047,18 @@ export default function MapViewer({
           labelEl.insertBefore(ns, nameEl);
         }
       }
+
+      // 클러스터 카운트 표시
+      const clusterEl = el.querySelector('[data-cluster]') as HTMLElement;
+      if (clusterEl) {
+        const count = clusterCountsRef.current.get(booth.id) || 0;
+        if (count > 0) {
+          clusterEl.textContent = `외 ${count}개`;
+          clusterEl.style.display = '';
+        } else {
+          clusterEl.style.display = 'none';
+        }
+      }
     }
 
     // Save current visible set for next frame comparison
@@ -1100,8 +1145,19 @@ export default function MapViewer({
         }
         label.appendChild(nameSpan);
 
+        // 클러스터 카운트 라벨 (마커 아래 "외 N개")
+        const clusterLabel = document.createElement('div');
+        clusterLabel.setAttribute('data-cluster', '');
+        clusterLabel.style.fontSize = '11px';
+        clusterLabel.style.color = '#6b7280';
+        clusterLabel.style.textAlign = 'center';
+        clusterLabel.style.whiteSpace = 'nowrap';
+        clusterLabel.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
+        clusterLabel.style.display = 'none'; // 기본 숨김
+
         el.appendChild(pinSvg);
         el.appendChild(label);
+        el.appendChild(clusterLabel);
 
         // Click handler
         el.addEventListener('pointerup', (e) => {
