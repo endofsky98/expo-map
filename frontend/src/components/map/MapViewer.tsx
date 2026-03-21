@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as PIXI from 'pixi.js';
-import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
+import { Booth, Hall, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 import { useI18n } from '@/lib/i18n';
 import {
   MapViewerProps, TileInfo, CurrentPosition, FACILITY_STYLES,
@@ -10,12 +10,14 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
+import { clusterBooths, selectRepresentative, getBoothDisplayName, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
 
 export default function MapViewer({
   booths,
+  halls = [],
   categories,
   currentImage,
   selectedBoothId,
@@ -168,6 +170,8 @@ export default function MapViewer({
   // Refs for data accessed in click handler closure
   const boothsRef = useRef(booths);
   boothsRef.current = booths;
+  const hallsRef = useRef<Hall[]>(halls);
+  hallsRef.current = halls;
   const boothMapRef = useRef<Map<number, Booth>>(new Map());
   const visibleFacilitiesRef = useRef(visibleFacilities);
   useEffect(() => {
@@ -178,6 +182,9 @@ export default function MapViewer({
   visibleFacilitiesRef.current = visibleFacilities;
   const currentFloorIdRef = useRef(currentFloorId);
   currentFloorIdRef.current = currentFloorId;
+
+  // PIXI cluster shading layer ref
+  const clusterGfxRef = useRef<PIXI.Graphics | null>(null);
 
   // World coordinate → screen pixel (accounts for tilt via CSS perspective)
   function worldToScreen(wx: number, wy: number): { sx: number; sy: number } {

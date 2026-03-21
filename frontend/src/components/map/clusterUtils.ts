@@ -1,4 +1,4 @@
-import { Booth } from '@/types';
+import { Booth, Hall } from '@/types';
 
 // ===== Cluster types =====
 export interface ClusterItem {
@@ -11,11 +11,11 @@ export interface ClusterItem {
   count: number;        // 클러스터: 부스 수, 개별: 1
   boothIds: number[];   // 포함된 부스 ID 목록
   representBooth?: Booth; // 개별 마커일 때 부스 데이터
-  // 클러스터 bounding box (world 좌표)
-  bboxX?: number;
-  bboxY?: number;
-  bboxW?: number;
-  bboxH?: number;
+  // 클러스터 bounding box (world 좌표) — 항상 존재
+  bboxX: number;
+  bboxY: number;
+  bboxW: number;
+  bboxH: number;
 }
 
 // ===== Cluster parameters =====
@@ -28,6 +28,7 @@ export const CLUSTER_MAX_SIZE = 80;      // 클러스터 원 최대 크기 px
 /**
  * 화면 좌표 기준 greedy 클러스터링
  * O(n²) — 1000개 기준 ~1ms 이내
+ * clusterRadius === 0 이면 모두 개별 마커로 반환
  */
 export function clusterBooths(
   booths: Booth[],
@@ -56,14 +57,16 @@ export function clusterBooths(
     const group: number[] = [i];
     assigned[i] = 1;
 
-    // 시드 반경 내 모든 미할당 부스 찾기
-    for (let j = i + 1; j < positions.length; j++) {
-      if (assigned[j]) continue;
-      const dx = positions[j].sx - seed.sx;
-      const dy = positions[j].sy - seed.sy;
-      if (dx * dx + dy * dy <= r2) {
-        group.push(j);
-        assigned[j] = 1;
+    // clusterRadius > 0 일 때만 그룹핑
+    if (clusterRadius > 0) {
+      for (let j = i + 1; j < positions.length; j++) {
+        if (assigned[j]) continue;
+        const dx = positions[j].sx - seed.sx;
+        const dy = positions[j].sy - seed.sy;
+        if (dx * dx + dy * dy <= r2) {
+          group.push(j);
+          assigned[j] = 1;
+        }
       }
     }
 
@@ -106,6 +109,10 @@ export function clusterBooths(
         count: 1,
         boothIds,
         representBooth: positions[i].booth,
+        bboxX: minX,
+        bboxY: minY,
+        bboxW: maxX - minX,
+        bboxH: maxY - minY,
       });
     } else {
       // 클러스터 마커
@@ -140,31 +147,12 @@ export function clusterSize(count: number): number {
 }
 
 /**
- * 클러스터 대표 업체 선정
- * 1순위: hall_id 있는 부스
- * 2순위: 면적 큰 순
- * 3순위: 회사 정보 있는 부스
- * 4순위: 첫 번째 부스
+ * 홀 이름 문자열로 반환
  */
-export function selectRepresentative(boothIds: number[], allBooths: Booth[]): Booth | null {
-  const booths = boothIds
-    .map((id) => allBooths.find((b) => b.id === id))
-    .filter((b): b is Booth => !!b);
-  if (booths.length === 0) return null;
-
-  // 1순위: hall_id 있는 부스
-  const hallBooth = booths.find((b) => b.hall_id);
-  if (hallBooth) return hallBooth;
-
-  // 2순위: 면적 큰 순
-  const sorted = [...booths].sort((a, b) => b.width * b.height - a.width * a.height);
-
-  // 3순위: 회사 정보 있는 부스 (면적 동률 고려)
-  const withCompany = sorted.find((b) => b.company_id || b.company);
-  if (withCompany) return withCompany;
-
-  // 4순위: 첫 번째
-  return sorted[0];
+function hallName(hall: Hall): string {
+  const n = hall.name;
+  if (typeof n === 'string') return n;
+  return n.ko || n.en || '';
 }
 
 /**
@@ -177,4 +165,51 @@ export function getBoothDisplayName(booth: Booth): string {
     return name.ko || name.en || '';
   }
   return booth.booth_number || '';
+}
+
+/**
+ * 클러스터 대표 업체 선정
+ * 1순위: 홀 이름 (클러스터 내 부스가 속한 홀, type !== 'zone')
+ * 2순위: 구역 이름 (type === 'zone')
+ * 3순위: 부스 면적 가장 큰 업체 (회사 정보 있음)
+ * 4순위: 회사 정보 있는 첫 번째 업체
+ * 5순위: 첫 번째 부스
+ */
+export function selectRepresentative(
+  boothIds: number[],
+  allBooths: Booth[],
+  halls: Hall[] = [],
+): { name: string; booth: Booth | null } {
+  const booths = boothIds
+    .map((id) => allBooths.find((b) => b.id === id))
+    .filter((b): b is Booth => !!b);
+  if (booths.length === 0) return { name: '', booth: null };
+
+  // 1순위: 홀 이름 (type !== 'zone' 또는 type 없음)
+  for (const b of booths) {
+    if (b.hall_id) {
+      const hall = halls.find((h) => h.id === b.hall_id && h.type !== 'zone');
+      if (hall) return { name: hallName(hall), booth: b };
+    }
+  }
+
+  // 2순위: 구역 이름 (type === 'zone')
+  for (const b of booths) {
+    if (b.hall_id) {
+      const zone = halls.find((h) => h.id === b.hall_id && h.type === 'zone');
+      if (zone) return { name: hallName(zone), booth: b };
+    }
+  }
+
+  // 3순위: 부스 면적 가장 큰 업체 (회사명 있음)
+  const sorted = [...booths].sort((a, b) => b.width * b.height - a.width * a.height);
+  const biggest = sorted.find((b) => b.company?.name);
+  if (biggest) return { name: getBoothDisplayName(biggest), booth: biggest };
+
+  // 4순위: 회사/로고 있는 업체
+  const withCompany = booths.find((b) => b.company_id || b.company);
+  if (withCompany) return { name: getBoothDisplayName(withCompany), booth: withCompany };
+
+  // 5순위: 첫 번째
+  return { name: getBoothDisplayName(sorted[0]), booth: sorted[0] };
 }

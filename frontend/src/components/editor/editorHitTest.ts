@@ -83,8 +83,18 @@ export function hitTestAll(
     }
   }
 
-  // Halls (가장 크니까 마지막)
-  for (const h of data.halls) {
+  // 구역(zone) 먼저, 홀(hall) 나중에 — 구역이 홀 위에 있으므로
+  const zones = data.halls.filter(h => (h as any).type === 'zone');
+  const halls = data.halls.filter(h => (h as any).type !== 'zone');
+  for (const h of zones) {
+    if (h.shape === 'polygon') {
+      const pts = parsePoints(h.points);
+      if (pts && pts.length >= 3 && hitTestPolygon(wx, wy, pts)) return { kind: 'hall', id: h.id };
+    } else if (h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null) {
+      if (hitTestRect(wx, wy, h.area_x, h.area_y, h.area_width, h.area_height)) return { kind: 'hall', id: h.id };
+    }
+  }
+  for (const h of halls) {
     if (h.shape === 'polygon') {
       const pts = parsePoints(h.points);
       if (pts && pts.length >= 3 && hitTestPolygon(wx, wy, pts)) return { kind: 'hall', id: h.id };
