@@ -946,11 +946,11 @@ export default function MapViewer({
           badge.style.cssText =
             'position:absolute;left:0;top:0;pointer-events:none;' +
             'min-width:36px;height:36px;border-radius:18px;' +
-            'background:rgba(79,70,229,0.85);color:#fff;' +
+            'background:rgba(79,70,229,0.45);color:#fff;' +
             'font-size:16px;font-weight:700;font-family:Inter,sans-serif;' +
             'display:flex;align-items:center;justify-content:center;' +
             'padding:0 8px;' +
-            'box-shadow:0 2px 6px rgba(0,0,0,0.25);z-index:20;';
+            'box-shadow:0 2px 6px rgba(0,0,0,0.15);z-index:5;';
           overlay.appendChild(badge);
           badges.set(cid, badge);
         }

@@ -19,7 +19,7 @@ export interface ClusterItem {
 }
 
 // ===== Cluster parameters =====
-export const CLUSTER_RADIUS = 200;       // px — 화면 기준 클러스터 반경
+export const CLUSTER_RADIUS = 260;       // px — 화면 기준 클러스터 반경
 export const CLUSTER_MAX_ZOOM = 2.5;     // 이 줌 이상이면 항상 개별 표시
 export const CLUSTER_ANIM_MS = 300;      // 애니메이션 시간 (ms)
 export const CLUSTER_MIN_SIZE = 40;      // 클러스터 원 최소 크기 px
