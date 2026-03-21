@@ -188,6 +188,8 @@ export default function MapViewer({
   const clusterGfxRef = useRef<PIXI.Graphics | null>(null);
   const clusterBadgesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
+  // 대표 부스 → 클러스터 중앙 world 좌표 (boothId → {wx, wy})
+  const clusterRepCenterRef = useRef<Map<number, { wx: number; wy: number }>>(new Map());
 
   // World coordinate → screen pixel (accounts for tilt via CSS perspective)
   function worldToScreen(wx: number, wy: number): { sx: number; sy: number } {
@@ -839,6 +841,18 @@ export default function MapViewer({
       }
     }
 
+    // 대표 부스 → 클러스터 중앙 매핑
+    const repCenters = new Map<number, { wx: number; wy: number }>();
+    for (const c of clusters) {
+      if (c.isCluster && c.count > 1) {
+        const rep = clusterReps.get(c.id);
+        if (rep) {
+          repCenters.set(rep.boothId, { wx: c.bboxX + c.bboxW / 2, wy: c.bboxY + c.bboxH / 2 });
+        }
+      }
+    }
+    clusterRepCenterRef.current = repCenters;
+
     const oldIds = stableIdsRef.current;
 
     // FadeOut markers that are being removed
@@ -869,11 +883,12 @@ export default function MapViewer({
       if (!el) continue;
 
       if (!oldIds.has(id)) {
-        // New marker: fade in
+        // New marker: fade in (클러스터 대표면 영역 중앙에 위치)
         const booth = boothMapRef.current.get(id);
         if (booth) {
-          const wcx = booth.x + booth.width / 2;
-          const wcy = booth.y + booth.height / 2;
+          const center = clusterRepCenterRef.current.get(id);
+          const wcx = center ? center.wx : booth.x + booth.width / 2;
+          const wcy = center ? center.wy : booth.y + booth.height / 2;
           const { sx, sy } = worldToScreen(wcx, wcy);
           el.style.display = 'flex';
           el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
@@ -1002,8 +1017,10 @@ export default function MapViewer({
         continue;
       }
 
-      const wcx = booth.x + booth.width / 2;
-      const wcy = booth.y + booth.height / 2;
+      // 클러스터 대표면 영역 중앙, 아니면 부스 중심
+      const center = clusterRepCenterRef.current.get(booth.id);
+      const wcx = center ? center.wx : booth.x + booth.width / 2;
+      const wcy = center ? center.wy : booth.y + booth.height / 2;
       const { sx, sy } = worldToScreen(wcx, wcy);
 
       // Perspective scale: when tilted, markers near top (far) shrink, near bottom (close) grow
