@@ -183,7 +183,6 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       selectedObject: props.selectedObject,
     };
     props.renderLayers(ctx);
-    console.log('[EditorCanvas] renderLayers called. booths:', props.booths?.length, 'scale:', ctx.scale, 'ready:', ready);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     ready, props.renderLayers, props.halls, props.booths, props.pathNodes, props.pathEdges,

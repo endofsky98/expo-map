@@ -503,7 +503,7 @@ export default function EditorPage() {
 
         {/* Mobile: bottom panel when object selected */}
         {selectedObject && (
-          <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 max-h-[40vh] overflow-y-auto bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-700 shadow-lg rounded-t-xl px-3 py-2">
+          <div className="md:hidden fixed left-0 right-0 z-40 max-h-[40vh] overflow-y-auto bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-700 shadow-lg rounded-t-xl px-3 py-2" style={{ bottom: 'env(safe-area-inset-bottom, 60px)' }}>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-gray-600 dark:text-gray-300">속성 편집</span>
               <button onClick={() => setSelectedObject(null)} className="text-gray-400 text-xs px-2 py-1">✕</button>
