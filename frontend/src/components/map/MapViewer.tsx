@@ -546,6 +546,9 @@ export default function MapViewer({
       canvasRef.current = null;
       clusterGfxRef.current = null;
       clusterContainerRef.current = null;
+      if (routeAnimGfxRef.current) { routeAnimGfxRef.current.destroy(); routeAnimGfxRef.current = null; }
+      routeAnimRef.current = null;
+      if (boothFloorGfxRef.current) { boothFloorGfxRef.current.destroy(); boothFloorGfxRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -694,17 +697,18 @@ export default function MapViewer({
   // ===== 부스 바닥 (불투명 흰색, 테두리 없음) =====
   const boothFloorGfxRef = useRef<PIXI.Graphics | null>(null);
   useEffect(() => {
+    const mc = mainContainerRef.current;
+    if (!mc) return;
     let gfx = boothFloorGfxRef.current;
-    if (!gfx) {
+    if (!gfx || !gfx.parent) {
+      if (gfx) gfx.destroy();
       gfx = new PIXI.Graphics();
       boothFloorGfxRef.current = gfx;
       // mainContainer에 추가 — obstacles 뒤, route 앞
-      const mc = mainContainerRef.current;
-      if (mc) {
-        const routeIdx = mc.children.indexOf(routeGfxRef.current!);
-        if (routeIdx >= 0) mc.addChildAt(gfx, routeIdx);
-        else mc.addChild(gfx);
-      }
+      const routeGfx = routeGfxRef.current;
+      const routeIdx = routeGfx ? mc.children.indexOf(routeGfx) : -1;
+      if (routeIdx >= 0) mc.addChildAt(gfx, routeIdx);
+      else mc.addChild(gfx);
     }
     gfx.clear();
     for (const b of booths) {
