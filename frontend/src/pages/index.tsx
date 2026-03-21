@@ -356,8 +356,8 @@ export default function HomePage() {
     const p0 = posAtDist(d);
     const p1 = posAtDist(Math.min(d + 20, clientRoute.distance));
     if (!p0 || !p1 || (p0.x === p1.x && p0.y === p1.y)) return 0;
-    // 화면 위쪽이 진행 방향이 되도록: atan2 결과에서 -PI/2 보정
-    return Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
+    // 화면 위쪽이 진행 방향을 가리키도록: 지도를 반대로 회전
+    return -Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
   }
 
   // 네비게이션 시작 — 줌 세팅 + 출발 지점으로 즉시 이동+회전
