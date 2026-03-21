@@ -135,6 +135,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     }
 
     // Load image with error handling
+    console.log('[EditorCanvas] Loading image:', props.imageUrl, 'size:', props.imageWidth, 'x', props.imageHeight);
     const img = new Image();
     // No crossOrigin — same-origin or CORS not configured on backend
     img.onload = () => {
@@ -158,7 +159,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       mc.scale.set(fitScale);
       mc.position.set(t.x, t.y);
     };
-    img.onerror = () => console.error('Editor: failed to load map image', props.imageUrl);
+    img.onerror = (e) => console.error('[EditorCanvas] FAILED to load map image:', props.imageUrl, e);
     img.src = props.imageUrl;
   }, [ready, props.imageUrl, props.imageWidth, props.imageHeight]);
 

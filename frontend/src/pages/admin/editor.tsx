@@ -98,7 +98,9 @@ export default function EditorPage() {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
       // medium_path for editor (high is too large for PIXI single texture)
       const path = currentImg.medium_path || currentImg.high_path || currentImg.file_path;
-      setImageUrl(`${baseUrl}${path}`);
+      const fullUrl = `${baseUrl}${path}`;
+      console.log('[Editor] Image URL:', fullUrl, 'medium:', currentImg.medium_path, 'high:', currentImg.high_path);
+      setImageUrl(fullUrl);
       // Parse zoom_levels for medium size, or fallback
       let w = 1870, h = 2460; // default medium
       try {
