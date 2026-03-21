@@ -877,10 +877,51 @@ export default function MapViewer({
     }
     clusterRepCenterRef.current = repCenters;
 
-    // 클러스터 대표 부스 → 클러스터 이름(홀/구역명) 매핑
+    // 홀/구역별 클러스터 수 세기 → 1개인 홀/구역만 이름 표시
     const clusterNameMap = new Map<number, string>();
-    for (const [, rep] of clusterReps) {
-      if (rep.name) clusterNameMap.set(rep.boothId, rep.name);
+    const hallsList = hallsRef.current;
+    if (hallsList.length > 0) {
+      const lnFn = lnRef.current;
+      const hallName = (h: Hall) => (typeof h.name === 'string' ? h.name : lnFn(h.name)) || `Hall ${h.id}`;
+      const insideHall = (bx: number, by: number, h: Hall) =>
+        h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null &&
+        bx >= h.area_x && bx <= h.area_x + h.area_width && by >= h.area_y && by <= h.area_y + h.area_height;
+
+      // 각 클러스터(count>1)가 어떤 홀/구역에 속하는지 판정
+      type HallClusterInfo = { hallId: number; clusterId: string; repBoothId: number };
+      const hallClusterMap: HallClusterInfo[] = [];
+      for (const c of clusters) {
+        if (!c.isCluster || c.count <= 1) continue;
+        const rep = clusterReps.get(c.id);
+        if (!rep) continue;
+        // 클러스터 내 모든 부스의 중심
+        const cBooths = c.boothIds.map(id => boothMapRef.current.get(id)).filter((b): b is Booth => !!b);
+        // 이 클러스터가 완전히 속하는 홀/구역 찾기
+        for (const h of hallsList) {
+          const allInside = cBooths.length > 0 && cBooths.every(b => {
+            const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+            return insideHall(cx, cy, h);
+          });
+          if (allInside) {
+            hallClusterMap.push({ hallId: h.id, clusterId: c.id, repBoothId: rep.boothId });
+            break;
+          }
+        }
+      }
+
+      // 홀/구역별 클러스터 수
+      const hallClusterCount = new Map<number, number>();
+      for (const hc of hallClusterMap) {
+        hallClusterCount.set(hc.hallId, (hallClusterCount.get(hc.hallId) || 0) + 1);
+      }
+
+      // 클러스터가 딱 1개인 홀/구역 → 이름 표시
+      for (const hc of hallClusterMap) {
+        if (hallClusterCount.get(hc.hallId) === 1) {
+          const h = hallsList.find(hh => hh.id === hc.hallId);
+          if (h) clusterNameMap.set(hc.repBoothId, hallName(h));
+        }
+      }
     }
     clusterNameMapRef.current = clusterNameMap;
 

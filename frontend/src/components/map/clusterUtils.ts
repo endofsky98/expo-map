@@ -195,35 +195,7 @@ export function selectRepresentative(
     .filter((b): b is Booth => !!b);
   if (booths.length === 0) return { name: '', booth: null };
 
-  // 1순위: 홀/구역 이름 — 클러스터가 2개 이상 다른 홀/구역에 걸쳐 있을 때만
-  const allHalls = halls.filter((h) => h.type !== 'zone');
-  const allZones = halls.filter((h) => h.type === 'zone');
-
-  // 부스→홀/구역 매핑
-  function findContainingHall(b: Booth): Hall | null {
-    for (const h of allHalls) if (b.hall_id === h.id || boothInsideHall(b, h)) return h;
-    for (const z of allZones) if (b.hall_id === z.id || boothInsideHall(b, z)) return z;
-    return null;
-  }
-  const boothHallMap = new Map<number, Hall | null>();
-  const hallIdSet = new Set<number>();
-  for (const b of booths) {
-    const h = findContainingHall(b);
-    boothHallMap.set(b.id, h);
-    if (h) hallIdSet.add(h.id);
-  }
-
-  // 클러스터 내 모든 부스가 하나의 홀/구역 안에만 속하면 → 그 홀/구역 이름 표시
-  // (구역 우선 체크, 홀 나중)
-  if (booths.length > 1 && hallIdSet.size === 1) {
-    const onlyHallId = [...hallIdSet][0];
-    // 모든 부스가 이 홀/구역에 속하는지 확인
-    const allInside = booths.every(b => boothHallMap.get(b.id)?.id === onlyHallId);
-    if (allInside) {
-      const h = halls.find(hh => hh.id === onlyHallId);
-      if (h) return { name: hallName(h), booth: booths[0] };
-    }
-  }
+  // 홀/구역 이름 판단은 MapViewer에서 전체 clusters를 보고 후처리
 
   // 3순위: 부스 면적 가장 큰 업체 (회사명 있음)
   const sorted = [...booths].sort((a, b) => b.width * b.height - a.width * a.height);
