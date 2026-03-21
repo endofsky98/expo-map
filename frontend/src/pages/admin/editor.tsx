@@ -293,8 +293,8 @@ export default function EditorPage() {
             amenityType={amenityType} onAmenityTypeChange={setAmenityType}
           />
 
-          {/* Canvas */}
-          <div className="flex-1 min-w-0">
+          {/* Canvas — 모바일: 하단 툴바 공간 확보 */}
+          <div className="flex-1 min-w-0 pb-[72px] md:pb-0">
             <EditorCanvas
               imageUrl={imageUrl} imageWidth={imageWidth} imageHeight={imageHeight}
               mode={mode} pathNodeType={pathNodeType} amenityType={amenityType}
@@ -311,11 +311,22 @@ export default function EditorPage() {
             />
           </div>
 
-          {/* Right panel — 모바일에서는 하단으로 */}
+          {/* Right panel — PC only */}
           <div className="hidden md:block w-64 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] overflow-y-auto">
             {renderPanel()}
           </div>
         </div>
+
+        {/* Mobile: bottom panel (above toolbar) when object selected */}
+        {selectedObject && (
+          <div className="md:hidden fixed bottom-[72px] left-0 right-0 z-40 max-h-[40vh] overflow-y-auto bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-700 shadow-lg rounded-t-xl px-3 py-2">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-gray-600 dark:text-gray-300">속성 편집</span>
+              <button onClick={() => setSelectedObject(null)} className="text-gray-400 text-xs px-2 py-1">✕</button>
+            </div>
+            {renderPanel()}
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
