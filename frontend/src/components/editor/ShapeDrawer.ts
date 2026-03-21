@@ -115,8 +115,8 @@ export function createLabel(
   scale: number, anchor?: { x: number; y: number },
 ): PIXI.Text {
   const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
-  // world 좌표 기준 폰트 크기 (기존의 1/3)
-  const fontSize = Math.max(3, 4 / scale);
+  // world 좌표 기준 폰트 크기 (5배)
+  const fontSize = Math.max(15, 20 / scale);
   const label = new PIXI.Text(text, {
     fontSize,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif',
