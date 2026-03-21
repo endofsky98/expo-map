@@ -94,22 +94,23 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
       dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
       pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
       lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
-      // 롱프레스 시작
+      // 롱프레스 시작 — pointerdown 시점의 world 좌표를 즉시 계산
       longPressFired = false;
       if (longPressTimer) clearTimeout(longPressTimer);
-      const downX = e.clientX, downY = e.clientY;
-      longPressTimer = setTimeout(() => {
-        longPressFired = true;
-        const sc = transformRef.current.scale;
-        const cosR = Math.cos(transformRef.current.rotation);
-        const sinR = Math.sin(transformRef.current.rotation);
-        const rect = canvas.getBoundingClientRect();
-        const sx = downX - rect.left, sy = downY - rect.top;
-        const dx0 = sx - transformRef.current.x, dy0 = sy - transformRef.current.y;
-        const wx = (dx0 * cosR + dy0 * sinR) / sc;
-        const wy = (-dx0 * sinR + dy0 * cosR) / sc;
-        onLongPressRef.current?.(wx, wy);
-      }, 500);
+      {
+        const t0 = transformRef.current;
+        const sc0 = t0.scale;
+        const cosR0 = Math.cos(t0.rotation), sinR0 = Math.sin(t0.rotation);
+        const rect0 = canvas.getBoundingClientRect();
+        const sx0 = e.clientX - rect0.left, sy0 = e.clientY - rect0.top;
+        const dx00 = sx0 - t0.x, dy00 = sy0 - t0.y;
+        const wx0 = (dx00 * cosR0 + dy00 * sinR0) / sc0;
+        const wy0 = (-dx00 * sinR0 + dy00 * cosR0) / sc0;
+        longPressTimer = setTimeout(() => {
+          longPressFired = true;
+          onLongPressRef.current?.(wx0, wy0);
+        }, 500);
+      }
     }
 
     if (allPtrs.length === 2 && !firstTwoIds) {
