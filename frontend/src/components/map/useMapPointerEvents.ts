@@ -110,7 +110,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
         longPressTimer = setTimeout(() => {
           longPressFired = true;
           onLongPressRef.current?.(wx0, wy0, e.clientX, e.clientY);
-        }, 1000);
+        }, 500);
       }
     }
 

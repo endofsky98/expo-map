@@ -851,18 +851,18 @@ export default function MapViewer({
     if (!app) return;
 
     const BAR_PIXELS = 300;    // 각 바 길이 (픽셀)
-    const BAR_SPACING = 400;   // 바 간격 (픽셀)
-    const SPEED = 0.003;       // 두배 천천히
+    const BAR_GAP = 200;       // 바 사이 빈 간격 (픽셀)
+    const PX_PER_SEC = 150;    // 이동 속도 (픽셀/초)
 
-    // 경로 위 특정 거리의 (x,y) 좌표 구하기 (clamp — 경로 밖이면 null)
-    function pointAtDist(path: { x: number; y: number }[], d: number, totalLen: number): { x: number; y: number } | null {
-      if (d < 0 || d > totalLen) return null;
+    // 경로 위 특정 거리의 (x,y) 좌표 (modular — 계속 순환)
+    function pointAtDist(path: { x: number; y: number }[], d: number, totalLen: number): { x: number; y: number } {
+      const dd = ((d % totalLen) + totalLen) % totalLen;
       let traveled = 0;
       for (let i = 1; i < path.length; i++) {
         const dx = path[i].x - path[i-1].x, dy = path[i].y - path[i-1].y;
         const segLen = Math.hypot(dx, dy);
-        if (traveled + segLen >= d) {
-          const t = segLen > 0 ? (d - traveled) / segLen : 0;
+        if (traveled + segLen >= dd) {
+          const t = segLen > 0 ? (dd - traveled) / segLen : 0;
           return { x: path[i-1].x + dx * t, y: path[i-1].y + dy * t };
         }
         traveled += segLen;
@@ -870,30 +870,36 @@ export default function MapViewer({
       return path[path.length - 1];
     }
 
+    let elapsed = 0;
+
     const ticker = (dt: number) => {
       const animGfx = routeAnimGfxRef.current;
       const anim = routeAnimRef.current;
       if (!animGfx || !anim) { if (animGfx) animGfx.clear(); return; }
 
       const { path, totalLen } = anim;
-      const cycleLen = totalLen + BAR_PIXELS; // 바가 완전히 빠져나갈 때까지
-      anim.phase = (anim.phase + dt * SPEED) % 1;
+      // dt는 프레임 단위(~1), 60fps 기준으로 초 변환
+      elapsed += (dt / 60) * PX_PER_SEC;
+      const offset = elapsed % totalLen;
       animGfx.clear();
 
-      const numBars = Math.max(1, Math.ceil(totalLen / BAR_SPACING));
+      // 바+간격 패턴 길이 기반 개수
+      const patternLen = BAR_PIXELS + BAR_GAP;
+      const numBars = Math.max(1, Math.ceil(totalLen / patternLen));
 
       for (let b = 0; b < numBars; b++) {
-        // 각 바의 머리 위치
-        const barHead = anim.phase * cycleLen + b * BAR_SPACING - BAR_PIXELS;
+        const barStart = (offset + b * patternLen) % totalLen;
 
         const steps = 12;
         const stepLen = BAR_PIXELS / steps;
         for (let s = 0; s < steps; s++) {
-          const d0 = barHead + s * stepLen;
-          const d1 = barHead + (s + 1) * stepLen;
+          const d0 = barStart + s * stepLen;
+          const d1 = barStart + (s + 1) * stepLen;
+          // 같은 세그먼트 위에 있는지 확인 (경로 끝→시작 직선 방지)
           const p0 = pointAtDist(path, d0, totalLen);
           const p1 = pointAtDist(path, d1, totalLen);
-          if (!p0 || !p1) continue;  // 경로 밖이면 스킵
+          const directDist = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+          if (directDist > stepLen * 3) continue; // 끝→시작 점프 스킵
           const alpha = 0.3 + 0.6 * (s / steps);
           animGfx.lineStyle(20, 0xfca5a5, alpha);
           animGfx.moveTo(p0.x, p0.y);
