@@ -98,21 +98,14 @@ export default function EditorPage() {
     const currentImg = (imgs as any[]).find((i: any) => i.is_current);
     if (currentImg) {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
-      // medium_path for editor (high is too large for PIXI single texture)
+      // medium_path를 사용하되 좌표계는 원본 기준 (sprite.width/height로 스케일)
       const path = currentImg.medium_path || currentImg.high_path || currentImg.file_path;
       const fullUrl = `${baseUrl}${path}`;
-      console.log('[Editor] Image URL:', fullUrl, 'medium:', currentImg.medium_path, 'high:', currentImg.high_path);
+      console.log('[Editor] Image URL:', fullUrl);
       setImageUrl(fullUrl);
-      // Parse zoom_levels for medium size, or fallback
-      let w = 1870, h = 2460; // default medium
-      try {
-        const levels = typeof currentImg.zoom_levels === 'string' ? JSON.parse(currentImg.zoom_levels) : currentImg.zoom_levels;
-        if (Array.isArray(levels)) {
-          // level 2 is typically medium
-          const med = levels.find((l: any) => l.level === 2) || levels[0];
-          if (med) { w = med.width; h = med.height; }
-        }
-      } catch {}
+      // 항상 원본 크기 사용 — 부스 좌표가 원본 기준이므로
+      const w = currentImg.width || 7481;
+      const h = currentImg.height || 9843;
       setImageWidth(w);
       setImageHeight(h);
     } else {
