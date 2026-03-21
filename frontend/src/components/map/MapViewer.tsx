@@ -805,9 +805,15 @@ export default function MapViewer({
 
         if (repName) {
           const label = cluster.count > 1 ? `${repName}\n외 ${cluster.count - 1}개` : repName;
+          const { rotation: rot } = transformRef.current;
+          // billboard: 텍스트 항상 정면
+          const textGroup = new PIXI.Container();
+          textGroup.position.set(bx + bw / 2, by + bh / 2);
+          textGroup.rotation = -rot;
+          textGroup.scale.set(1 / sc);
           const text = new PIXI.Text(label, {
             fontFamily: 'Inter, sans-serif',
-            fontSize,
+            fontSize: 14,
             fontWeight: '700',
             fill: '#4f46e5',
             align: 'center',
@@ -815,40 +821,88 @@ export default function MapViewer({
           });
           text.resolution = dpr * 2;
           text.anchor.set(0.5, 0.5);
-          text.position.set(bx + bw / 2, by + bh / 2);
-          container.addChild(text);
+          textGroup.addChild(text);
+          container.addChild(textGroup);
         }
       } else {
-        // ===== 개별 부스 라벨 =====
+        // ===== 개별 부스: 핀 마커 + 텍스트 (billboard — 항상 정면) =====
         const booth = cluster.representBooth;
         if (!booth) continue;
 
-        // 카테고리 필터 적용
         const actCats = activeCategoriesRef.current;
         const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
 
         const name = getBoothDisplayName(booth);
-        if (!name) continue;
-
-        const targetScreenPx = 11;
-        const fontSize = Math.max(7, Math.min(24, targetScreenPx / sc));
+        const boothNum = booth.booth_number || '';
 
         const cx = booth.x + booth.width / 2;
         const cy = booth.y + booth.height / 2;
+        const { rotation: rot } = transformRef.current;
 
-        const text = new PIXI.Text(name, {
-          fontFamily: 'Inter, sans-serif',
-          fontSize,
-          fontWeight: '600',
-          fill: '#1f2937',
-          align: 'center',
-          wordWrap: false,
-        });
-        text.resolution = dpr * 2;
-        text.alpha = opacity;
-        text.anchor.set(0.5, 0.5);
-        text.position.set(cx, cy);
-        container.addChild(text);
+        // 마커 그룹 (billboard: -rotation 역보정으로 항상 정면)
+        const markerGroup = new PIXI.Container();
+        markerGroup.position.set(cx, cy);
+        markerGroup.rotation = -rot;
+        markerGroup.alpha = opacity;
+
+        // 스케일: world 좌표에서 화면 크기 일정하게
+        const markerScale = 1 / sc;
+        markerGroup.scale.set(markerScale);
+
+        // 핀 아이콘 (PIXI.Graphics)
+        const pin = new PIXI.Graphics();
+        // 핀 몸통 (물방울 형태)
+        pin.beginFill(0xef4444); // 빨간색
+        pin.moveTo(0, -28);
+        pin.bezierCurveTo(-10, -28, -14, -18, -14, -12);
+        pin.bezierCurveTo(-14, -4, 0, 6, 0, 6);
+        pin.bezierCurveTo(0, 6, 14, -4, 14, -12);
+        pin.bezierCurveTo(14, -18, 10, -28, 0, -28);
+        pin.endFill();
+        // 핀 원 (흰색 내부)
+        pin.beginFill(0xffffff);
+        pin.drawCircle(0, -16, 6);
+        pin.endFill();
+        markerGroup.addChild(pin);
+
+        // 부스번호 (핀 위 작은 글씨)
+        if (boothNum) {
+          const numText = new PIXI.Text(boothNum, {
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 11,
+            fontWeight: '500',
+            fill: '#9ca3af',
+            align: 'center',
+          });
+          numText.resolution = dpr * 2;
+          numText.anchor.set(0.5, 1);
+          numText.position.set(0, -32);
+          markerGroup.addChild(numText);
+        }
+
+        // 회사명 (핀 아래 큰 글씨)
+        if (name) {
+          const nameText = new PIXI.Text(name, {
+            fontFamily: 'Inter, sans-serif',
+            fontSize: 16,
+            fontWeight: '700',
+            fill: '#1f2937',
+            align: 'center',
+          });
+          nameText.resolution = dpr * 2;
+          nameText.anchor.set(0.5, 0);
+          nameText.position.set(0, 10);
+          // 흰색 배경 텍스트 가독성
+          const nameBg = new PIXI.Graphics();
+          const nb = nameText.getLocalBounds();
+          nameBg.beginFill(0xffffff, 0.85);
+          nameBg.drawRoundedRect(nb.x - 4, nb.y - 2 + 10, nb.width + 8, nb.height + 4, 4);
+          nameBg.endFill();
+          markerGroup.addChild(nameBg);
+          markerGroup.addChild(nameText);
+        }
+
+        container.addChild(markerGroup);
       }
     }
   }
