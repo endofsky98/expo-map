@@ -855,49 +855,79 @@ export default function MapViewer({
 
     const oldIds = stableIdsRef.current;
 
-    // FadeOut markers that are being removed
+    // 사라지는 마커를 가장 가까운 클러스터 중심으로 찾기
+    function findNearestClusterCenter(boothId: number): { wx: number; wy: number } | null {
+      const booth = boothMapRef.current.get(boothId);
+      if (!booth) return null;
+      const bx = booth.x + booth.width / 2;
+      const by = booth.y + booth.height / 2;
+      let best: { wx: number; wy: number } | null = null;
+      let bestDist = Infinity;
+      for (const c of clusters) {
+        if (c.isCluster && c.count > 1) {
+          const cx = c.bboxX + c.bboxW / 2;
+          const cy = c.bboxY + c.bboxH / 2;
+          const d = (bx - cx) ** 2 + (by - cy) ** 2;
+          if (d < bestDist) { bestDist = d; best = { wx: cx, wy: cy }; }
+        }
+      }
+      return best;
+    }
+
+    // 합칠 때: 개별 핀 → 클러스터 중심으로 슬라이드 + fade out
     for (const id of oldIds) {
       if (!newIds.has(id)) {
         const el = markers.get(id);
         if (el) {
           fadingIdsRef.current.add(id);
-          el.style.transition = `opacity ${CLUSTER_ANIM_MS}ms ease-out`;
-          el.style.opacity = '0';
+          const target = findNearestClusterCenter(id);
+          if (target) {
+            const { sx: tsx, sy: tsy } = worldToScreen(target.wx, target.wy);
+            el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-in, opacity ${CLUSTER_ANIM_MS}ms ease-in`;
+            el.style.transform = `translate(${tsx}px, ${tsy}px) translate(-50%, -100%) scale(0.3)`;
+            el.style.opacity = '0';
+          } else {
+            el.style.transition = `opacity ${CLUSTER_ANIM_MS}ms ease-out`;
+            el.style.opacity = '0';
+          }
           setTimeout(() => {
             fadingIdsRef.current.delete(id);
             if (!stableIdsRef.current.has(id)) {
               el.style.display = 'none';
               el.style.transition = '';
-              // Remove badge when hidden
-              const badge = el.querySelector('[data-badge]') as HTMLElement | null;
-              if (badge) badge.style.display = 'none';
             }
           }, CLUSTER_ANIM_MS);
         }
       }
     }
 
-    // FadeIn new markers + update badges
+    // 나뉠 때: 클러스터 중심에서 시작 → 실제 위치로 슬라이드 + fade in
     for (const id of newIds) {
       const el = markers.get(id);
       if (!el) continue;
 
       if (!oldIds.has(id)) {
-        // New marker: fade in (클러스터 대표면 영역 중앙에 위치)
         const booth = boothMapRef.current.get(id);
         if (booth) {
           const center = clusterRepCenterRef.current.get(id);
           const wcx = center ? center.wx : booth.x + booth.width / 2;
           const wcy = center ? center.wy : booth.y + booth.height / 2;
           const { sx, sy } = worldToScreen(wcx, wcy);
+          // 이전 클러스터 중심에서 시작 (나뉘는 효과)
+          const prevCenter = findNearestClusterCenter(id);
+          const startWx = prevCenter ? prevCenter.wx : wcx;
+          const startWy = prevCenter ? prevCenter.wy : wcy;
+          const { sx: startSx, sy: startSy } = worldToScreen(startWx, startWy);
+
           el.style.display = 'flex';
-          el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
-          fadingIdsRef.current.add(id);
-          el.style.opacity = '0';
           el.style.transition = 'none';
+          el.style.transform = `translate(${startSx}px, ${startSy}px) translate(-50%, -100%) scale(0.3)`;
+          el.style.opacity = '0';
           void el.offsetHeight; // force layout flush
-          el.style.transition = `opacity ${CLUSTER_ANIM_MS}ms ease-in`;
+          el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-out, opacity ${CLUSTER_ANIM_MS}ms ease-out`;
+          el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(1)`;
           el.style.opacity = '1';
+          fadingIdsRef.current.add(id);
           setTimeout(() => {
             fadingIdsRef.current.delete(id);
           }, CLUSTER_ANIM_MS);
