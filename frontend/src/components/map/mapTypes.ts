@@ -1,7 +1,7 @@
 // mapTypes.ts — Interfaces, constants, and pure utility functions
 // Extracted from MapViewer.tsx without logic changes
 
-import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
+import { Booth, Hall, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 
 export interface TileLevelInfo {
   level: number;
@@ -25,6 +25,7 @@ export interface CurrentPosition {
 
 export interface MapViewerProps {
   booths: Booth[];
+  halls?: Hall[];
   categories: Category[];
   currentImage: MapImage | null;
   selectedBoothId: number | null;

@@ -130,7 +130,7 @@ export default function EditorPage() {
     renderPathLayer({ graphics: ctx.pathGfx, pathNodes, pathEdges, scale: ctx.scale, selectedObject: ctx.selectedObject, connectFromId });
     renderObstacleLayer({ graphics: ctx.obstacleGfx, obstacles, scale: ctx.scale, selectedObject: ctx.selectedObject });
     renderAmenityLayer({ graphics: ctx.amenityGfx, amenities, scale: ctx.scale, selectedObject: ctx.selectedObject });
-  }, [halls, booths, pathNodes, pathEdges, obstacles, amenities, connectFromId]);
+  }, [halls, booths, pathNodes, pathEdges, obstacles, amenities, connectFromId, selectedObject]);
 
   // ===== Shape complete handler =====
   const handleShapeComplete = useCallback(async (m: EditorMode, data: ShapeCompleteData) => {

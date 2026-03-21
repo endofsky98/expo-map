@@ -10,6 +10,7 @@ export interface Hall {
   id: number;
   floor_id: number;
   name: string | Record<string, string>;
+  type?: string;        // 'hall' | 'zone'
   order: number;
   area_x?: number;
   area_y?: number;
