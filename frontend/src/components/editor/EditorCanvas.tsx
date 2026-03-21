@@ -192,6 +192,16 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   ]);
 
   // ===== Pointer events =====
+  // 모드별 커서
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (props.mode === 'pan') canvas.style.cursor = 'grab';
+    else if (props.mode === 'select') canvas.style.cursor = 'default';
+    else if (props.mode === 'delete') canvas.style.cursor = 'crosshair';
+    else canvas.style.cursor = 'crosshair';
+  }, [props.mode]);
+
   useEditorPointer({
     canvasRef, mainContainerRef, transformRef, previewGraphicsRef,
     mode: props.mode,

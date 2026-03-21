@@ -523,11 +523,17 @@ export default function EditorPage() {
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedObject) {
         e.preventDefault();
         handleObjectDelete(selectedObject.kind, selectedObject.id);
+      } else if (e.key === 'v' || e.key === 'V') {
+        setMode('pan');
+      } else if (e.key === 's' || e.key === 'S') {
+        setMode('select');
+      } else if (e.key === 'd' || e.key === 'D') {
+        setMode('delete');
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [undo, redo, selectedObject, handleObjectDelete]);
+  }, [undo, redo, selectedObject, handleObjectDelete, setMode]);
 
   return (
     <AdminLayout title="에디터">
