@@ -278,7 +278,7 @@ export default function EditorPage() {
         category_id: booth.category_id ?? (booth as any).category?.id ?? null,
       };
       return <BoothPanel booth={boothWithCompany} categories={categories} companies={companies}
-        onSave={async (id, data) => { try { await updateBooth(id, data as any); setBooths(prev => prev.map(b => b.id === id ? { ...b, ...data } : b)); } catch(e) { console.error('부스 저장 실패:', e); } }}
+        onSave={async (id, data) => { try { await updateBooth(id, data as any); const updated = await fetchBooths(selectedFloorId!); setBooths(updated as any[]); } catch(e) { console.error('부스 저장 실패:', e); } }}
         onDelete={async (id) => { try { await deleteBooth(id); setBooths(prev => prev.filter(b => b.id !== id)); setSelectedObject(null); } catch(e) { console.error('부스 삭제 실패:', e); alert('삭제 실패: ' + (e as any)?.message); } }} />;
     }
 
