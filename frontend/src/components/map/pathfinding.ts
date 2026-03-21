@@ -115,8 +115,10 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     }
   }
 
-  // 3. 50px 근접: 노드→엣지 연결
-  for (const [nId, node] of nodes) {
+  // 3. 50px 근접: 노드→엣지 연결 (원본 노드만 대상 — 가상 노드 제외)
+  const originalNodeIds = [...nodes.keys()];
+  for (const nId of originalNodeIds) {
+    const node = nodes.get(nId)!;
     for (const seg of segments) {
       if (seg.fromId === nId || seg.toId === nId) continue;
       const nearest = nearestOnSegment(node, seg.from, seg.to);
