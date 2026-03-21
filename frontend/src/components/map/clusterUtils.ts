@@ -41,7 +41,7 @@ export const CLUSTER_MAX_SIZE = 80;      // 클러스터 원 최대 크기 px
 // Supercluster 설정
 const SC_MIN_ZOOM = 0;
 const SC_MAX_ZOOM = 16;
-const SC_RADIUS = 80;    // 클러스터 반경 (px 기준, 256 타일 기준)
+const SC_RADIUS = 160;   // 클러스터 반경 — 크면 먼 부스끼리도 그룹
 
 // World 좌표를 가상 lng/lat으로 매핑 (supercluster는 geo 좌표 기대)
 // 이미지 크기 기준으로 0~360, 0~180 범위에 매핑
@@ -72,7 +72,7 @@ export function scaleToZoom(scale: number): number {
   // scale 0.05 → zoom 0, scale 4.0 → zoom 48
   // log2 기반 매핑, 3배 세밀도
   const z = Math.log2(scale * 20);
-  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 2)));
+  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 1.5)));
 }
 
 // Supercluster 인스턴스 관리
