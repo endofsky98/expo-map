@@ -896,8 +896,13 @@ export default function MapViewer({
         if (!rep) continue;
         // 클러스터 내 모든 부스의 중심
         const cBooths = c.boothIds.map(id => boothMapRef.current.get(id)).filter((b): b is Booth => !!b);
-        // 이 클러스터가 완전히 속하는 홀/구역 찾기
-        for (const h of hallsList) {
+        // 이 클러스터가 완전히 속하는 홀/구역 찾기 (작은 영역 우선 → 구역 우선)
+        const sortedHalls = [...hallsList].sort((a, b) => {
+          const aArea = (a.area_width ?? 0) * (a.area_height ?? 0);
+          const bArea = (b.area_width ?? 0) * (b.area_height ?? 0);
+          return aArea - bArea; // 작은 영역 먼저
+        });
+        for (const h of sortedHalls) {
           const allInside = cBooths.length > 0 && cBooths.every(b => {
             const { cx, cy } = getBoothCenter(b);
             return insideHall(cx, cy, h);
