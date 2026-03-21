@@ -1699,6 +1699,44 @@ export default function MapViewer({
         renderTilesFnRef.current();
         scheduleMarkerUpdate();
       };
+      // 부드러운 이동 + 회전 애니메이션
+      let navAnimRaf = 0;
+      (window as unknown as Record<string, unknown>).__mapViewerAnimateNav = (wx: number, wy: number, rotation: number, durationMs: number = 500) => {
+        const mc = mainContainerRef.current;
+        if (!mc) return;
+        if (navAnimRaf) cancelAnimationFrame(navAnimRaf);
+        const t = transformRef.current;
+        const { width: cw, height: ch } = canvasDimsRef.current;
+        const sc = t.scale;
+        const startX = t.x, startY = t.y, startRot = t.rotation;
+        const targetX = cw / 2 - wx * sc;
+        const targetY = ch / 2 - wy * sc;
+        // 최단 회전 방향
+        let dRot = rotation - startRot;
+        while (dRot > Math.PI) dRot -= 2 * Math.PI;
+        while (dRot < -Math.PI) dRot += 2 * Math.PI;
+        const targetRot = startRot + dRot;
+        const startTime = performance.now();
+        const step = (now: number) => {
+          const elapsed = now - startTime;
+          const progress = Math.min(1, elapsed / durationMs);
+          // ease-out cubic
+          const ease = 1 - Math.pow(1 - progress, 3);
+          t.x = startX + (targetX - startX) * ease;
+          t.y = startY + (targetY - startY) * ease;
+          t.rotation = startRot + dRot * ease;
+          clampPosition(t);
+          syncContainerPosition(mc, t);
+          renderTilesFnRef.current();
+          scheduleMarkerUpdate();
+          if (progress < 1) {
+            navAnimRaf = requestAnimationFrame(step);
+          } else {
+            navAnimRaf = 0;
+          }
+        };
+        navAnimRaf = requestAnimationFrame(step);
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimensions]);

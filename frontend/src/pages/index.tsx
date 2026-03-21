@@ -347,17 +347,27 @@ export default function HomePage() {
   // 현재 위치 좌표
   const navCurrentPos = navActive ? posAtDist(navCurDist) : null;
 
+  // 경로 위 특정 거리의 진행 방향 각도 (다음 방향)
+  function dirAtDist(d: number): number {
+    if (!clientRoute) return 0;
+    const path = clientRoute.path;
+    // d 위치에서 약간 앞의 좌표로 방향 계산
+    const p0 = posAtDist(d);
+    const p1 = posAtDist(Math.min(d + 20, clientRoute.distance));
+    if (!p0 || !p1 || (p0.x === p1.x && p0.y === p1.y)) return 0;
+    // 화면 위쪽이 진행 방향이 되도록: atan2 결과에서 -PI/2 보정
+    return Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
+  }
+
   // 네비게이션 시작
   function startNavigation() {
     if (!clientRoute) return;
     setNavActive(true);
     setNavCurDist(0);
-    // 출발 지점으로 이동 + 버드뷰
     const pos = clientRoute.path[0];
-    const panTo = (window as any).__mapViewerPanToWorld;
-    const setTilt = (window as any).__mapViewerSetTilt;
-    if (panTo) panTo(pos.x, pos.y, 2);
-    if (setTilt) setTilt(30);
+    const rot = dirAtDist(0);
+    const animNav = (window as any).__mapViewerAnimateNav;
+    if (animNav) animNav(pos.x, pos.y, rot, 600);
   }
 
   // 다음 (100px 전진)
@@ -366,25 +376,26 @@ export default function HomePage() {
     const newDist = Math.min(navCurDist + 100, clientRoute.distance);
     setNavCurDist(newDist);
     const pos = posAtDist(newDist);
+    const rot = dirAtDist(newDist);
     if (pos) {
-      const panTo = (window as any).__mapViewerPanToWorld;
-      if (panTo) panTo(pos.x, pos.y);
+      const animNav = (window as any).__mapViewerAnimateNav;
+      if (animNav) animNav(pos.x, pos.y, rot, 500);
     }
-    // 도착 체크
     if (newDist >= clientRoute.distance) {
       setNavConfirm('arrived');
     }
   }
 
-  // 이전 (100px 후퇴)
+  // 이전 (100px 후퇴) — 방향은 다음 방향으로
   function navPrev() {
     if (!clientRoute) return;
     const newDist = Math.max(navCurDist - 100, 0);
     setNavCurDist(newDist);
     const pos = posAtDist(newDist);
+    const rot = dirAtDist(newDist); // 다음 방향
     if (pos) {
-      const panTo = (window as any).__mapViewerPanToWorld;
-      if (panTo) panTo(pos.x, pos.y);
+      const animNav = (window as any).__mapViewerAnimateNav;
+      if (animNav) animNav(pos.x, pos.y, rot, 500);
     }
   }
 
