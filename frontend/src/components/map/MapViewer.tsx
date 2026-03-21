@@ -186,6 +186,8 @@ export default function MapViewer({
   // PIXI cluster shading layer ref
   const clusterContainerRef = useRef<PIXI.Container | null>(null);
   const clusterGfxRef = useRef<PIXI.Graphics | null>(null);
+  const clusterBadgesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
 
   // World coordinate → screen pixel (accounts for tilt via CSS perspective)
   function worldToScreen(wx: number, wy: number): { sx: number; sy: number } {
@@ -782,15 +784,9 @@ export default function MapViewer({
     const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
     const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
 
-    // Draw PIXI cluster shading + count text (world coordinates — auto follows pan/zoom)
-    const cc = clusterContainerRef.current;
-    if (clusterGfx && cc) {
+    // Draw PIXI cluster shading (world coordinates — auto follows pan/zoom)
+    if (clusterGfx) {
       clusterGfx.clear();
-      // 이전 텍스트 제거 (Graphics 외 자식)
-      for (let i = cc.children.length - 1; i >= 0; i--) {
-        if (cc.children[i] !== clusterGfx) cc.removeChildAt(i);
-      }
-      const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
       for (const c of clusters) {
         if (c.isCluster && c.count > 1) {
           const pad = 20;
@@ -804,20 +800,19 @@ export default function MapViewer({
             12,
           );
           clusterGfx.endFill();
-          // 영역 한가운데 숫자
-          const countText = new PIXI.Text(String(c.count), {
-            fontSize: Math.max(40, 60 / sc),
-            fontFamily: 'Inter, -apple-system, sans-serif',
-            fontWeight: '700',
-            fill: '#4f46e5',
-          });
-          countText.resolution = dpr * 2;
-          countText.anchor.set(0.5, 0.5);
-          countText.x = c.bboxX + c.bboxW / 2;
-          countText.y = c.bboxY + c.bboxH / 2;
-          countText.alpha = 0.6;
-          cc.addChild(countText);
         }
+      }
+    }
+
+    // 클러스터 영역 중앙에 DOM 배지 계산 (screen 좌표)
+    // clusterId → { sx, sy, count }
+    const clusterCenters = new Map<string, { sx: number; sy: number; count: number }>();
+    for (const c of clusters) {
+      if (c.isCluster && c.count > 1) {
+        const wcx = c.bboxX + c.bboxW / 2;
+        const wcy = c.bboxY + c.bboxH / 2;
+        const sp = worldToScreen(wcx, wcy);
+        clusterCenters.set(c.id, { sx: sp.sx, sy: sp.sy, count: c.count });
       }
     }
 
@@ -894,9 +889,45 @@ export default function MapViewer({
         }
       }
 
-      // Update cluster badge
-      const clusterInfo = [...clusterReps.values()].find((v) => v.boothId === id);
-      // 클러스터 숫자는 PIXI 영역 중앙에 표시 (DOM 배지 불필요)
+    }
+
+    // DOM 배지: 클러스터 영역 한가운데에 숫자 표시
+    const overlay = markerOverlayRef.current;
+    const badges = clusterBadgesRef.current;
+    const badgeWorlds = clusterBadgeWorldRef.current;
+    const activeBadgeIds = new Set<string>();
+    if (overlay) {
+      for (const [cid, center] of clusterCenters) {
+        activeBadgeIds.add(cid);
+        let badge = badges.get(cid);
+        if (!badge) {
+          badge = document.createElement('div');
+          badge.style.cssText =
+            'position:absolute;left:0;top:0;pointer-events:none;' +
+            'min-width:36px;height:36px;border-radius:18px;' +
+            'background:rgba(79,70,229,0.85);color:#fff;' +
+            'font-size:16px;font-weight:700;font-family:Inter,sans-serif;' +
+            'display:flex;align-items:center;justify-content:center;' +
+            'padding:0 8px;' +
+            'box-shadow:0 2px 6px rgba(0,0,0,0.25);z-index:20;';
+          overlay.appendChild(badge);
+          badges.set(cid, badge);
+        }
+        badge.textContent = String(center.count);
+        badge.style.transform = `translate(${center.sx}px, ${center.sy}px) translate(-50%, -50%)`;
+        badge.style.display = 'flex';
+        // world 좌표 저장 (updateMarkerPositions에서 재사용)
+        const wcx = clusters.find(c => c.id === cid)!;
+        badgeWorlds.set(cid, { wx: wcx.bboxX + wcx.bboxW / 2, wy: wcx.bboxY + wcx.bboxH / 2 });
+      }
+      // 사라진 클러스터 배지 제거
+      for (const [cid, badge] of badges) {
+        if (!activeBadgeIds.has(cid)) {
+          badge.remove();
+          badges.delete(cid);
+          badgeWorlds.delete(cid);
+        }
+      }
     }
 
     stableIdsRef.current = newIds;
@@ -1030,6 +1061,15 @@ export default function MapViewer({
           ns.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
           labelEl.insertBefore(ns, nameEl);
         }
+      }
+    }
+
+    // 클러스터 배지 위치 업데이트 (pan/zoom 추적)
+    for (const [cid, badge] of clusterBadgesRef.current) {
+      const wc = clusterBadgeWorldRef.current.get(cid);
+      if (wc) {
+        const sp = worldToScreen(wc.wx, wc.wy);
+        badge.style.transform = `translate(${sp.sx}px, ${sp.sy}px) translate(-50%, -50%)`;
       }
     }
 
