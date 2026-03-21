@@ -107,9 +107,13 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
         const dx00 = sx0 - t0.x, dy00 = sy0 - t0.y;
         const wx0 = (dx00 * cosR0 + dy00 * sinR0) / sc0;
         const wy0 = (-dx00 * sinR0 + dy00 * cosR0) / sc0;
+        const downClientX = e.clientX, downClientY = e.clientY;
         longPressTimer = setTimeout(() => {
+          // 실제 드래그가 시작됐으면 롱프레스 무시
+          const moved = Math.hypot(lastDragX - downClientX, lastDragY - downClientY);
+          if (moved > 10) return;
           longPressFired = true;
-          onLongPressRef.current?.(wx0, wy0, e.clientX, e.clientY);
+          onLongPressRef.current?.(wx0, wy0, downClientX, downClientY);
         }, 500);
       }
     }
@@ -277,8 +281,13 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     pointers.delete(e.pointerId);
     // 롱프레스 타이머 취소
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-    // 롱프레스 발생 시 클릭 무시
-    if (longPressFired) { longPressFired = false; isDragging = false; return; }
+    // 롱프레스 발생 시 클릭만 무시 (inertia는 유지)
+    if (longPressFired) { longPressFired = false; isDragging = false;
+      // inertia는 정상 시작
+      const vx = 0, vy = 0;
+      startInertia(vx, vy);
+      return;
+    }
 
     // Two-finger tap → zoom out (Mapbox style)
     if (firstTwoIds && !twoFingerTapMoved && (Date.now() - twoFingerTapStart < 300)) {

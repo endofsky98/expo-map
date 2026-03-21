@@ -359,21 +359,16 @@ export default function HomePage() {
     return Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
   }
 
-  // 네비게이션 시작 — 줌/틸트 세팅은 여기서만
+  // 네비게이션 시작 — 줌 세팅 + 출발 지점으로 즉시 이동+회전
   function startNavigation() {
     if (!clientRoute) return;
     setNavActive(true);
     setNavCurDist(0);
     const pos = clientRoute.path[0];
     const rot = dirAtDist(0);
-    // 줌 2배, 틸트 없음 (회전이 있으므로 틸트는 혼란)
+    // 줌 1.5배 + 회전 즉시 설정 후 애니메이션
     const panTo = (window as any).__mapViewerPanToWorld;
-    if (panTo) panTo(pos.x, pos.y, 1.5);
-    // 약간의 딜레이 후 회전 애니메이션 시작
-    setTimeout(() => {
-      const animNav = (window as any).__mapViewerAnimateNav;
-      if (animNav) animNav(pos.x, pos.y, rot, 600);
-    }, 100);
+    if (panTo) panTo(pos.x, pos.y, 1.5, rot);
   }
 
   // 다음 (100px 전진)
@@ -588,7 +583,7 @@ export default function HomePage() {
           {/* 롱프레스 출발/도착 선택 팝업 */}
           {longPressChoice && (
             <div className="fixed z-50 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-3 w-48"
-              style={{ left: Math.min(longPressChoice.screenX - 96, window.innerWidth - 200), top: Math.max(8, longPressChoice.screenY - 80) }}>
+              style={{ left: Math.min(Math.max(8, longPressChoice.screenX - 96), window.innerWidth - 200), top: Math.max(8, longPressChoice.screenY - 110), userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none', pointerEvents: 'auto' }}>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">{nearestName(longPressChoice.x, longPressChoice.y)} 근처</p>
               <div className="flex gap-2">
                 <button onClick={handleLongPressStart} className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 transition-colors">

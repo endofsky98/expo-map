@@ -1684,11 +1684,12 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerFontDown = () => setMarkerFontSize(s => Math.max(10, s - 4));
       (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
       (window as unknown as Record<string, unknown>).__mapViewerSetTilt = (deg: number) => applyTilt(deg);
-      (window as unknown as Record<string, unknown>).__mapViewerPanToWorld = (wx: number, wy: number, scale?: number) => {
+      (window as unknown as Record<string, unknown>).__mapViewerPanToWorld = (wx: number, wy: number, scale?: number, rotation?: number) => {
         const mc = mainContainerRef.current;
         if (!mc) return;
         const { width: cw, height: ch } = canvasDimsRef.current;
         const sc = scale ?? transformRef.current.scale;
+        if (rotation !== undefined) transformRef.current.rotation = rotation;
         transformRef.current.scale = sc;
         const cosR = Math.cos(transformRef.current.rotation), sinR = Math.sin(transformRef.current.rotation);
         transformRef.current.x = cw / 2 - sc * (wx * cosR - wy * sinR);
