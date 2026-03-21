@@ -152,6 +152,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   }, [ready, props.imageUrl, props.imageWidth, props.imageHeight]);
 
   // ===== Zoom =====
+  const [renderTick, setRenderTick] = useState(0);
   const applyZoom = useCallback((newScale: number, pivotX: number, pivotY: number) => {
     const clamped = Math.max(0.1, Math.min(15, newScale));
     const t = transformRef.current;
@@ -164,6 +165,8 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       mc.position.set(t.x, t.y);
       mc.scale.set(clamped);
     }
+    // 줌 변경 후 레이어 재렌더 트리거
+    setRenderTick(t => t + 1);
   }, []);
 
   // ===== Render layers =====
@@ -183,9 +186,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     ready, props.renderLayers, props.halls, props.booths, props.pathNodes, props.pathEdges,
-    props.obstacles, props.amenities, props.selectedObject,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    transformRef.current.scale,
+    props.obstacles, props.amenities, props.selectedObject, renderTick,
   ]);
 
   // ===== Pointer events =====

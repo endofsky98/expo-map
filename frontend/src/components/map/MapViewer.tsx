@@ -6,7 +6,7 @@ import {
   MapViewerProps, TileInfo, CurrentPosition, FACILITY_STYLES,
   MIN_ZOOM, MAX_ZOOM, MIN_TILT, MAX_TILT, MIN_BOOTH_SCREEN_SIZE,
   CLICK_THRESHOLD, CLICK_TIME_THRESHOLD, ROTATION_THRESHOLD, ZOOM_THRESHOLD, MIN_MARKER_DIST,
-  maxMarkersForScale, parseZoomLevels, hexStringToNumber, selectTileLevel,
+  parseZoomLevels, hexStringToNumber, selectTileLevel,
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
@@ -445,6 +445,12 @@ export default function MapViewer({
     mainContainer.addChild(tileLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(routeLayerRef.current);
+
+    // Cluster shading layer — sits above tiles/obstacles/route, below facilities
+    const clusterGfx = new PIXI.Graphics();
+    mainContainer.addChild(clusterGfx);
+    clusterGfxRef.current = clusterGfx;
+
     // boothLayer removed — booths are now HTML DOM markers
     mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(overlayLayerRef.current);
@@ -509,6 +515,7 @@ export default function MapViewer({
       pixiApp.current = null;
       mainContainerRef.current = null;
       canvasRef.current = null;
+      clusterGfxRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -734,16 +741,16 @@ export default function MapViewer({
 
   // ===== Booths (HTML DOM markers — Mapbox style) =====
 
-  // recalcMarkers: called after interaction settles (debounced)
-  // Picks up to MAX_MARKERS using center-weighted sampling, applies fade transitions
+  // recalcMarkers: called after interaction settles (debounced ~300ms)
+  // Clusters visible booths → PIXI shading + DOM pin markers with optional count badge
   function recalcMarkers() {
     const markers = markerElementsRef.current;
     const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
-    const MAX_MARKERS = maxMarkersForScale(sc);
     const { width: cw, height: ch } = canvasDimsRef.current;
     const show = showBoothsRef.current;
+    const clusterGfx = clusterGfxRef.current;
 
-    // Get visible booths in viewport
+    // Viewport bounds in world space (rotation-aware)
     const cosR = Math.cos(rot);
     const sinR = Math.sin(rot);
     const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
@@ -751,10 +758,10 @@ export default function MapViewer({
       x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
       y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
     }));
-    const bx0 = Math.min(...wCorners.map(c => c.x));
-    const by0 = Math.min(...wCorners.map(c => c.y));
-    const bx1 = Math.max(...wCorners.map(c => c.x));
-    const by1 = Math.max(...wCorners.map(c => c.y));
+    const bx0 = Math.min(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+    const by0 = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
+    const bx1 = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
+    const by1 = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
 
     const visibleBooths: Booth[] = [];
     for (const booth of boothsRef.current) {
@@ -765,79 +772,52 @@ export default function MapViewer({
       }
     }
 
-    // Compute screen positions for all visible booths
-    const boothScreenPos = new Map<number, { sx: number; sy: number }>();
-    for (const booth of visibleBooths) {
-      const wcx = booth.x + booth.width / 2;
-      const wcy = booth.y + booth.height / 2;
-      boothScreenPos.set(booth.id, worldToScreen(wcx, wcy));
+    // Cluster or show individually based on zoom
+    const forceIndividual = sc >= CLUSTER_MAX_ZOOM;
+    const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
+    const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
+
+    // Draw PIXI cluster shading (world coordinates — auto follows pan/zoom)
+    if (clusterGfx) {
+      clusterGfx.clear();
+      for (const c of clusters) {
+        if (c.isCluster && c.count > 1) {
+          const pad = 20;
+          clusterGfx.lineStyle(1.5, 0x4f46e5, 0.2);
+          clusterGfx.beginFill(0x4f46e5, 0.08);
+          clusterGfx.drawRoundedRect(
+            c.bboxX - pad,
+            c.bboxY - pad,
+            c.bboxW + pad * 2,
+            c.bboxH + pad * 2,
+            12,
+          );
+          clusterGfx.endFill();
+        }
+      }
     }
 
-    const MIN_MARKER_DIST = 60; // px minimum distance between markers
+    // Determine which booth IDs to show as pins + cluster badge info
+    const newIds = new Set<number>();
+    // clusterKey → { boothId, count }
+    const clusterReps = new Map<string, { boothId: number; count: number }>();
 
-    let newIds: Set<number>;
-    if (visibleBooths.length <= MAX_MARKERS) {
-      newIds = new Set(visibleBooths.map(b => b.id));
-    } else {
-      const focusX = cw / 2;
-      const focusY = ch * (2 / 3);
-      const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
-
-      // 1) Keep existing stable markers that are still visible AND not too far from focus
-      const oldIds = stableIdsRef.current;
-      const kept = new Set<number>();
-      const keptPositions: { sx: number; sy: number }[] = [];
-
-      // Score old markers — drop those whose probability fell too low
-      for (const id of oldIds) {
-        const pos = boothScreenPos.get(id);
-        if (!pos) continue; // left viewport
-        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
-        const normalized = dist / maxDist;
-        // Drop if too far (probability < 15%)
-        if (normalized > 0.85) continue;
-        if (kept.size >= MAX_MARKERS) break;
-        kept.add(id);
-        keptPositions.push(pos);
-      }
-
-      // 2) Fill remaining slots with weighted random selection + minimum distance
-      const candidates = visibleBooths.filter(b => !kept.has(b.id));
-      const scored: { id: number; weight: number; sx: number; sy: number }[] = [];
-      for (const booth of candidates) {
-        const pos = boothScreenPos.get(booth.id)!;
-        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
-        const normalized = dist / maxDist;
-        const weight = Math.exp(-2.5 * normalized * normalized);
-        scored.push({ id: booth.id, weight, ...pos });
-      }
-
-      // Weighted random selection without replacement, respecting min distance
-      const pool = [...scored];
-      while (kept.size < MAX_MARKERS && pool.length > 0) {
-        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
-        if (totalWeight <= 0) break;
-        let r = Math.random() * totalWeight;
-        let picked = pool.length - 1;
-        for (let i = 0; i < pool.length; i++) {
-          r -= pool[i].weight;
-          if (r <= 0) { picked = i; break; }
+    for (const c of clusters) {
+      if (!c.isCluster || c.count === 1) {
+        // Individual marker
+        newIds.add(c.boothIds[0]);
+      } else {
+        // Cluster: pick representative
+        const rep = selectRepresentative(c.boothIds, boothsRef.current, hallsRef.current);
+        if (rep.booth) {
+          newIds.add(rep.booth.id);
+          clusterReps.set(c.id, { boothId: rep.booth.id, count: c.count });
+        } else if (c.boothIds.length > 0) {
+          // Fallback: use first booth id
+          newIds.add(c.boothIds[0]);
+          clusterReps.set(c.id, { boothId: c.boothIds[0], count: c.count });
         }
-        const candidate = pool[picked];
-        pool.splice(picked, 1);
-
-        // Check minimum distance from all already-placed markers
-        const tooClose = keptPositions.some(p => {
-          const dx = p.sx - candidate.sx;
-          const dy = p.sy - candidate.sy;
-          return dx * dx + dy * dy < MIN_MARKER_DIST * MIN_MARKER_DIST;
-        });
-        if (tooClose) continue;
-
-        kept.add(candidate.id);
-        keptPositions.push({ sx: candidate.sx, sy: candidate.sy });
       }
-      newIds = kept;
     }
 
     const oldIds = stableIdsRef.current;
@@ -848,43 +828,66 @@ export default function MapViewer({
         const el = markers.get(id);
         if (el) {
           fadingIdsRef.current.add(id);
-          el.style.transition = 'opacity 1s ease-out';
+          el.style.transition = `opacity ${CLUSTER_ANIM_MS}ms ease-out`;
           el.style.opacity = '0';
           setTimeout(() => {
             fadingIdsRef.current.delete(id);
             if (!stableIdsRef.current.has(id)) {
               el.style.display = 'none';
               el.style.transition = '';
+              // Remove badge when hidden
+              const badge = el.querySelector('[data-badge]') as HTMLElement | null;
+              if (badge) badge.style.display = 'none';
             }
-          }, 1000);
+          }, CLUSTER_ANIM_MS);
         }
       }
     }
 
-    // FadeIn new markers
+    // FadeIn new markers + update badges
     for (const id of newIds) {
+      const el = markers.get(id);
+      if (!el) continue;
+
       if (!oldIds.has(id)) {
-        const el = markers.get(id);
-        if (el) {
-          const booth = boothMapRef.current.get(id);
-          if (booth) {
-            const wcx = booth.x + booth.width / 2;
-            const wcy = booth.y + booth.height / 2;
-            const { sx, sy } = worldToScreen(wcx, wcy);
-            el.style.display = 'flex';
-            el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
-            fadingIdsRef.current.add(id);
-            el.style.opacity = '0';
-            el.style.transition = 'none';
-            // Force layout flush so browser registers opacity:0 before transition starts
-            void el.offsetHeight;
-            el.style.transition = 'opacity 1s ease-in';
-            el.style.opacity = '1';
-            setTimeout(() => {
-              fadingIdsRef.current.delete(id);
-            }, 1000);
-          }
+        // New marker: fade in
+        const booth = boothMapRef.current.get(id);
+        if (booth) {
+          const wcx = booth.x + booth.width / 2;
+          const wcy = booth.y + booth.height / 2;
+          const { sx, sy } = worldToScreen(wcx, wcy);
+          el.style.display = 'flex';
+          el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+          fadingIdsRef.current.add(id);
+          el.style.opacity = '0';
+          el.style.transition = 'none';
+          void el.offsetHeight; // force layout flush
+          el.style.transition = `opacity ${CLUSTER_ANIM_MS}ms ease-in`;
+          el.style.opacity = '1';
+          setTimeout(() => {
+            fadingIdsRef.current.delete(id);
+          }, CLUSTER_ANIM_MS);
         }
+      }
+
+      // Update cluster badge
+      const clusterInfo = [...clusterReps.values()].find((v) => v.boothId === id);
+      let badge = el.querySelector('[data-badge]') as HTMLElement | null;
+      if (clusterInfo && clusterInfo.count > 1) {
+        if (!badge) {
+          badge = document.createElement('div');
+          badge.setAttribute('data-badge', '');
+          badge.style.cssText =
+            'position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;' +
+            'border-radius:11px;background:#4f46e5;color:#fff;font-size:12px;font-weight:700;' +
+            'display:flex;align-items:center;justify-content:center;padding:0 5px;pointer-events:none;';
+          el.style.position = 'relative'; // ensure absolute child positioning works
+          el.appendChild(badge);
+        }
+        badge.textContent = String(clusterInfo.count);
+        badge.style.display = 'flex';
+      } else if (badge) {
+        badge.style.display = 'none';
       }
     }
 
@@ -928,7 +931,6 @@ export default function MapViewer({
       }
     }
 
-    const MAX_MARKERS = maxMarkersForScale(sc);
     const visibleBoothIds = new Set(visibleBooths.map(b => b.id));
 
     // During interaction: keep stable set, only drop markers that left viewport
@@ -938,11 +940,11 @@ export default function MapViewer({
       if (visibleBoothIds.has(id)) currentDisplay.add(id);
     }
 
-    // Schedule a settle recalculation (debounced 300ms after last interaction)
+    // Schedule a settle recalculation (debounced after last interaction)
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(() => {
       recalcMarkers();
-    }, 300);
+    }, CLUSTER_ANIM_MS);
 
     const sampledIds = currentDisplay;
     const prevVisible = prevVisibleIdsRef.current;
