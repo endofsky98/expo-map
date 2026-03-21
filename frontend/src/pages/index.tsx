@@ -52,6 +52,10 @@ export default function HomePage() {
   const [pathEdges, setPathEdges] = useState<any[]>([]);
   const [navMode, setNavMode] = useState<'none' | 'waiting_start'>('none');
   const [clientRoute, setClientRoute] = useState<PathResult | null>(null);
+  // 새 길찾기: 출발/도착 지점 (world 좌표 또는 부스)
+  const [navStart, setNavStart] = useState<{ boothId?: number; x: number; y: number } | null>(null);
+  const [navEnd, setNavEnd] = useState<{ boothId?: number; x: number; y: number } | null>(null);
+  const [longPressChoice, setLongPressChoice] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -236,47 +240,87 @@ export default function HomePage() {
     });
   }, []);
 
+  // 가까운 부스/시설 이름 찾기
+  function nearestName(wx: number, wy: number): string {
+    let bestDist = Infinity;
+    let bestName = '선택 지점';
+    for (const b of allBooths) {
+      const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+      const d = Math.hypot(wx - cx, wy - cy);
+      if (d < bestDist) {
+        bestDist = d;
+        const cn = b.company?.name;
+        bestName = cn ? (typeof cn === 'string' ? cn : (cn as any).ko || (cn as any).en || b.booth_number) : b.booth_number;
+      }
+    }
+    for (const f of facilities) {
+      const d = Math.hypot(wx - f.x, wy - f.y);
+      if (d < bestDist) { bestDist = d; bestName = (typeof f.name === 'string' ? f.name : (f.name as any)?.ko || (f.name as any)?.en) || f.type; }
+    }
+    return bestName;
+  }
+
+  function getNavLabel(nav: { boothId?: number; x: number; y: number }): string {
+    if (nav.boothId) {
+      const b = allBooths.find(bb => bb.id === nav.boothId);
+      if (b) {
+        const cn = b.company?.name;
+        return cn ? (typeof cn === 'string' ? cn : (cn as any).ko || (cn as any).en || b.booth_number) : b.booth_number;
+      }
+    }
+    return `${nearestName(nav.x, nav.y)} 근처`;
+  }
+
+  // 부스 클릭 → 출발/도착 선택
   function setAsStart(boothId: number) {
-    setPathFrom(boothId);
+    const b = allBooths.find(bb => bb.id === boothId);
+    const cx = b ? b.x + b.width / 2 : 0, cy = b ? b.y + b.height / 2 : 0;
+    setNavStart({ boothId, x: cx, y: cy });
     setBoothPopup(null);
-    if (pathTo) doPathfinding(boothId, pathTo);
+    setLongPressChoice(null);
   }
 
   function setAsDestination(boothId: number) {
-    setPathTo(boothId);
-    setSelectedBoothId(boothId);
+    const b = allBooths.find(bb => bb.id === boothId);
+    const cx = b ? b.x + b.width / 2 : 0, cy = b ? b.y + b.height / 2 : 0;
+    setNavEnd({ boothId, x: cx, y: cy });
     setBoothPopup(null);
-    setNavMode('waiting_start');
-    setClientRoute(null);
+    setLongPressChoice(null);
   }
 
-  async function doPathfinding(from: number, to: number) {
-    setRouteError(null);
-    try {
-      const route = await fetchRoute(from, to);
-      setRouteResult(route);
-      if (typeof window !== 'undefined' && window.onRouteReady) {
-        window.onRouteReady(route);
-      }
-      if (route.path.length > 0) {
-        const start = route.path[0];
-        if (start.floor_id) setSelectedFloorId(start.floor_id);
-      }
-    } catch {
-      setRouteError(t('route.notFound'));
-      setRouteResult(null);
+  // 롱프레스 → 출발/도착 선택
+  function handleLongPress(worldX: number, worldY: number) {
+    // 화면 중앙에 팝업
+    setLongPressChoice({ x: worldX, y: worldY, screenX: window.innerWidth / 2, screenY: window.innerHeight / 2 });
+  }
+
+  function handleLongPressStart() {
+    if (!longPressChoice) return;
+    setNavStart({ x: longPressChoice.x, y: longPressChoice.y });
+    setLongPressChoice(null);
+  }
+
+  function handleLongPressEnd() {
+    if (!longPressChoice) return;
+    setNavEnd({ x: longPressChoice.x, y: longPressChoice.y });
+    setLongPressChoice(null);
+  }
+
+  // 출발+도착 둘 다 설정되면 자동 경로 계산
+  useEffect(() => {
+    if (!navStart || !navEnd) { setClientRoute(null); return; }
+    // 도착이 부스면 findPath 사용, 아니면 좌표 기반
+    const destBooth = navEnd.boothId ? allBooths.find(b => b.id === navEnd.boothId) : null;
+    if (destBooth) {
+      const result = findPath({ x: navStart.x, y: navStart.y }, destBooth, pathNodes, pathEdges, allBooths, obstacles);
+      setClientRoute(result);
+    } else {
+      // 도착이 좌표 — 가상 부스로 처리
+      const fakeBooth = { id: -1, booth_number: '', x: navEnd.x - 1, y: navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
+      const result = findPath({ x: navStart.x, y: navStart.y }, fakeBooth, pathNodes, pathEdges, allBooths, obstacles);
+      setClientRoute(result);
     }
-  }
-
-  // 길찾기: 출발점 선택 시 경로 계산
-  function handleNavStart(worldX: number, worldY: number) {
-    if (navMode !== 'waiting_start' || !selectedBoothId) return;
-    const destBooth = allBooths.find(b => b.id === selectedBoothId);
-    if (!destBooth) return;
-    const result = findPath({ x: worldX, y: worldY }, destBooth, pathNodes, pathEdges, allBooths, obstacles);
-    setClientRoute(result);
-    setNavMode('none');
-  }
+  }, [navStart, navEnd]);
 
   function handleFontUp() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerFontUp;
@@ -336,18 +380,18 @@ export default function HomePage() {
             <SearchBar booths={allBooths} onSelect={handleSearchSelect} />
           </div>
 
-          {/* Pathfinding status bar */}
-          {(pathFrom || pathTo) && (
+          {/* 길찾기 출발/도착 상태 바 */}
+          {(navStart || navEnd) && (
             <div className="mt-2 flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit">
               <Navigation2 className="h-3.5 w-3.5 text-indigo-500" />
               <span className="text-gray-600 dark:text-gray-400">
-                {t('route.from')}: <span className="font-medium text-gray-900 dark:text-gray-200">{fromBooth?.booth_number || '—'}</span>
+                출발: <span className="font-medium text-green-600 dark:text-green-400">{navStart ? getNavLabel(navStart) : '—'}</span>
               </span>
               <span className="text-gray-400">→</span>
               <span className="text-gray-600 dark:text-gray-400">
-                {t('route.to')}: <span className="font-medium text-gray-900 dark:text-gray-200">{toBooth?.booth_number || '—'}</span>
+                도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
-              <button onClick={() => { setPathFrom(null); setPathTo(null); setRouteResult(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+              <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
             </div>
           )}
         </div>
@@ -408,14 +452,26 @@ export default function HomePage() {
               onZoomChange={setZoom}
               clientRoute={clientRoute}
               navMode={navMode}
-              onNavTap={handleNavStart}
+              onLongPress={handleLongPress}
+              navStartPoint={navStart}
+              navEndPoint={navEnd}
             />
           )}
 
-          {/* 네비게이션 출발점 선택 안내 오버레이 */}
-          {navMode === 'waiting_start' && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/70 text-white px-4 py-2 rounded-full text-sm font-medium pointer-events-none">
-              출발점을 터치하세요
+          {/* 롱프레스 출발/도착 선택 팝업 */}
+          {longPressChoice && (
+            <div className="absolute z-50 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-3 w-48"
+              style={{ left: longPressChoice.screenX - 96, top: longPressChoice.screenY - 40 }}>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">{nearestName(longPressChoice.x, longPressChoice.y)} 근처</p>
+              <div className="flex gap-2">
+                <button onClick={handleLongPressStart} className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 transition-colors">
+                  🟢 출발
+                </button>
+                <button onClick={handleLongPressEnd} className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-colors">
+                  🔴 도착
+                </button>
+              </div>
+              <button onClick={() => setLongPressChoice(null)} className="w-full mt-1.5 text-xs text-gray-400 hover:text-gray-600 text-center">취소</button>
             </div>
           )}
 
@@ -423,7 +479,7 @@ export default function HomePage() {
           {clientRoute && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
               <button
-                onClick={() => setClientRoute(null)}
+                onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); }}
                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-full shadow-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
               >
                 ✕ 경로 지우기

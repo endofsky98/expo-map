@@ -45,6 +45,9 @@ export interface MapViewerProps {
   clientRoute?: { path: { x: number; y: number }[]; distance: number } | null;
   navMode?: 'none' | 'waiting_start';
   onNavTap?: (worldX: number, worldY: number) => void;
+  onLongPress?: (worldX: number, worldY: number) => void;
+  navStartPoint?: { x: number; y: number } | null;
+  navEndPoint?: { x: number; y: number } | null;
 }
 
 export const MIN_ZOOM = 0.1;

@@ -36,7 +36,9 @@ export default function MapViewer({
   onZoomChange,
   clientRoute,
   navMode,
-  onNavTap,
+  onLongPress,
+  navStartPoint,
+  navEndPoint,
 }: MapViewerProps) {
   const { ln } = useI18n();
   const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
@@ -76,13 +78,11 @@ export default function MapViewer({
   const onBoothClickRef = useRef(onBoothClick);
   const onMapClickRef = useRef(onMapClick);
   const onZoomChangeRef = useRef(onZoomChange);
-  const navModeRef = useRef<'none' | 'waiting_start'>(navMode ?? 'none');
-  const onNavTapRef = useRef(onNavTap);
+  const onLongPressRef = useRef(onLongPress);
   onBoothClickRef.current = onBoothClick;
   onMapClickRef.current = onMapClick;
   onZoomChangeRef.current = onZoomChange;
-  navModeRef.current = navMode ?? 'none';
-  onNavTapRef.current = onNavTap;
+  onLongPressRef.current = onLongPress;
 
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -484,7 +484,7 @@ export default function MapViewer({
       canvas, el, mainContainer, transformRef, canvasDimsRef, mainContainerRef,
       velocityRef, inertiaRafRef, animZoomRafRef,
       boothsRef, visibleFacilitiesRef, currentFloorIdRef,
-      onBoothClickRef, onMapClickRef, navModeRef, onNavTapRef,
+      onBoothClickRef, onMapClickRef, onLongPressRef,
       stopInertia, applyTransform, applyZoom, animateZoom, applyTilt,
       clampPosition, syncContainerPosition, scheduleRenderTiles, scheduleMarkerUpdate,
       startInertia, setFacilityTooltip,
@@ -1555,6 +1555,30 @@ export default function MapViewer({
       />
 
       {/* 글자 크기 조절은 외부(index.tsx)에서 제어 */}
+
+      {/* 출발/도착 핀 마커 */}
+      {navStartPoint && (() => {
+        const t = transformRef.current;
+        const sc = t.scale, cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
+        const sx = t.x + sc * (navStartPoint.x * cosR - navStartPoint.y * sinR);
+        const sy = t.y + sc * (navStartPoint.x * sinR + navStartPoint.y * cosR);
+        return (
+          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 12, top: sy - 32 }}>
+            <svg width="24" height="32" viewBox="0 0 24 32"><path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20s12-11 12-20C24 5.37 18.63 0 12 0z" fill="#22c55e" stroke="#fff" strokeWidth="2"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
+          </div>
+        );
+      })()}
+      {navEndPoint && (() => {
+        const t = transformRef.current;
+        const sc = t.scale, cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
+        const sx = t.x + sc * (navEndPoint.x * cosR - navEndPoint.y * sinR);
+        const sy = t.y + sc * (navEndPoint.x * sinR + navEndPoint.y * cosR);
+        return (
+          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 12, top: sy - 32 }}>
+            <svg width="24" height="32" viewBox="0 0 24 32"><path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20s12-11 12-20C24 5.37 18.63 0 12 0z" fill="#ef4444" stroke="#fff" strokeWidth="2"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
+          </div>
+        );
+      })()}
 
       {/* Facility tooltip overlay */}
       {facilityTooltip && (

@@ -21,8 +21,7 @@ export interface PointerEventDeps {
   currentFloorIdRef: React.MutableRefObject<number | null>;
   onBoothClickRef: React.MutableRefObject<(booth: Booth) => void>;
   onMapClickRef: React.MutableRefObject<((x: number, y: number, floorId: number) => void) | undefined>;
-  navModeRef: React.MutableRefObject<'none' | 'waiting_start'>;
-  onNavTapRef: React.MutableRefObject<((wx: number, wy: number) => void) | undefined>;
+  onLongPressRef: React.MutableRefObject<((wx: number, wy: number) => void) | undefined>;
   stopInertia: () => void;
   applyTransform: (newScale: number, newRotation: number, pivotX: number, pivotY: number) => void;
   applyZoom: (newScale: number, pivotX: number, pivotY: number) => void;
@@ -46,7 +45,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     canvas, el, mainContainer, transformRef, canvasDimsRef, mainContainerRef,
     velocityRef, inertiaRafRef, animZoomRafRef,
     boothsRef, visibleFacilitiesRef, currentFloorIdRef,
-    onBoothClickRef, onMapClickRef, navModeRef, onNavTapRef,
+    onBoothClickRef, onMapClickRef, onLongPressRef,
     stopInertia, applyTransform, applyZoom, animateZoom, applyTilt,
     clampPosition, syncContainerPosition, scheduleRenderTiles, scheduleMarkerUpdate,
     startInertia, setFacilityTooltip,
@@ -68,6 +67,9 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   let pitchActive = false;
   let zoomActive = false;
   let rotateActive = false;
+  // Long press
+  let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+  let longPressFired = false;
   // Mouse button tracking
   let mouseButton: number | null = null;
   // Double-tap
@@ -92,6 +94,22 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
       dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
       pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
       lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
+      // 롱프레스 시작
+      longPressFired = false;
+      if (longPressTimer) clearTimeout(longPressTimer);
+      const downX = e.clientX, downY = e.clientY;
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        const sc = transformRef.current.scale;
+        const cosR = Math.cos(transformRef.current.rotation);
+        const sinR = Math.sin(transformRef.current.rotation);
+        const rect = canvas.getBoundingClientRect();
+        const sx = downX - rect.left, sy = downY - rect.top;
+        const dx0 = sx - transformRef.current.x, dy0 = sy - transformRef.current.y;
+        const wx = (dx0 * cosR + dy0 * sinR) / sc;
+        const wy = (-dx0 * sinR + dy0 * cosR) / sc;
+        onLongPressRef.current?.(wx, wy);
+      }, 500);
     }
 
     if (allPtrs.length === 2 && !firstTwoIds) {
@@ -115,6 +133,10 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   const onPointerMove = (e: PointerEvent) => {
     const prev = pointers.get(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    // 롱프레스 취소 (이동 10px 이상)
+    if (longPressTimer && Math.hypot(e.clientX - pointerDownInfo.x, e.clientY - pointerDownInfo.y) > 10) {
+      clearTimeout(longPressTimer); longPressTimer = null;
+    }
 
     // --- Two-finger gestures (all simultaneous) ---
     if (firstTwoIds) {
@@ -251,6 +273,10 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   const onPointerUp = (e: PointerEvent) => {
     canvas.releasePointerCapture(e.pointerId);
     pointers.delete(e.pointerId);
+    // 롱프레스 타이머 취소
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+    // 롱프레스 발생 시 클릭 무시
+    if (longPressFired) { longPressFired = false; isDragging = false; return; }
 
     // Two-finger tap → zoom out (Mapbox style)
     if (firstTwoIds && !twoFingerTapMoved && (Date.now() - twoFingerTapStart < 300)) {
@@ -344,11 +370,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     const wx = (dx0 * cosR + dy0 * sinR) / sc;
     const wy = (-dx0 * sinR + dy0 * cosR) / sc;
 
-    // Navigation mode: waiting_start — fire onNavTap and return
-    if (navModeRef.current === 'waiting_start') {
-      onNavTapRef.current?.(wx, wy);
-      return;
-    }
+    // (long press handled via timer, not click)
 
     // Check facilities first
     for (const fac of visibleFacilitiesRef.current) {
