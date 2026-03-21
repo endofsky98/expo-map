@@ -992,13 +992,19 @@ export default function MapViewer({
         circles[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
       }
 
-      // Update label: booth number + company name when zoomed
+      // Update label: 회사명 우선 표시, 없으면 부스번호
       const label = el.querySelector('[data-label]') as HTMLElement;
       if (label) {
         const companyName = lnFn(booth.company?.name) || '';
-        if (sc >= 1.5 && companyName) {
-          label.textContent = `${booth.booth_number}\n${companyName}`;
-          label.style.whiteSpace = 'pre-line';
+        if (companyName) {
+          // 회사명 항상 표시, 줌인 시 부스번호도 추가
+          if (sc >= 1.5) {
+            label.textContent = `${companyName}\n${booth.booth_number}`;
+            label.style.whiteSpace = 'pre-line';
+          } else {
+            label.textContent = companyName;
+            label.style.whiteSpace = 'nowrap';
+          }
         } else {
           label.textContent = booth.booth_number;
           label.style.whiteSpace = 'nowrap';
@@ -1054,10 +1060,11 @@ export default function MapViewer({
           `<circle cx="14" cy="14" r="8" fill="none" stroke="#fff" stroke-width="2"/>` +
           `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" stroke-width="2"/>`;
 
-        // Booth number label — below pin, black text with white outline
+        // Label — 회사명 우선, 없으면 부스번호
         const label = document.createElement('div');
         label.setAttribute('data-label', '');
-        label.textContent = booth.booth_number;
+        const initCompanyName = lnRef.current(booth.company?.name) || '';
+        label.textContent = initCompanyName || booth.booth_number;
         label.style.fontSize = '12px';
         label.style.fontWeight = '700';
         label.style.fontFamily = 'Inter, sans-serif';

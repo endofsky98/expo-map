@@ -31,7 +31,7 @@ import { fetchFloors, fetchHalls, fetchBooths, fetchObstacles, fetchImages } fro
 import { createBooth, updateBooth, deleteBooth } from '@/lib/api';
 import { createHall, updateHall, deleteHall } from '@/lib/api';
 import { createObstacle, updateObstacle, deleteObstacle } from '@/lib/api';
-import { fetchCategories, fetchCompanies } from '@/lib/api';
+import { fetchCategories, fetchCompanies, createCompany } from '@/lib/api';
 import {
   fetchPathNodes, createPathNode, updatePathNode, deletePathNode,
   fetchPathEdges, createPathEdge, deletePathEdge,
@@ -271,7 +271,19 @@ export default function EditorPage() {
         category_id: booth.category_id ?? (booth as any).category?.id ?? null,
       };
       return <BoothPanel booth={boothWithCompany} categories={categories} companies={companies}
-        onSave={async (id, data) => { try { await updateBooth(id, data as any); const updated = await fetchBooths(selectedFloorId!); setBooths(updated as any[]); } catch(e) { console.error('부스 저장 실패:', e); } }}
+        onSave={async (id, data) => { try {
+          let saveData = { ...data } as any;
+          // 새 회사명 입력 → companies 테이블에 추가
+          if (saveData.company_name && !saveData.company_id) {
+            const newComp = await createCompany({ name: { ko: saveData.company_name, en: saveData.company_name }, category_id: saveData.category_id || undefined });
+            saveData.company_id = newComp.id;
+            delete saveData.company_name;
+            // companies 목록 갱신
+            fetchCompanies().then(c => setCompanies(c.map(cc => ({ id: cc.id, name: cc.name, category_id: cc.category_id })))).catch(() => {});
+          }
+          await updateBooth(id, saveData);
+          const updated = await fetchBooths(selectedFloorId!); setBooths(updated as any[]);
+        } catch(e) { console.error('부스 저장 실패:', e); } }}
         onDelete={async (id) => { try { await deleteBooth(id); setBooths(prev => prev.filter(b => b.id !== id)); setSelectedObject(null); } catch(e) { console.error('부스 삭제 실패:', e); alert('삭제 실패: ' + (e as any)?.message); } }} />;
     }
 
