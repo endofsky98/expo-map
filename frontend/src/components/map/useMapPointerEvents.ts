@@ -98,10 +98,11 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
       longPressFired = false;
       if (longPressTimer) clearTimeout(longPressTimer);
       {
+        // handleClick과 동일하게 el(컨테이너) 기준 좌표 사용
         const t0 = transformRef.current;
         const sc0 = t0.scale;
         const cosR0 = Math.cos(t0.rotation), sinR0 = Math.sin(t0.rotation);
-        const rect0 = canvas.getBoundingClientRect();
+        const rect0 = el.getBoundingClientRect();
         const sx0 = e.clientX - rect0.left, sy0 = e.clientY - rect0.top;
         const dx00 = sx0 - t0.x, dy00 = sy0 - t0.y;
         const wx0 = (dx00 * cosR0 + dy00 * sinR0) / sc0;
