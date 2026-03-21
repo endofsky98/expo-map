@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as PIXI from 'pixi.js';
 import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 import { useI18n } from '@/lib/i18n';
@@ -6,11 +6,10 @@ import {
   MapViewerProps, TileInfo, CurrentPosition, FACILITY_STYLES,
   MIN_ZOOM, MAX_ZOOM, MIN_TILT, MAX_TILT, MIN_BOOTH_SCREEN_SIZE,
   CLICK_THRESHOLD, CLICK_TIME_THRESHOLD, ROTATION_THRESHOLD, ZOOM_THRESHOLD, MIN_MARKER_DIST,
-  parseZoomLevels, hexStringToNumber, selectTileLevel,
+  maxMarkersForScale, parseZoomLevels, hexStringToNumber, selectTileLevel,
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import { clusterBooths, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM, selectRepresentative, getBoothDisplayName } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -71,9 +70,14 @@ export default function MapViewer({
   onMapClickRef.current = onMapClick;
   onZoomChangeRef.current = onZoomChange;
 
-  // PIXI label container (world 좌표 — mainContainer 자식)
-  const boothLabelContainerRef = useRef<PIXI.Container | null>(null);
+  const markerOverlayRef = useRef<HTMLDivElement | null>(null);
+  const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const rafIdRef = useRef<number>(0);
+  const prevVisibleIdsRef = useRef<Set<number>>(new Set());
+  const prevScaleRef = useRef<number>(1);
+  const stableIdsRef = useRef<Set<number>>(new Set()); // confirmed markers (only recalc on settle)
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadingIdsRef = useRef<Set<number>>(new Set()); // markers mid-fade, don't touch opacity
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
@@ -208,12 +212,13 @@ export default function MapViewer({
     return { sx, sy };
   }
 
-  // debounced booth label re-render (드래그/줌 settle 후 호출)
+  // Schedule marker position update via rAF (debounced)
   function scheduleMarkerUpdate() {
-    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(() => {
-      renderBoothLabels();
-    }, 300);
+    if (rafIdRef.current) return;
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = 0;
+      updateMarkerPositions();
+    });
   }
 
   // Clamp: image must overlap screen center — image cannot leave the center point
@@ -433,10 +438,7 @@ export default function MapViewer({
     mainContainer.addChild(tileLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(routeLayerRef.current);
-    // boothLabelContainer: PIXI 텍스트/그래픽 라벨 레이어 (world 좌표 — pan/zoom 자동 적용)
-    const boothLabelContainer = new PIXI.Container();
-    boothLabelContainerRef.current = boothLabelContainer;
-    mainContainer.addChild(boothLabelContainer);
+    // boothLayer removed — booths are now HTML DOM markers
     mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(overlayLayerRef.current);
     mainContainerRef.current = mainContainer;
@@ -499,7 +501,6 @@ export default function MapViewer({
       app.destroy(true);
       pixiApp.current = null;
       mainContainerRef.current = null;
-      boothLabelContainerRef.current = null;
       canvasRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -724,13 +725,180 @@ export default function MapViewer({
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
-  // ===== Booths (PIXI 텍스트 라벨 — world 좌표) =====
+  // ===== Booths (HTML DOM markers — Mapbox style) =====
 
-  // Helper: compute viewport-visible booths
-  function getVisibleBooths(): Booth[] {
+  // recalcMarkers: called after interaction settles (debounced)
+  // Picks up to MAX_MARKERS using center-weighted sampling, applies fade transitions
+  function recalcMarkers() {
+    const markers = markerElementsRef.current;
+    const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
+    const MAX_MARKERS = maxMarkersForScale(sc);
+    const { width: cw, height: ch } = canvasDimsRef.current;
+    const show = showBoothsRef.current;
+
+    // Get visible booths in viewport
+    const cosR = Math.cos(rot);
+    const sinR = Math.sin(rot);
+    const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
+    const wCorners = scrCorners.map(([sx, sy]) => ({
+      x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
+      y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
+    }));
+    const bx0 = Math.min(...wCorners.map(c => c.x));
+    const by0 = Math.min(...wCorners.map(c => c.y));
+    const bx1 = Math.max(...wCorners.map(c => c.x));
+    const by1 = Math.max(...wCorners.map(c => c.y));
+
+    const visibleBooths: Booth[] = [];
+    for (const booth of boothsRef.current) {
+      const cx = booth.x + booth.width / 2;
+      const cy = booth.y + booth.height / 2;
+      if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
+        visibleBooths.push(booth);
+      }
+    }
+
+    // Compute screen positions for all visible booths
+    const boothScreenPos = new Map<number, { sx: number; sy: number }>();
+    for (const booth of visibleBooths) {
+      const wcx = booth.x + booth.width / 2;
+      const wcy = booth.y + booth.height / 2;
+      boothScreenPos.set(booth.id, worldToScreen(wcx, wcy));
+    }
+
+    const MIN_MARKER_DIST = 60; // px minimum distance between markers
+
+    let newIds: Set<number>;
+    if (visibleBooths.length <= MAX_MARKERS) {
+      newIds = new Set(visibleBooths.map(b => b.id));
+    } else {
+      const focusX = cw / 2;
+      const focusY = ch * (2 / 3);
+      const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
+
+      // 1) Keep existing stable markers that are still visible AND not too far from focus
+      const oldIds = stableIdsRef.current;
+      const kept = new Set<number>();
+      const keptPositions: { sx: number; sy: number }[] = [];
+
+      // Score old markers — drop those whose probability fell too low
+      for (const id of oldIds) {
+        const pos = boothScreenPos.get(id);
+        if (!pos) continue; // left viewport
+        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
+        const normalized = dist / maxDist;
+        // Drop if too far (probability < 15%)
+        if (normalized > 0.85) continue;
+        if (kept.size >= MAX_MARKERS) break;
+        kept.add(id);
+        keptPositions.push(pos);
+      }
+
+      // 2) Fill remaining slots with weighted random selection + minimum distance
+      const candidates = visibleBooths.filter(b => !kept.has(b.id));
+      const scored: { id: number; weight: number; sx: number; sy: number }[] = [];
+      for (const booth of candidates) {
+        const pos = boothScreenPos.get(booth.id)!;
+        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
+        const normalized = dist / maxDist;
+        const weight = Math.exp(-2.5 * normalized * normalized);
+        scored.push({ id: booth.id, weight, ...pos });
+      }
+
+      // Weighted random selection without replacement, respecting min distance
+      const pool = [...scored];
+      while (kept.size < MAX_MARKERS && pool.length > 0) {
+        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
+        if (totalWeight <= 0) break;
+        let r = Math.random() * totalWeight;
+        let picked = pool.length - 1;
+        for (let i = 0; i < pool.length; i++) {
+          r -= pool[i].weight;
+          if (r <= 0) { picked = i; break; }
+        }
+        const candidate = pool[picked];
+        pool.splice(picked, 1);
+
+        // Check minimum distance from all already-placed markers
+        const tooClose = keptPositions.some(p => {
+          const dx = p.sx - candidate.sx;
+          const dy = p.sy - candidate.sy;
+          return dx * dx + dy * dy < MIN_MARKER_DIST * MIN_MARKER_DIST;
+        });
+        if (tooClose) continue;
+
+        kept.add(candidate.id);
+        keptPositions.push({ sx: candidate.sx, sy: candidate.sy });
+      }
+      newIds = kept;
+    }
+
+    const oldIds = stableIdsRef.current;
+
+    // FadeOut markers that are being removed
+    for (const id of oldIds) {
+      if (!newIds.has(id)) {
+        const el = markers.get(id);
+        if (el) {
+          fadingIdsRef.current.add(id);
+          el.style.transition = 'opacity 1s ease-out';
+          el.style.opacity = '0';
+          setTimeout(() => {
+            fadingIdsRef.current.delete(id);
+            if (!stableIdsRef.current.has(id)) {
+              el.style.display = 'none';
+              el.style.transition = '';
+            }
+          }, 1000);
+        }
+      }
+    }
+
+    // FadeIn new markers
+    for (const id of newIds) {
+      if (!oldIds.has(id)) {
+        const el = markers.get(id);
+        if (el) {
+          const booth = boothMapRef.current.get(id);
+          if (booth) {
+            const wcx = booth.x + booth.width / 2;
+            const wcy = booth.y + booth.height / 2;
+            const { sx, sy } = worldToScreen(wcx, wcy);
+            el.style.display = 'flex';
+            el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+            fadingIdsRef.current.add(id);
+            el.style.opacity = '0';
+            el.style.transition = 'none';
+            // Force layout flush so browser registers opacity:0 before transition starts
+            void el.offsetHeight;
+            el.style.transition = 'opacity 1s ease-in';
+            el.style.opacity = '1';
+            setTimeout(() => {
+              fadingIdsRef.current.delete(id);
+            }, 1000);
+          }
+        }
+      }
+    }
+
+    stableIdsRef.current = newIds;
+    prevVisibleIdsRef.current = newIds;
+  }
+
+  // updateMarkerPositions: called on every transform change via rAF
+  function updateMarkerPositions() {
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const markers = markerElementsRef.current;
     const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
     const { width: cw, height: ch } = canvasDimsRef.current;
     const show = showBoothsRef.current;
+    const selId = selectedBoothIdRef.current;
+    const actCats = activeCategoriesRef.current;
+    const catColors = categoryColorMapRef.current;
+    const lnFn = lnRef.current;
+
+    // Rotation-aware viewport bounds in world space
     const cosR = Math.cos(rot);
     const sinR = Math.sin(rot);
     const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
@@ -742,180 +910,221 @@ export default function MapViewer({
     const by0 = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
     const bx1 = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
     const by1 = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
-    const result: Booth[] = [];
+
+    // Viewport culling
+    const visibleBooths: Booth[] = [];
     for (const booth of boothsRef.current) {
       const cx = booth.x + booth.width / 2;
       const cy = booth.y + booth.height / 2;
       if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
-        result.push(booth);
+        visibleBooths.push(booth);
       }
     }
-    return result;
-  }
 
-  // ===== PIXI Booth Labels =====
+    const MAX_MARKERS = maxMarkersForScale(sc);
+    const visibleBoothIds = new Set(visibleBooths.map(b => b.id));
 
-  /**
-   * renderBoothLabels — 부스 라벨을 PIXI.Container에 직접 렌더링.
-   * mainContainer의 자식이므로 pan/zoom 자동 적용 (world 좌표 사용).
-   *
-   * - scale < CLUSTER_MAX_ZOOM: 클러스터 모드 (bounding box 음영 + 대표업체명 + "외 N개")
-   * - scale >= CLUSTER_MAX_ZOOM: 개별 부스 라벨 모드
-   */
-  function renderBoothLabels() {
-    const container = boothLabelContainerRef.current;
-    if (!container) return;
-    container.removeChildren();
+    // During interaction: keep stable set, only drop markers that left viewport
+    const stable = stableIdsRef.current;
+    const currentDisplay = new Set<number>();
+    for (const id of stable) {
+      if (visibleBoothIds.has(id)) currentDisplay.add(id);
+    }
 
-    if (!showBoothsRef.current) return;
+    // Schedule a settle recalculation (debounced 300ms after last interaction)
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      recalcMarkers();
+    }, 300);
 
-    const { scale: sc } = transformRef.current;
-    const dpr = window.devicePixelRatio || 1;
-    const visibleBooths = getVisibleBooths();
+    const sampledIds = currentDisplay;
+    const prevVisible = prevVisibleIdsRef.current;
 
-    // 클러스터링 수행
-    const forceIndividual = sc >= CLUSTER_MAX_ZOOM;
-    const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
-    const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
+    for (const booth of boothsRef.current) {
+      const el = markers.get(booth.id);
+      if (!el) continue;
 
-    for (const cluster of clusters) {
-      if (cluster.isCluster && cluster.count > 1) {
-        // ===== 클러스터: bounding box 음영 + 대표업체명 + "외 N개" =====
-        const bx = cluster.bboxX ?? cluster.x;
-        const by = cluster.bboxY ?? cluster.y;
-        const bw = cluster.bboxW ?? 40;
-        const bh = cluster.bboxH ?? 40;
-        const pad = 8; // world px padding
+      const isDisplayed = sampledIds.has(booth.id);
 
-        // 배경 반투명 사각형
-        const bg = new PIXI.Graphics();
-        bg.beginFill(0x4f46e5, 0.1);
-        bg.lineStyle(1.5, 0x4f46e5, 0.25);
-        bg.drawRoundedRect(bx - pad, by - pad, bw + pad * 2, bh + pad * 2, 10);
-        bg.endFill();
-        container.addChild(bg);
-
-        // 대표 업체 선정
-        const rep = selectRepresentative(cluster.boothIds, boothsRef.current);
-        const repName = rep ? getBoothDisplayName(rep) : '';
-
-        // 텍스트 크기: world 좌표 기준 (줌에 반비례하여 화면 크기 일정 유지)
-        const targetScreenPx = 13; // 화면에서 보이길 원하는 px
-        const fontSize = Math.max(8, Math.min(30, targetScreenPx / sc));
-
-        if (repName) {
-          const label = cluster.count > 1 ? `${repName}\n외 ${cluster.count - 1}개` : repName;
-          const { rotation: rot } = transformRef.current;
-          // billboard: 텍스트 항상 정면
-          const textGroup = new PIXI.Container();
-          textGroup.position.set(bx + bw / 2, by + bh / 2);
-          textGroup.rotation = -rot;
-          textGroup.scale.set(1 / sc);
-          const text = new PIXI.Text(label, {
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 14,
-            fontWeight: '700',
-            fill: '#4f46e5',
-            align: 'center',
-            wordWrap: false,
-          });
-          text.resolution = dpr * 2;
-          text.anchor.set(0.5, 0.5);
-          textGroup.addChild(text);
-          container.addChild(textGroup);
+      if (!isDisplayed) {
+        // Don't hide if mid-fade (managed by recalcMarkers)
+        if (!prevVisible.has(booth.id) && !fadingIdsRef.current.has(booth.id)) {
+          el.style.display = 'none';
         }
-      } else {
-        // ===== 개별 부스: 핀 마커 + 텍스트 (billboard — 항상 정면) =====
-        const booth = cluster.representBooth;
-        if (!booth) continue;
+        continue;
+      }
 
-        const actCats = activeCategoriesRef.current;
+      const wcx = booth.x + booth.width / 2;
+      const wcy = booth.y + booth.height / 2;
+      const { sx, sy } = worldToScreen(wcx, wcy);
+
+      // Perspective scale: when tilted, markers near top (far) shrink, near bottom (close) grow
+      const tilt = transformRef.current.tilt;
+      let pScale = 1;
+      if (tilt > 0) {
+        const normalizedY = Math.max(0, Math.min(1, sy / ch));
+        pScale = 0.5 + normalizedY * 0.8;
+      }
+
+      // Position update only (no fade logic here — recalcMarkers handles transitions)
+      el.style.display = 'flex';
+      el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(${pScale.toFixed(3)})`;
+
+      // Category filter opacity — skip if mid-fade
+      if (!fadingIdsRef.current.has(booth.id)) {
         const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
+        el.style.opacity = String(opacity);
+      }
 
-        const name = getBoothDisplayName(booth);
-        const boothNum = booth.booth_number || '';
+      // Update SVG pin color for selection
+      const isSelected = booth.id === selId;
+      const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#ef4444';
+      const paths = el.querySelectorAll('svg path');
+      const circles = el.querySelectorAll('svg circle');
+      if (paths.length >= 2) {
+        paths[0].setAttribute('fill', fill);
+        paths[0].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
+        paths[0].setAttribute('stroke-width', isSelected ? '3' : '2.5');
+        paths[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
+      }
+      if (circles.length >= 2) {
+        circles[0].setAttribute('fill', fill);
+        circles[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
+      }
 
-        const cx = booth.x + booth.width / 2;
-        const cy = booth.y + booth.height / 2;
-        const { rotation: rot } = transformRef.current;
-
-        // 마커 그룹 (billboard: -rotation 역보정으로 항상 정면)
-        const markerGroup = new PIXI.Container();
-        markerGroup.position.set(cx, cy);
-        markerGroup.rotation = -rot;
-        markerGroup.alpha = opacity;
-
-        // 스케일: world 좌표에서 화면 크기 일정하게
-        const markerScale = 1 / sc;
-        markerGroup.scale.set(markerScale);
-
-        // 핀 아이콘 (PIXI.Graphics)
-        const pin = new PIXI.Graphics();
-        // 핀 몸통 (물방울 형태)
-        pin.beginFill(0xef4444); // 빨간색
-        pin.moveTo(0, -28);
-        pin.bezierCurveTo(-10, -28, -14, -18, -14, -12);
-        pin.bezierCurveTo(-14, -4, 0, 6, 0, 6);
-        pin.bezierCurveTo(0, 6, 14, -4, 14, -12);
-        pin.bezierCurveTo(14, -18, 10, -28, 0, -28);
-        pin.endFill();
-        // 핀 원 (흰색 내부)
-        pin.beginFill(0xffffff);
-        pin.drawCircle(0, -16, 6);
-        pin.endFill();
-        markerGroup.addChild(pin);
-
-        // 부스번호 (핀 위 작은 글씨)
-        if (boothNum) {
-          const numText = new PIXI.Text(boothNum, {
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 11,
-            fontWeight: '500',
-            fill: '#9ca3af',
-            align: 'center',
-          });
-          numText.resolution = dpr * 2;
-          numText.anchor.set(0.5, 1);
-          numText.position.set(0, -32);
-          markerGroup.addChild(numText);
+      // Update label: 부스번호(위 작은) + 회사명(아래 큰)
+      const nameEl = el.querySelector('[data-name]') as HTMLElement;
+      const numEl = el.querySelector('[data-num]') as HTMLElement;
+      const labelEl = el.querySelector('[data-label]') as HTMLElement;
+      if (nameEl) {
+        const companyName = lnFn(booth.company?.name) || '';
+        nameEl.textContent = companyName || booth.booth_number;
+        // 회사명이 있으면 부스번호 표시, 없으면 숨기기
+        if (numEl) {
+          numEl.textContent = booth.booth_number;
+          numEl.style.display = companyName ? '' : 'none';
+        } else if (companyName && labelEl) {
+          // numEl 없으면 생성
+          const ns = document.createElement('div');
+          ns.setAttribute('data-num', '');
+          ns.textContent = booth.booth_number;
+          ns.style.fontSize = '12px'; ns.style.fontWeight = '500';
+          ns.style.color = '#6b7280'; ns.style.whiteSpace = 'nowrap';
+          ns.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
+          labelEl.insertBefore(ns, nameEl);
         }
-
-        // 회사명 (핀 아래 큰 글씨)
-        if (name) {
-          const nameText = new PIXI.Text(name, {
-            fontFamily: 'Inter, sans-serif',
-            fontSize: 16,
-            fontWeight: '700',
-            fill: '#1f2937',
-            align: 'center',
-          });
-          nameText.resolution = dpr * 2;
-          nameText.anchor.set(0.5, 0);
-          nameText.position.set(0, 10);
-          // 흰색 배경 텍스트 가독성
-          const nameBg = new PIXI.Graphics();
-          const nb = nameText.getLocalBounds();
-          nameBg.beginFill(0xffffff, 0.85);
-          nameBg.drawRoundedRect(nb.x - 4, nb.y - 2 + 10, nb.width + 8, nb.height + 4, 4);
-          nameBg.endFill();
-          markerGroup.addChild(nameBg);
-          markerGroup.addChild(nameText);
-        }
-
-        container.addChild(markerGroup);
       }
     }
+
+    // Save current visible set for next frame comparison
+    prevVisibleIdsRef.current = new Set(sampledIds);
   }
 
-  // booths 변경 시 라벨 재렌더
   useEffect(() => {
-    renderBoothLabels();
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const markers = markerElementsRef.current;
+    const currentIds = new Set(booths.map(b => b.id));
+
+    // Remove deleted booths
+    for (const [id, el] of markers) {
+      if (!currentIds.has(id)) {
+        el.remove();
+        markers.delete(id);
+      }
+    }
+
+    // Create new marker DOM elements
+    for (const booth of booths) {
+      if (!markers.has(booth.id)) {
+        const el = document.createElement('div');
+        el.className = 'booth-marker';
+        el.style.position = 'absolute';
+        el.style.left = '0';
+        el.style.top = '0';
+        el.style.willChange = 'transform';
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
+        el.style.zIndex = '10';
+        el.style.display = 'flex';
+        el.style.flexDirection = 'column';
+        el.style.alignItems = 'center';
+
+        const fill = booth.color || (booth.category_id && categoryColorMap[booth.category_id]) || '#ef4444';
+
+        // SVG map pin (realistic pin shape)
+        const pinSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        pinSvg.setAttribute('width', '14');
+        pinSvg.setAttribute('height', '18');
+        pinSvg.setAttribute('viewBox', '0 0 28 36');
+        pinSvg.style.filter = 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))';
+        pinSvg.innerHTML =
+          `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${fill}" stroke="#fff" stroke-width="2.5"/>` +
+          `<circle cx="14" cy="14" r="8" fill="${fill}"/>` +
+          `<circle cx="14" cy="14" r="8" fill="none" stroke="#fff" stroke-width="2"/>` +
+          `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" stroke-width="2"/>`;
+
+        // Label wrapper
+        const label = document.createElement('div');
+        label.setAttribute('data-label', '');
+        label.style.textAlign = 'center';
+        label.style.marginTop = '1px';
+        label.style.lineHeight = '1.2';
+
+        // 부스번호 (위, 작은 글씨)
+        const numSpan = document.createElement('div');
+        numSpan.setAttribute('data-num', '');
+        numSpan.textContent = booth.booth_number;
+        numSpan.style.fontSize = '12px';
+        numSpan.style.fontWeight = '500';
+        numSpan.style.color = '#6b7280';
+        numSpan.style.whiteSpace = 'nowrap';
+        numSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
+
+        // 회사명 (아래, 큰 글씨)
+        const nameSpan = document.createElement('div');
+        nameSpan.setAttribute('data-name', '');
+        const initCompanyName = lnRef.current(booth.company?.name) || '';
+        nameSpan.textContent = initCompanyName || booth.booth_number;
+        nameSpan.style.fontSize = '24px';
+        nameSpan.style.fontWeight = '700';
+        nameSpan.style.fontFamily = 'Inter, sans-serif';
+        nameSpan.style.color = '#1f2937';
+        nameSpan.style.whiteSpace = 'nowrap';
+        nameSpan.style.overflow = 'visible';
+        nameSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
+
+        // 회사명 있으면 부스번호+회사명, 없으면 회사명 자리에 부스번호만
+        if (initCompanyName) {
+          label.appendChild(numSpan);
+        }
+        label.appendChild(nameSpan);
+
+        el.appendChild(pinSvg);
+        el.appendChild(label);
+
+        // Click handler
+        el.addEventListener('pointerup', (e) => {
+          e.stopPropagation();
+          onBoothClickRef.current(booth);
+          if (typeof window !== 'undefined' && typeof (window as any).onBoothClick === 'function') {
+            (window as any).onBoothClick(booth.id, booth);
+          }
+        });
+
+        overlay.appendChild(el);
+        markers.set(booth.id, el);
+      }
+    }
+
+    // Initial marker calculation + position update
+    recalcMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
 
-  // 필터/선택 변경 시 라벨 재렌더
+  // Redraw markers on style/filter changes
   useEffect(() => {
-    renderBoothLabels();
+    updateMarkerPositions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBoothId, showBooths, activeCategories, categories, ln]);
 
@@ -1077,6 +1286,13 @@ export default function MapViewer({
         canvasPadRef={canvasPadRef}
         containerRef={containerRef}
       /> */}
+      {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
+      <div
+        ref={markerOverlayRef}
+        className="absolute inset-0 overflow-hidden"
+        style={{ pointerEvents: 'none', zIndex: 5 }}
+      />
+
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
         <div
