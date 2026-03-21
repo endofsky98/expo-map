@@ -1387,6 +1387,8 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerPanToArea = panToArea;
       (window as unknown as Record<string, unknown>).__mapViewerZoomIn = zoomIn;
       (window as unknown as Record<string, unknown>).__mapViewerZoomOut = zoomOut;
+      (window as unknown as Record<string, unknown>).__mapViewerFontUp = () => setMarkerFontSize(s => Math.min(48, s + 4));
+      (window as unknown as Record<string, unknown>).__mapViewerFontDown = () => setMarkerFontSize(s => Math.max(10, s - 4));
       (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
       (window as unknown as Record<string, unknown>).__mapViewerSetTilt = (deg: number) => applyTilt(deg);
     }
@@ -1411,33 +1413,7 @@ export default function MapViewer({
         style={{ pointerEvents: 'none', zIndex: 5 }}
       />
 
-      {/* 줌 + 글자 크기 컨트롤 (우측 하단 세로 배치) */}
-      <div className="absolute bottom-4 right-3 flex flex-col items-center gap-2" style={{ zIndex: 30 }}>
-        {/* 글자 크기 */}
-        <div className="flex flex-col items-center bg-white/90 backdrop-blur rounded-xl shadow-lg overflow-hidden">
-          <button
-            onClick={() => setMarkerFontSize(s => Math.min(48, s + 4))}
-            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-sm font-bold"
-          >A+</button>
-          <div className="w-full h-px bg-gray-200" />
-          <button
-            onClick={() => setMarkerFontSize(s => Math.max(10, s - 4))}
-            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-xs font-bold"
-          >A−</button>
-        </div>
-        {/* 줌 */}
-        <div className="flex flex-col items-center bg-white/90 backdrop-blur rounded-xl shadow-lg overflow-hidden">
-          <button
-            onClick={() => zoomIn()}
-            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-xl font-bold"
-          >+</button>
-          <div className="w-full h-px bg-gray-200" />
-          <button
-            onClick={() => zoomOut()}
-            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-xl font-bold"
-          >−</button>
-        </div>
-      </div>
+      {/* 글자 크기 조절은 외부(index.tsx)에서 제어 */}
 
       {/* Facility tooltip overlay */}
       {facilityTooltip && (

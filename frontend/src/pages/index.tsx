@@ -257,6 +257,14 @@ export default function HomePage() {
     }
   }
 
+  function handleFontUp() {
+    const fn = (window as unknown as Record<string, () => void>).__mapViewerFontUp;
+    if (fn) fn();
+  }
+  function handleFontDown() {
+    const fn = (window as unknown as Record<string, () => void>).__mapViewerFontDown;
+    if (fn) fn();
+  }
   function handleZoomIn() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerZoomIn;
     if (fn) fn();
@@ -480,6 +488,12 @@ export default function HomePage() {
                 ? <Square className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                 : <Box className="h-4 w-4 text-gray-700 dark:text-gray-300" />
               }
+            </button>
+            <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-sm font-bold text-gray-700 dark:text-gray-300" title="글자 크게">
+              A+
+            </button>
+            <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-xs font-bold text-gray-700 dark:text-gray-300" title="글자 작게">
+              A−
             </button>
             <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom in">
               <ZoomIn className="h-4 w-4 text-gray-700 dark:text-gray-300" />
