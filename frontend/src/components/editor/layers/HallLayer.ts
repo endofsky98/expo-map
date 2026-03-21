@@ -17,8 +17,13 @@ export function renderHallLayer(props: HallLayerProps) {
 
   const colors = LAYER_COLORS.hall;
 
-  // Sort by order so lower-order halls render first (background)
-  const sorted = [...halls].sort((a, b) => a.order - b.order);
+  // 렌더 순서: 홀(아래) → 구역(위). 같은 타입 안에서는 order 순
+  const sorted = [...halls].sort((a, b) => {
+    const aIsZone = (a as any).type === 'zone' ? 1 : 0;
+    const bIsZone = (b as any).type === 'zone' ? 1 : 0;
+    if (aIsZone !== bIsZone) return aIsZone - bIsZone;
+    return a.order - b.order;
+  });
 
   for (const hall of sorted) {
     const selected = selectedObject?.kind === 'hall' && selectedObject.id === hall.id;

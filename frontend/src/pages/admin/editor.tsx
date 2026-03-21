@@ -214,6 +214,11 @@ export default function EditorPage() {
     else if (kind === 'path_node') setPathNodes(prev => { captureMoveStart(prev, kind, id); return prev.map(n => n.id === id ? { ...n, x, y } : n); });
     else if (kind === 'obstacle') setObstacles(prev => { captureMoveStart(prev, kind, id); return prev.map(o => o.id === id ? { ...o, x, y } : o); });
     else if (kind === 'amenity') setAmenities(prev => { captureMoveStart(prev, kind, id); return prev.map(a => a.id === id ? { ...a, x, y } : a); });
+    else if (kind === 'hall') setHalls(prev => {
+      const h = prev.find(hh => hh.id === id);
+      if (h && !moveStartPos.current) moveStartPos.current = { kind, id, x: h.area_x ?? 0, y: h.area_y ?? 0 };
+      return prev.map(hh => hh.id === id ? { ...hh, area_x: x, area_y: y } : hh);
+    });
   }, []);
 
   // ===== Object move end handler (API 저장) =====
@@ -235,6 +240,9 @@ export default function EditorPage() {
       } else if (kind === 'amenity') {
         await updateAmenity(id, { x, y });
         setAmenities(prev => prev.map(a => a.id === id ? { ...a, x, y } : a));
+      } else if (kind === 'hall') {
+        await updateHall(id, { area_x: x, area_y: y } as any);
+        setHalls(prev => prev.map(h => h.id === id ? { ...h, area_x: x, area_y: y } : h));
       }
       if (before) pushAction({ type: 'move', kind: kind as ActionKind, id, before: before as Record<string, unknown>, after: { x, y } });
     } catch (err) { console.error('Move end error:', err); }

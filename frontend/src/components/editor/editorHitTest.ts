@@ -117,5 +117,9 @@ export function getObjPosition(
     const a = data.amenities.find(aa => aa.id === hit.id);
     return a ? { x: a.x, y: a.y } : null;
   }
+  if (hit.kind === 'hall') {
+    const h = data.halls.find(hh => hh.id === hit.id);
+    return h && h.area_x != null && h.area_y != null ? { x: h.area_x, y: h.area_y } : null;
+  }
   return null;
 }
