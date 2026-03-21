@@ -2,8 +2,9 @@
  * editor.tsx — 통합 맵 에디터 v2 페이지
  * 데이터 fetch + 상태 관리 + 레이어 조립 + 패널 분기.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import AdminLayout from '@/components/AdminLayout';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/router';
+import { isLoggedIn } from '@/lib/auth';
 import EditorCanvas, { LayerContext } from '@/components/editor/EditorCanvas';
 import EditorToolbar from '@/components/editor/EditorToolbar';
 import type {
@@ -39,6 +40,14 @@ import {
 } from '@/lib/editorApi';
 
 export default function EditorPage() {
+  const router = useRouter();
+  const [authChecked, setAuthChecked] = useState(false);
+
+  useEffect(() => {
+    if (!isLoggedIn()) router.replace('/admin/login');
+    else setAuthChecked(true);
+  }, [router]);
+
   // ===== Floor/Hall selection =====
   const [floors, setFloors] = useState<{ id: number; name: string }[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
@@ -267,10 +276,12 @@ export default function EditorPage() {
     return null;
   }
 
+  if (!authChecked) return <div className="h-screen bg-gray-900 flex items-center justify-center"><div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
+
   return (
-    <AdminLayout title="에디터">
+    <div className="h-screen flex flex-col bg-gray-900">
       {/* Top bar: floor selector */}
-      <div className="flex items-center gap-4 px-4 py-2 bg-gray-800 border-b border-gray-700">
+      <div className="flex items-center gap-4 px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
         <span className="text-white text-sm font-medium">📋 에디터</span>
         <select
           value={selectedFloorId ?? ''}
@@ -283,9 +294,10 @@ export default function EditorPage() {
           모드: <span className="text-indigo-400 font-medium">{mode}</span>
           {connectFromId && <span className="ml-2 text-yellow-400">연결 중: 노드 #{connectFromId}</span>}
         </div>
+        <a href="/admin" className="ml-auto text-gray-400 hover:text-white text-xs">← 관리자</a>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         {/* Left toolbar */}
         <EditorToolbar
           mode={mode} onModeChange={setMode}
@@ -310,10 +322,10 @@ export default function EditorPage() {
         />
 
         {/* Right panel */}
-        <div className="w-72 bg-gray-800 border-l border-gray-700 overflow-y-auto">
+        <div className="w-72 bg-gray-800 border-l border-gray-700 overflow-y-auto shrink-0">
           {renderPanel()}
         </div>
       </div>
-    </AdminLayout>
+    </div>
   );
 }
