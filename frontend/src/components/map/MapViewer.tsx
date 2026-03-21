@@ -1625,7 +1625,7 @@ export default function MapViewer({
     transformRef.current.y = ch / 2 - centerY * sc;
     clampPosition(transformRef.current);
     syncContainerPosition(mc, transformRef.current);
-    scheduleRenderTiles();
+    renderTilesFnRef.current();
     scheduleMarkerUpdate();
   }
 
@@ -1648,7 +1648,7 @@ export default function MapViewer({
     mc.rotation = 0;
     applyTilt(0);
     onZoomChangeRef.current?.(fitScale);
-    scheduleRenderTiles();
+    renderTilesFnRef.current();
     scheduleMarkerUpdate();
   }
 
@@ -1670,7 +1670,7 @@ export default function MapViewer({
     syncContainerPosition(mc, transformRef.current);
     mc.scale.set(clampedScale);
     onZoomChange?.(clampedScale);
-    scheduleRenderTiles();
+    renderTilesFnRef.current();
     scheduleMarkerUpdate();
   }
 
@@ -1698,7 +1698,7 @@ export default function MapViewer({
         syncContainerPosition(mc, transformRef.current);
         mc.scale.set(sc);
         onZoomChange?.(sc);
-        scheduleRenderTiles();
+        renderTilesFnRef.current();
         scheduleMarkerUpdate();
       };
       // 부드러운 이동 + 회전 애니메이션
