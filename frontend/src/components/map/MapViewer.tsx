@@ -1411,17 +1411,32 @@ export default function MapViewer({
         style={{ pointerEvents: 'none', zIndex: 5 }}
       />
 
-      {/* 글자 크기 조절 버튼 */}
-      <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-white/90 backdrop-blur rounded-full shadow-lg px-2 py-1" style={{ zIndex: 30 }}>
-        <button
-          onClick={() => setMarkerFontSize(s => Math.max(10, s - 4))}
-          className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-indigo-600 font-bold text-lg rounded-full hover:bg-indigo-50 transition-colors"
-        >−</button>
-        <span className="text-xs font-semibold text-gray-500 min-w-[28px] text-center">{markerFontSize}</span>
-        <button
-          onClick={() => setMarkerFontSize(s => Math.min(48, s + 4))}
-          className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-indigo-600 font-bold text-lg rounded-full hover:bg-indigo-50 transition-colors"
-        >+</button>
+      {/* 줌 + 글자 크기 컨트롤 (우측 하단 세로 배치) */}
+      <div className="absolute bottom-4 right-3 flex flex-col items-center gap-2" style={{ zIndex: 30 }}>
+        {/* 글자 크기 */}
+        <div className="flex flex-col items-center bg-white/90 backdrop-blur rounded-xl shadow-lg overflow-hidden">
+          <button
+            onClick={() => setMarkerFontSize(s => Math.min(48, s + 4))}
+            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-sm font-bold"
+          >A+</button>
+          <div className="w-full h-px bg-gray-200" />
+          <button
+            onClick={() => setMarkerFontSize(s => Math.max(10, s - 4))}
+            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-xs font-bold"
+          >A−</button>
+        </div>
+        {/* 줌 */}
+        <div className="flex flex-col items-center bg-white/90 backdrop-blur rounded-xl shadow-lg overflow-hidden">
+          <button
+            onClick={() => zoomIn()}
+            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-xl font-bold"
+          >+</button>
+          <div className="w-full h-px bg-gray-200" />
+          <button
+            onClick={() => zoomOut()}
+            className="w-10 h-10 flex items-center justify-center text-gray-600 hover:text-indigo-600 hover:bg-indigo-50 transition-colors text-xl font-bold"
+          >−</button>
+        </div>
       </div>
 
       {/* Facility tooltip overlay */}
