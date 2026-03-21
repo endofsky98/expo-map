@@ -114,12 +114,17 @@ export function createLabel(
   text: string, x: number, y: number, color: string,
   scale: number, anchor?: { x: number; y: number },
 ): PIXI.Text {
+  const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
+  // world 좌표 기준 폰트 크기 (screen에서 ~11px 보이도록)
+  const fontSize = Math.max(8, 11 / scale);
   const label = new PIXI.Text(text, {
-    fontSize: Math.max(6, 8 / scale),
-    fontFamily: 'Inter, sans-serif',
+    fontSize,
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif',
     fill: color,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    // 고해상도 래스터라이즈로 블러 방지
   });
+  label.resolution = dpr * 2; // 2배 오버샘플링
   if (anchor) label.anchor.set(anchor.x, anchor.y);
   label.x = x;
   label.y = y;
