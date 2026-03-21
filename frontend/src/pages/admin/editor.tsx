@@ -31,7 +31,7 @@ import { fetchFloors, fetchHalls, fetchBooths, fetchObstacles, fetchImages } fro
 import { createBooth, updateBooth, deleteBooth } from '@/lib/api';
 import { createHall, updateHall, deleteHall } from '@/lib/api';
 import { createObstacle, updateObstacle, deleteObstacle } from '@/lib/api';
-import { fetchCategories } from '@/lib/api';
+import { fetchCategories, fetchCompanies } from '@/lib/api';
 import {
   fetchPathNodes, createPathNode, updatePathNode, deletePathNode,
   fetchPathEdges, createPathEdge, deletePathEdge,
@@ -42,7 +42,8 @@ export default function EditorPage() {
   // ===== Floor/Hall selection =====
   const [floors, setFloors] = useState<{ id: number; name: string }[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
-  const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
+  const [categories, setCategories] = useState<{ id: number; name: string | Record<string, string> }[]>([]);
+  const [companies, setCompanies] = useState<{ id: number; name: string | Record<string, string> }[]>([]);
 
   // ===== Data =====
   const [halls, setHalls] = useState<EditorHall[]>([]);
@@ -71,7 +72,8 @@ export default function EditorPage() {
       setFloors(mapped);
       if (mapped.length > 0 && !selectedFloorId) setSelectedFloorId(mapped[0].id);
     }).catch(() => {});
-    fetchCategories().then(c => setCategories(c.map(cc => ({ id: cc.id, name: typeof cc.name === 'string' ? cc.name : String(cc.name) })))).catch(() => {});
+    fetchCategories().then(c => setCategories(c.map(cc => ({ id: cc.id, name: cc.name })))).catch(() => {});
+    fetchCompanies().then(c => setCompanies(c.map(cc => ({ id: cc.id, name: cc.name })))).catch(() => {});
   }, []);
 
   // ===== Fetch data when floor changes =====
@@ -227,7 +229,7 @@ export default function EditorPage() {
     if (selectedObject.kind === 'booth') {
       const booth = booths.find(b => b.id === selectedObject.id);
       if (!booth) return null;
-      return <BoothPanel booth={booth} categories={categories}
+      return <BoothPanel booth={booth} categories={categories} companies={companies}
         onSave={async (id, data) => { await updateBooth(id, data as any); setBooths(prev => prev.map(b => b.id === id ? { ...b, ...data } : b)); }}
         onDelete={async (id) => { await deleteBooth(id); setBooths(prev => prev.filter(b => b.id !== id)); setSelectedObject(null); }} />;
     }
