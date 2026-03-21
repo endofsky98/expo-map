@@ -187,26 +187,28 @@ export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point;
   }
 
   // 엣지 위의 점에 스냅
+  let bestSeg: typeof segments[0] | null = null;
   for (const seg of segments) {
     const nearest = nearestOnSegment(p, seg.from, seg.to);
     const d = dist(p, nearest);
     if (d < bestDist) {
       bestDist = d;
-      // 가상 노드 생성하여 그래프에 삽입
-      const vId = `snap_start`;
-      graph.nodes.set(vId, { id: vId, x: nearest.x, y: nearest.y });
-      // 양쪽 노드와 연결
-      if (!graph.adj.has(vId)) graph.adj.set(vId, []);
-      const dFrom = dist(nearest, seg.from);
-      const dTo = dist(nearest, seg.to);
-      graph.adj.get(vId)!.push({ to: seg.fromId, cost: dFrom }, { to: seg.toId, cost: dTo });
-      if (!graph.adj.has(seg.fromId)) graph.adj.set(seg.fromId, []);
-      if (!graph.adj.has(seg.toId)) graph.adj.set(seg.toId, []);
-      graph.adj.get(seg.fromId)!.push({ to: vId, cost: dFrom });
-      graph.adj.get(seg.toId)!.push({ to: vId, cost: dTo });
-      bestNodeId = vId;
       bestPoint = nearest;
+      bestSeg = seg;
     }
+  }
+  // 엣지 위의 점이 더 가까우면 가상 노드 생성
+  if (bestSeg) {
+    const vId = `snap_start`;
+    graph.nodes.set(vId, { id: vId, x: bestPoint.x, y: bestPoint.y });
+    const dFrom = dist(bestPoint, bestSeg.from);
+    const dTo = dist(bestPoint, bestSeg.to);
+    graph.adj.set(vId, [{ to: bestSeg.fromId, cost: dFrom }, { to: bestSeg.toId, cost: dTo }]);
+    if (!graph.adj.has(bestSeg.fromId)) graph.adj.set(bestSeg.fromId, []);
+    if (!graph.adj.has(bestSeg.toId)) graph.adj.set(bestSeg.toId, []);
+    graph.adj.get(bestSeg.fromId)!.push({ to: vId, cost: dFrom });
+    graph.adj.get(bestSeg.toId)!.push({ to: vId, cost: dTo });
+    bestNodeId = vId;
   }
 
   return { nodeId: bestNodeId, point: bestPoint };
@@ -224,38 +226,36 @@ export function findDestCandidates(
   const center = { x: cx, y: cy };
   const candidates: { nodeId: string; point: Point; dist: number; segKey: string }[] = [];
 
-  // 각 엣지에서 부스 중심과 가장 가까운 점
-  const segBest = new Map<string, { nodeId: string; point: Point; dist: number }>();
-  let vIdx = 0;
+  // 각 엣지에서 부스 중심과 가장 가까운 점 (후보 수집만, 그래프 수정 안 함)
+  const segBest = new Map<string, { point: Point; dist: number; seg: typeof segments[0] }>();
 
   for (const seg of segments) {
     const nearest = nearestOnSegment(center, seg.from, seg.to);
     const d = dist(center, nearest);
     if (d > DEST_RADIUS) continue;
-
-    // 시야선 체크 — 부스 중심에서 nearest까지 장애물 없는지
     if (hasObstruction(center, nearest, allBooths, obstacles, booth.id)) continue;
 
     const segKey = [seg.fromId, seg.toId].sort().join('-');
     const existing = segBest.get(segKey);
     if (!existing || d < existing.dist) {
-      const vId = `dest_${vIdx++}`;
-      graph.nodes.set(vId, { id: vId, x: nearest.x, y: nearest.y });
-      if (!graph.adj.has(vId)) graph.adj.set(vId, []);
-      const dFrom = dist(nearest, seg.from);
-      const dTo = dist(nearest, seg.to);
-      graph.adj.get(vId)!.push({ to: seg.fromId, cost: dFrom }, { to: seg.toId, cost: dTo });
-      if (!graph.adj.has(seg.fromId)) graph.adj.set(seg.fromId, []);
-      if (!graph.adj.has(seg.toId)) graph.adj.set(seg.toId, []);
-      graph.adj.get(seg.fromId)!.push({ to: vId, cost: dFrom });
-      graph.adj.get(seg.toId)!.push({ to: vId, cost: dTo });
-      segBest.set(segKey, { nodeId: vId, point: nearest, dist: d });
+      segBest.set(segKey, { point: nearest, dist: d, seg });
     }
   }
 
-  // segBest에서 최대 4개 선택 (거리 가까운 순)
+  // 최대 4개 선택 후 그래프에 삽입
   const sorted = [...segBest.values()].sort((a, b) => a.dist - b.dist).slice(0, 4);
-  return sorted.map(s => ({ nodeId: s.nodeId, point: s.point }));
+  return sorted.map((s, i) => {
+    const vId = `dest_${i}`;
+    graph.nodes.set(vId, { id: vId, x: s.point.x, y: s.point.y });
+    const dFrom = dist(s.point, s.seg.from);
+    const dTo = dist(s.point, s.seg.to);
+    graph.adj.set(vId, [{ to: s.seg.fromId, cost: dFrom }, { to: s.seg.toId, cost: dTo }]);
+    if (!graph.adj.has(s.seg.fromId)) graph.adj.set(s.seg.fromId, []);
+    if (!graph.adj.has(s.seg.toId)) graph.adj.set(s.seg.toId, []);
+    graph.adj.get(s.seg.fromId)!.push({ to: vId, cost: dFrom });
+    graph.adj.get(s.seg.toId)!.push({ to: vId, cost: dTo });
+    return { nodeId: vId, point: s.point };
+  });
 }
 
 // ===== A* 알고리즘 =====
