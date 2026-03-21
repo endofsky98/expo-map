@@ -195,6 +195,7 @@ export default function MapViewer({
   const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
   // 대표 부스 → 클러스터 중앙 world 좌표 (boothId → {wx, wy})
   const clusterRepCenterRef = useRef<Map<number, { wx: number; wy: number }>>(new Map());
+  const clusterNameMapRef = useRef<Map<number, string>>(new Map());
 
   // World coordinate → screen pixel (accounts for tilt via CSS perspective)
   function worldToScreen(wx: number, wy: number): { sx: number; sy: number } {
@@ -844,7 +845,7 @@ export default function MapViewer({
     // Determine which booth IDs to show as pins + cluster badge info
     const newIds = new Set<number>();
     // clusterKey → { boothId, count }
-    const clusterReps = new Map<string, { boothId: number; count: number }>();
+    const clusterReps = new Map<string, { boothId: number; count: number; name?: string }>();
 
     for (const c of clusters) {
       if (!c.isCluster || c.count === 1) {
@@ -855,7 +856,7 @@ export default function MapViewer({
         const rep = selectRepresentative(c.boothIds, boothsRef.current, hallsRef.current);
         if (rep.booth) {
           newIds.add(rep.booth.id);
-          clusterReps.set(c.id, { boothId: rep.booth.id, count: c.count });
+          clusterReps.set(c.id, { boothId: rep.booth.id, count: c.count, name: rep.name });
         } else if (c.boothIds.length > 0) {
           // Fallback: use first booth id
           newIds.add(c.boothIds[0]);
@@ -875,6 +876,13 @@ export default function MapViewer({
       }
     }
     clusterRepCenterRef.current = repCenters;
+
+    // 클러스터 대표 부스 → 클러스터 이름(홀/구역명) 매핑
+    const clusterNameMap = new Map<number, string>();
+    for (const [, rep] of clusterReps) {
+      if (rep.name) clusterNameMap.set(rep.boothId, rep.name);
+    }
+    clusterNameMapRef.current = clusterNameMap;
 
     const oldIds = stableIdsRef.current;
 
@@ -1114,12 +1122,13 @@ export default function MapViewer({
         circles[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
       }
 
-      // Update label: 부스번호(위 작은) + 회사명(아래 큰)
+      // Update label: 클러스터면 홀/구역명, 아니면 회사명/부스번호
       const nameEl = el.querySelector('[data-name]') as HTMLElement;
       const numEl = el.querySelector('[data-num]') as HTMLElement;
       const labelEl = el.querySelector('[data-label]') as HTMLElement;
       if (nameEl) {
-        const companyName = lnFn(booth.company?.name) || '';
+        const clusterName = clusterNameMapRef.current.get(booth.id);
+        const companyName = clusterName || lnFn(booth.company?.name) || '';
         nameEl.textContent = companyName || booth.booth_number;
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
         // 회사명이 있으면 부스번호 표시, 없으면 숨기기
@@ -1217,7 +1226,8 @@ export default function MapViewer({
         // 회사명 (아래, 큰 글씨)
         const nameSpan = document.createElement('div');
         nameSpan.setAttribute('data-name', '');
-        const initCompanyName = lnRef.current(booth.company?.name) || '';
+        const clusterName = clusterNameMapRef.current.get(booth.id);
+        const initCompanyName = clusterName || lnRef.current(booth.company?.name) || '';
         nameSpan.textContent = initCompanyName || booth.booth_number;
         nameSpan.style.fontSize = `${markerFontSizeRef.current}px`;
         nameSpan.style.fontWeight = '700';
