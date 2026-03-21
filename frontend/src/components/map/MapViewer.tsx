@@ -878,11 +878,17 @@ export default function MapViewer({
           badge = document.createElement('div');
           badge.setAttribute('data-badge', '');
           badge.style.cssText =
-            'position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;' +
-            'border-radius:11px;background:#4f46e5;color:#fff;font-size:12px;font-weight:700;' +
-            'display:flex;align-items:center;justify-content:center;padding:0 5px;pointer-events:none;';
-          el.style.position = 'relative'; // ensure absolute child positioning works
-          el.appendChild(badge);
+            'min-width:20px;height:20px;' +
+            'border-radius:10px;background:#4f46e5;color:#fff;font-size:11px;font-weight:700;' +
+            'display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;' +
+            'margin-top:-2px;';
+          // 핀 SVG 바로 아래, 라벨 위에 삽입
+          const labelEl = el.querySelector('[data-label]');
+          if (labelEl) {
+            el.insertBefore(badge, labelEl);
+          } else {
+            el.appendChild(badge);
+          }
         }
         badge.textContent = String(clusterInfo.count);
         badge.style.display = 'flex';
