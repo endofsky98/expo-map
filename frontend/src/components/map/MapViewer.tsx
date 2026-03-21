@@ -787,9 +787,31 @@ export default function MapViewer({
     const radius = forceIndividual ? 0 : markerFontSizeRef.current * 3;
     const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
 
-    // Draw PIXI cluster shading (world coordinates — auto follows pan/zoom)
+    // Draw PIXI shading: 홀/구역 음영 + 클러스터 음영
     if (clusterGfx) {
       clusterGfx.clear();
+
+      // 홀/구역 음영 — 줌 아웃(클러스터 활성화) 시에만
+      if (!forceIndividual) {
+        const hallList = hallsRef.current.filter(h => h.type !== 'zone');
+        const zoneList = hallsRef.current.filter(h => h.type === 'zone');
+        for (const h of hallList) {
+          if (h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null) {
+            clusterGfx.lineStyle(1.5, 0x8b5cf6, 0.3);
+            clusterGfx.beginFill(0x8b5cf6, 0.06);
+            clusterGfx.drawRoundedRect(h.area_x, h.area_y, h.area_width, h.area_height, 8);
+            clusterGfx.endFill();
+          }
+        }
+        for (const z of zoneList) {
+          if (z.area_x != null && z.area_y != null && z.area_width != null && z.area_height != null) {
+            clusterGfx.lineStyle(1.5, 0x06b6d4, 0.3);
+            clusterGfx.beginFill(0x06b6d4, 0.06);
+            clusterGfx.drawRoundedRect(z.area_x, z.area_y, z.area_width, z.area_height, 8);
+            clusterGfx.endFill();
+          }
+        }
+      }
       for (const c of clusters) {
         if (c.isCluster && c.count > 1) {
           const pad = 20;
