@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { Plus, Trash2, MousePointer, Link2, CirclePlus, AlertTriangle } from 'lucide-react';
+import { Trash2, MousePointer, Link2, CirclePlus, AlertTriangle, PenLine, Square, Construction, MapPin } from 'lucide-react';
 import AdminLayout from '@/components/AdminLayout';
 import {
   fetchFloors, fetchHalls, fetchCorridorNodes, fetchCorridorEdges,
   createCorridorNode, updateCorridorNode, deleteCorridorNode,
   createCorridorEdge, deleteCorridorEdge,
-  fetchBooths, fetchObstacles, fetchFacilities, fetchCurrentImage,
+  fetchBooths, createBooth, updateBooth, deleteBooth,
+  fetchObstacles, createObstacle, updateObstacle, deleteObstacle,
+  fetchFacilities, createFacility, updateFacility, deleteFacility,
+  fetchCurrentImage,
 } from '@/lib/api';
 import { useI18n } from '@/lib/i18n';
 import { Floor, Hall, CorridorNode, CorridorEdge, Booth, Obstacle, Facility, MapImage } from '@/types';
@@ -32,6 +35,8 @@ export default function CorridorsPage() {
   const [newNodeType, setNewNodeType] = useState('intersection');
   const [selectedNodeId, setSelectedNodeId] = useState<number | null>(null);
   const [connectFromId, setConnectFromId] = useState<number | null>(null);
+
+  const [facilityType, setFacilityType] = useState('restroom');
 
   // Cross-floor link modal
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -139,14 +144,174 @@ export default function CorridorsPage() {
     await loadFloorData();
   }
 
+  // --- draw_corridor: 직선 드래그 → 기존 엣지 교차점에 노드 생성 + 엣지 분할 ---
+  async function handleCorridorDraw(sx: number, sy: number, ex: number, ey: number) {
+    const hallId = halls.find((h) => h.floor_id === selectedFloorId)?.id;
+    const SNAP_DIST = 15;
+
+    // 시작/끝 점을 기존 노드에 snap
+    function snapOrCreate(px: number, py: number) {
+      for (const n of floorNodes) {
+        if (Math.hypot(n.x - px, n.y - py) <= SNAP_DIST) return { id: n.id, x: n.x, y: n.y, existing: true };
+      }
+      return { id: 0, x: px, y: py, existing: false };
+    }
+
+    // 두 선분의 교차점 계산
+    function lineIntersection(
+      x1: number, y1: number, x2: number, y2: number,
+      x3: number, y3: number, x4: number, y4: number,
+    ): { x: number; y: number; t: number } | null {
+      const denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+      if (Math.abs(denom) < 1e-10) return null;
+      const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+      const u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+      if (t < 0.01 || t > 0.99 || u < 0.01 || u > 0.99) return null;
+      return { x: Math.round(x1 + t * (x2 - x1)), y: Math.round(y1 + t * (y2 - y1)), t };
+    }
+
+    // 기존 엣지와의 교차점 수집 (t값으로 정렬)
+    const intersections: { x: number; y: number; t: number; edge: CorridorEdge }[] = [];
+    for (const edge of floorEdges) {
+      const fn = floorNodes.find((n) => n.id === edge.from_node_id);
+      const tn = floorNodes.find((n) => n.id === edge.to_node_id);
+      if (!fn || !tn) continue;
+      const hit = lineIntersection(sx, sy, ex, ey, fn.x, fn.y, tn.x, tn.y);
+      if (hit) intersections.push({ ...hit, edge });
+    }
+    intersections.sort((a, b) => a.t - b.t);
+
+    const startSnap = snapOrCreate(sx, sy);
+    const endSnap = snapOrCreate(ex, ey);
+
+    // 시작점 노드 생성
+    let startNodeId = startSnap.id;
+    if (!startSnap.existing) {
+      const n = await createCorridorNode({ x: startSnap.x, y: startSnap.y, floor_id: selectedFloorId!, hall_id: hallId, node_type: 'intersection' });
+      startNodeId = n.id;
+    }
+
+    // 교차점 노드 생성 + 엣지 분할
+    const midNodeIds: number[] = [];
+    for (const hit of intersections) {
+      // 교차점에 노드 생성
+      const n = await createCorridorNode({ x: hit.x, y: hit.y, floor_id: selectedFloorId!, hall_id: hallId, node_type: 'intersection' });
+      midNodeIds.push(n.id);
+
+      // 기존 엣지 분할: 삭제 후 from→new, new→to 생성
+      const fn = floorNodes.find((nd) => nd.id === hit.edge.from_node_id)!;
+      const tn = floorNodes.find((nd) => nd.id === hit.edge.to_node_id)!;
+      await deleteCorridorEdge(hit.edge.id);
+      const d1 = Math.round(Math.hypot(hit.x - fn.x, hit.y - fn.y));
+      const d2 = Math.round(Math.hypot(tn.x - hit.x, tn.y - hit.y));
+      await createCorridorEdge({ from_node_id: fn.id, to_node_id: n.id, distance: d1, is_open: true });
+      await createCorridorEdge({ from_node_id: n.id, to_node_id: tn.id, distance: d2, is_open: true });
+    }
+
+    // 끝점 노드 생성
+    let endNodeId = endSnap.id;
+    if (!endSnap.existing) {
+      const n = await createCorridorNode({ x: endSnap.x, y: endSnap.y, floor_id: selectedFloorId!, hall_id: hallId, node_type: 'intersection' });
+      endNodeId = n.id;
+    }
+
+    // 시작 → 교차점들 → 끝 순서로 엣지 연결
+    const chain = [startNodeId, ...midNodeIds, endNodeId];
+    // 각 노드 좌표 조회를 위한 맵
+    const coordMap: Record<number, { x: number; y: number }> = {};
+    coordMap[startNodeId] = { x: startSnap.x, y: startSnap.y };
+    coordMap[endNodeId] = { x: endSnap.x, y: endSnap.y };
+    for (let i = 0; i < intersections.length; i++) {
+      coordMap[midNodeIds[i]] = { x: intersections[i].x, y: intersections[i].y };
+    }
+    for (let i = 0; i < chain.length - 1; i++) {
+      const a = coordMap[chain[i]];
+      const b = coordMap[chain[i + 1]];
+      const dist = Math.round(Math.hypot(b.x - a.x, b.y - a.y));
+      await createCorridorEdge({ from_node_id: chain[i], to_node_id: chain[i + 1], distance: dist, is_open: true });
+    }
+
+    await loadFloorData();
+  }
+
+  // --- Booth 핸들러 ---
+  async function handleBoothCreate(x: number, y: number, w: number, h: number) {
+    const count = booths.length;
+    await createBooth({
+      floor_id: selectedFloorId!,
+      booth_number: `B-${String(count + 1).padStart(3, '0')}`,
+      x, y, width: w, height: h,
+    });
+    await loadFloorData();
+  }
+
+  async function handleBoothMove(id: number, x: number, y: number) {
+    await updateBooth(id, { x, y });
+    await loadFloorData();
+  }
+
+  async function handleBoothDelete(id: number) {
+    await deleteBooth(id);
+    await loadFloorData();
+  }
+
+  // --- Obstacle 핸들러 ---
+  async function handleObstacleCreate(x: number, y: number, w: number, h: number) {
+    await createObstacle({
+      floor_id: selectedFloorId!,
+      shape: 'rectangle',
+      x, y, width: w, height: h,
+    });
+    await loadFloorData();
+  }
+
+  async function handleObstacleMove(id: number, x: number, y: number) {
+    await updateObstacle(id, { x, y });
+    await loadFloorData();
+  }
+
+  async function handleObstacleDelete(id: number) {
+    await deleteObstacle(id);
+    await loadFloorData();
+  }
+
+  // --- Facility 핸들러 ---
+  async function handleFacilityCreate(x: number, y: number, type: string) {
+    await createFacility({
+      floor_id: selectedFloorId!,
+      type,
+      x, y,
+      is_active: true,
+    });
+    await loadFloorData();
+  }
+
+  async function handleFacilityMove(id: number, x: number, y: number) {
+    await updateFacility(id, { x, y });
+    await loadFloorData();
+  }
+
+  async function handleFacilityDelete(id: number) {
+    await deleteFacility(id);
+    await loadFloorData();
+  }
+
   // Get nodes from other floors for cross-floor linking
   const otherFloorNodes = allNodes.filter((n) => n.floor_id !== selectedFloorId);
 
   const modeButtons: { mode: EditorMode; icon: typeof MousePointer; label: string }[] = [
-    { mode: 'select', icon: MousePointer, label: 'Select / Move' },
-    { mode: 'add_node', icon: CirclePlus, label: 'Add Node' },
-    { mode: 'connect', icon: Link2, label: 'Connect Nodes' },
+    { mode: 'select', icon: MousePointer, label: 'Select' },
+    { mode: 'draw_corridor', icon: PenLine, label: 'Corridor' },
+    { mode: 'draw_booth', icon: Square, label: 'Booth' },
+    { mode: 'draw_obstacle', icon: Construction, label: 'Obstacle' },
+    { mode: 'place_facility', icon: MapPin, label: 'Facility' },
+    { mode: 'add_node', icon: CirclePlus, label: 'Node' },
+    { mode: 'connect', icon: Link2, label: 'Connect' },
     { mode: 'delete', icon: Trash2, label: 'Delete' },
+  ];
+
+  const facilityTypes = [
+    'restroom', 'elevator', 'stairs', 'entrance', 'info', 'emergency_exit',
   ];
 
   return (
@@ -204,6 +369,19 @@ export default function CorridorsPage() {
             </select>
           )}
 
+          {/* Facility type (for place_facility mode) */}
+          {mode === 'place_facility' && (
+            <select
+              value={facilityType}
+              onChange={(e) => setFacilityType(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+            >
+              {facilityTypes.map((ft) => (
+                <option key={ft} value={ft}>{ft.replace('_', ' ')}</option>
+              ))}
+            </select>
+          )}
+
           <div className="ml-auto text-xs text-gray-400 dark:text-gray-500">
             Nodes: {floorNodes.length} | Edges: {floorEdges.length}
           </div>
@@ -231,12 +409,14 @@ export default function CorridorsPage() {
                 edges={floorEdges}
                 booths={booths}
                 obstacles={obstacles}
+                facilities={facilities}
                 currentImage={currentImage}
                 floorId={selectedFloorId!}
                 mode={mode}
                 newNodeType={newNodeType}
                 selectedNodeId={selectedNodeId}
                 connectFromId={connectFromId}
+                facilityType={facilityType}
                 onNodeAdd={handleNodeAdd}
                 onNodeSelect={setSelectedNodeId}
                 onNodeMove={handleNodeMove}
@@ -244,6 +424,16 @@ export default function CorridorsPage() {
                 onEdgeCreate={handleEdgeCreate}
                 onNodeDelete={handleNodeDelete}
                 onEdgeDelete={handleEdgeDelete}
+                onCorridorDraw={handleCorridorDraw}
+                onBoothCreate={handleBoothCreate}
+                onBoothMove={handleBoothMove}
+                onBoothDelete={handleBoothDelete}
+                onObstacleCreate={handleObstacleCreate}
+                onObstacleMove={handleObstacleMove}
+                onObstacleDelete={handleObstacleDelete}
+                onFacilityCreate={handleFacilityCreate}
+                onFacilityMove={handleFacilityMove}
+                onFacilityDelete={handleFacilityDelete}
               />
             )}
           </div>
@@ -338,8 +528,9 @@ export default function CorridorsPage() {
             <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-4">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Quick Stats</h3>
               <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
-                <p>Total nodes (this floor): {floorNodes.length}</p>
-                <p>Total edges (this floor): {floorEdges.length}</p>
+                <p>Nodes: {floorNodes.length} | Edges: {floorEdges.length}</p>
+                <p>Booths: {booths.length} | Obstacles: {obstacles.length}</p>
+                <p>Facilities: {facilities.length}</p>
                 <p>Cross-floor links: {floorNodes.filter((n) => n.connected_node_id).length}</p>
                 <p>Collision edges: {floorEdges.filter((e) => {
                   const from = floorNodes.find((n) => n.id === e.from_node_id);
