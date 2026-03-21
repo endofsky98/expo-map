@@ -818,13 +818,8 @@ export default function MapViewer({
     if (!clientRoute || clientRoute.path.length < 2) return;
     const path = clientRoute.path;
 
-    // 배경: 두꺼운 반투명 빨간 선
-    gfx.lineStyle(30, 0xe53e3e, 0.25);
-    gfx.moveTo(path[0].x, path[0].y);
-    for (let i = 1; i < path.length; i++) gfx.lineTo(path[i].x, path[i].y);
-
-    // 전경: 빨간 실선
-    gfx.lineStyle(14, 0xe53e3e, 0.9);
+    // 빨간 실선 (테두리 없음, 두꺼운)
+    gfx.lineStyle(28, 0xe53e3e, 0.85);
     gfx.moveTo(path[0].x, path[0].y);
     for (let i = 1; i < path.length; i++) gfx.lineTo(path[i].x, path[i].y);
 
@@ -846,72 +841,60 @@ export default function MapViewer({
     }
   }, [clientRoute]);
 
-  // Ticker로 프로그레스바 애니메이션
+  // Ticker로 프로그레스바 애니메이션 (여러 개, 천천히)
   useEffect(() => {
     const app = pixiApp.current;
     if (!app) return;
+
+    const NUM_BARS = 3;        // 프로그레스바 개수
+    const BAR_LEN = 0.15;      // 각 바 길이 (전체 경로의 15%)
+    const SPEED = 0.006;       // 느린 속도
+
+    // 경로 위 특정 거리의 (x,y) 좌표 구하기
+    function pointAtDist(path: { x: number; y: number }[], d: number, totalLen: number): { x: number; y: number } {
+      const dd = ((d % totalLen) + totalLen) % totalLen;
+      let traveled = 0;
+      for (let i = 1; i < path.length; i++) {
+        const dx = path[i].x - path[i-1].x, dy = path[i].y - path[i-1].y;
+        const segLen = Math.hypot(dx, dy);
+        if (traveled + segLen >= dd) {
+          const t = (dd - traveled) / segLen;
+          return { x: path[i-1].x + dx * t, y: path[i-1].y + dy * t };
+        }
+        traveled += segLen;
+      }
+      return path[path.length - 1];
+    }
+
     const ticker = (dt: number) => {
       const animGfx = routeAnimGfxRef.current;
       const anim = routeAnimRef.current;
       if (!animGfx || !anim) { if (animGfx) animGfx.clear(); return; }
 
-      anim.phase = (anim.phase + dt * 0.02) % 1;
+      anim.phase = (anim.phase + dt * SPEED) % 1;
       animGfx.clear();
 
-      // 프로그레스바: 밝은 부분이 출발→도착 반복 이동
-      const headLen = anim.totalLen * 0.25; // 밝은 구간 25%
-      const headStart = anim.phase * anim.totalLen;
-      const headEnd = headStart + headLen;
+      const { path, totalLen } = anim;
+      const barPixels = totalLen * BAR_LEN;
+      const spacing = totalLen / NUM_BARS;
 
-      // 경로 위에 밝은 선 그리기
-      animGfx.lineStyle(16, 0xfca5a5, 0.8);
-      let drawing = false;
-      let traveled = 0;
-      for (let i = 1; i < anim.path.length; i++) {
-        const dx = anim.path[i].x - anim.path[i-1].x;
-        const dy = anim.path[i].y - anim.path[i-1].y;
-        const segLen = Math.hypot(dx, dy);
-        const segStart = traveled;
-        const segEnd = traveled + segLen;
+      for (let b = 0; b < NUM_BARS; b++) {
+        const barStart = (anim.phase * totalLen + b * spacing) % totalLen;
 
-        // wrap-around 처리
-        const inRange = (d: number) => {
-          if (headEnd <= anim.totalLen) return d >= headStart && d <= headEnd;
-          return d >= headStart || d <= (headEnd - anim.totalLen);
-        };
-
-        const startIn = inRange(segStart);
-        const endIn = inRange(segEnd);
-
-        if (startIn && endIn) {
-          if (!drawing) { animGfx.moveTo(anim.path[i-1].x, anim.path[i-1].y); drawing = true; }
-          animGfx.lineTo(anim.path[i].x, anim.path[i].y);
-        } else if (startIn || endIn) {
-          // 부분 진입/이탈
-          const clipTs: number[] = [];
-          for (const boundary of [headStart, headEnd, headStart + anim.totalLen, headEnd - anim.totalLen]) {
-            const t = (boundary - segStart) / segLen;
-            if (t > 0 && t < 1) clipTs.push(t);
-          }
-          clipTs.sort((a, b) => a - b);
-          const checkPoints = [0, ...clipTs, 1];
-          for (let k = 0; k < checkPoints.length - 1; k++) {
-            const mid = (checkPoints[k] + checkPoints[k+1]) / 2;
-            const midD = segStart + mid * segLen;
-            if (inRange(midD)) {
-              const x1 = anim.path[i-1].x + dx * checkPoints[k];
-              const y1 = anim.path[i-1].y + dy * checkPoints[k];
-              const x2 = anim.path[i-1].x + dx * checkPoints[k+1];
-              const y2 = anim.path[i-1].y + dy * checkPoints[k+1];
-              animGfx.moveTo(x1, y1);
-              animGfx.lineTo(x2, y2);
-            }
-          }
-          drawing = false;
-        } else {
-          drawing = false;
+        // 그라디언트 느낌: 여러 짧은 선으로 alpha 변화
+        const steps = 12;
+        const stepLen = barPixels / steps;
+        for (let s = 0; s < steps; s++) {
+          const d0 = barStart + s * stepLen;
+          const d1 = barStart + (s + 1) * stepLen;
+          const p0 = pointAtDist(path, d0, totalLen);
+          const p1 = pointAtDist(path, d1, totalLen);
+          // 앞쪽이 밝고 뒤쪽이 투명 (진행 방향 = d 증가)
+          const alpha = 0.3 + 0.6 * (s / steps);
+          animGfx.lineStyle(20, 0xfca5a5, alpha);
+          animGfx.moveTo(p0.x, p0.y);
+          animGfx.lineTo(p1.x, p1.y);
         }
-        traveled += segLen;
       }
     };
     app.ticker.add(ticker);
