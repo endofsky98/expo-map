@@ -12,7 +12,7 @@ import { hitTestAll, getObjPosition } from './editorHitTest';
 import { hitTestCircle } from './hitTest';
 import { drawPreview } from './drawPreview';
 import { isRectMode, isCircleMode, isPolygonMode, isDrawMode } from './modeHelpers';
-import { hitTestHandles, applyHandleDrag, type ResizeHandle, type ResizeOrigin } from './resizeHandles';
+import { hitTestHandles, applyHandleDrag, hitTestVertexHandles, type ResizeHandle, type ResizeOrigin } from './resizeHandles';
 
 const CLICK_THRESHOLD = 5;
 const CLICK_TIME = 300;
@@ -38,6 +38,8 @@ export interface PointerDeps {
   onObjectMoveEnd?: (kind: string, id: number, x: number, y: number) => void;
   onObjectResize?: (kind: string, id: number, x: number, y: number, w: number, h: number) => void;
   onObjectResizeEnd?: (kind: string, id: number, x: number, y: number, w: number, h: number) => void;
+  onVertexMove?: (kind: string, id: number, vertexIdx: number, x: number, y: number) => void;
+  onVertexMoveEnd?: (kind: string, id: number, vertexIdx: number, x: number, y: number) => void;
   onObjectDelete: (kind: string, id: number) => void;
   connectFromId: number | null;
   setConnectFromId: (id: number | null) => void;
@@ -71,6 +73,28 @@ function getSelectedRect(
   return null;
 }
 
+/** 선택된 오브젝트가 다각형이면 points 반환 */
+function getSelectedPolygon(
+  sel: SelectedObject,
+  data: { booths: EditorBooth[]; obstacles: EditorObstacle[]; halls: EditorHall[] },
+): { kind: string; id: number; points: Point[] } | null {
+  if (!sel) return null;
+  const parse = (pts: any): Point[] => typeof pts === 'string' ? JSON.parse(pts) : pts;
+  if (sel.kind === 'booth') {
+    const b = data.booths.find(bb => bb.id === sel.id);
+    if (b?.shape === 'polygon' && b.points?.length) return { kind: 'booth', id: b.id, points: parse(b.points) };
+  }
+  if (sel.kind === 'obstacle') {
+    const o = data.obstacles.find(oo => oo.id === sel.id);
+    if (o?.shape === 'polygon' && o.points?.length) return { kind: 'obstacle', id: o.id, points: parse(o.points) };
+  }
+  if (sel.kind === 'hall') {
+    const h = data.halls.find(hh => hh.id === sel.id);
+    if (h?.shape === 'polygon' && h.points?.length) return { kind: 'hall', id: h.id, points: parse(h.points) };
+  }
+  return null;
+}
+
 export default function useEditorPointer(deps: PointerDeps) {
   const depsRef = useRef(deps);
   depsRef.current = deps;
@@ -98,6 +122,12 @@ export default function useEditorPointer(deps: PointerDeps) {
     let resizeObjId = 0;
     let resizeOrigin: ResizeOrigin = { x: 0, y: 0, w: 0, h: 0 };
     let resizeDownWorld = { x: 0, y: 0 };
+
+    // 꼭짓점 드래그 상태
+    let isDraggingVertex = false;
+    let vertexObjKind = '';
+    let vertexObjId = 0;
+    let vertexIdx = -1;
 
     function wp(e: PointerEvent): Point {
       const r = canvas!.getBoundingClientRect();
@@ -142,7 +172,20 @@ export default function useEditorPointer(deps: PointerDeps) {
         const scale = d.transformRef.current!.scale;
         const data = getData();
 
-        // 먼저 리사이즈 핸들 히트테스트 (선택된 오브젝트에만)
+        // 다각형 꼭짓점 핸들 히트테스트
+        const selPoly = getSelectedPolygon(d.selectedObject, data);
+        if (selPoly) {
+          const vi = hitTestVertexHandles(w.x, w.y, selPoly.points, scale);
+          if (vi >= 0) {
+            isDraggingVertex = true;
+            vertexObjKind = selPoly.kind;
+            vertexObjId = selPoly.id;
+            vertexIdx = vi;
+            return;
+          }
+        }
+
+        // 사각형 리사이즈 핸들 히트테스트 (선택된 오브젝트에만)
         const selRect = getSelectedRect(d.selectedObject, data);
         if (selRect) {
           const h = hitTestHandles(w.x, w.y, selRect.x, selRect.y, selRect.w, selRect.h, scale);
@@ -209,6 +252,12 @@ export default function useEditorPointer(deps: PointerDeps) {
         return;
       }
 
+      // 꼭짓점 드래그 실시간 반영
+      if (isDraggingVertex) {
+        d.onVertexMove?.(vertexObjKind, vertexObjId, vertexIdx, Math.round(w.x), Math.round(w.y));
+        return;
+      }
+
       // 리사이즈 실시간 반영
       if (isResizing) {
         const dx = w.x - resizeDownWorld.x;
@@ -245,6 +294,14 @@ export default function useEditorPointer(deps: PointerDeps) {
       const m = d.mode;
       const w = wp(e);
       const pg = d.previewGraphicsRef.current;
+
+      // 꼭짓점 드래그 완성
+      if (isDraggingVertex) {
+        isDraggingVertex = false;
+        d.onVertexMoveEnd?.(vertexObjKind, vertexObjId, vertexIdx, Math.round(w.x), Math.round(w.y));
+        vertexIdx = -1;
+        return;
+      }
 
       // 리사이즈 완성
       if (isResizing) {
@@ -326,7 +383,7 @@ export default function useEditorPointer(deps: PointerDeps) {
 
     function onPointerCancel(e: PointerEvent) {
       pointers.delete(e.pointerId);
-      isDragging = false; isDrawing = false; isDraggingObj = false; isResizing = false;
+      isDragging = false; isDrawing = false; isDraggingObj = false; isResizing = false; isDraggingVertex = false;
       if (pointers.size < 2) lastPinchDist = 0;
     }
 

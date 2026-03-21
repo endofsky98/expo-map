@@ -77,6 +77,41 @@ export function applyHandleDrag(
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
 
+// ===== 다각형 꼭짓점 핸들 =====
+
+/** 다각형 꼭짓점 히트테스트 — 히트한 인덱스 반환, 없으면 -1 */
+export function hitTestVertexHandles(
+  wx: number, wy: number,
+  points: Point[],
+  scale: number,
+  hitRadius = 8,
+): number {
+  const r = hitRadius / scale;
+  for (let i = 0; i < points.length; i++) {
+    const dx = wx - points[i].x, dy = wy - points[i].y;
+    if (dx * dx + dy * dy <= r * r) return i;
+  }
+  return -1;
+}
+
+/** 다각형 꼭짓점 핸들 렌더링 */
+export function drawVertexHandles(
+  g: import('pixi.js').Graphics,
+  points: Point[],
+  scale: number,
+  activeIdx = -1,
+) {
+  const size = 6 / scale;
+  const half = size / 2;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    g.lineStyle(1.5 / scale, i === activeIdx ? 0xef4444 : 0x4f46e5, 1);
+    g.beginFill(i === activeIdx ? 0xfecaca : 0xffffff, 1);
+    g.drawCircle(p.x, p.y, half + 1 / scale);
+    g.endFill();
+  }
+}
+
 /** 리사이즈 핸들 렌더링 (PIXI.Graphics에 직접) */
 export function drawResizeHandles(
   g: import('pixi.js').Graphics,

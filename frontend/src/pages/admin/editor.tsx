@@ -9,7 +9,7 @@ import EditorToolbar from '@/components/editor/EditorToolbar';
 import { useUndoRedo } from '@/components/editor/useUndoRedo';
 import type { ActionKind } from '@/components/editor/useUndoRedo';
 import type {
-  EditorMode, SelectedObject, ShapeCompleteData,
+  EditorMode, SelectedObject, ShapeCompleteData, Point,
   EditorBooth, EditorObstacle, EditorHall, PathNode, PathEdge, Amenity,
   PathNodeType, AmenityType,
 } from '@/components/editor/editorTypes';
@@ -20,6 +20,7 @@ import { renderBoothLayer } from '@/components/editor/layers/BoothLayer';
 import { renderPathLayer } from '@/components/editor/layers/PathLayer';
 import { renderObstacleLayer } from '@/components/editor/layers/ObstacleLayer';
 import { renderAmenityLayer } from '@/components/editor/layers/AmenityLayer';
+import { drawVertexHandles } from '@/components/editor/resizeHandles';
 
 // Panels
 import { BoothPanel } from '@/components/editor/panels/BoothPanel';
@@ -130,6 +131,29 @@ export default function EditorPage() {
     renderPathLayer({ graphics: ctx.pathGfx, pathNodes, pathEdges, scale: ctx.scale, selectedObject: ctx.selectedObject, connectFromId });
     renderObstacleLayer({ graphics: ctx.obstacleGfx, obstacles, scale: ctx.scale, selectedObject: ctx.selectedObject });
     renderAmenityLayer({ graphics: ctx.amenityGfx, amenities, scale: ctx.scale, selectedObject: ctx.selectedObject });
+
+    // 다각형 꼭짓점 핸들 렌더링
+    if (ctx.selectedObject) {
+      const parse = (pts: any): Point[] | null => {
+        if (!pts) return null;
+        const arr = typeof pts === 'string' ? JSON.parse(pts) : pts;
+        return arr?.length ? arr : null;
+      };
+      let pts: Point[] | null = null;
+      if (ctx.selectedObject.kind === 'booth') {
+        const b = booths.find(bb => bb.id === ctx.selectedObject!.id);
+        if (b?.shape === 'polygon') pts = parse(b.points);
+      } else if (ctx.selectedObject.kind === 'obstacle') {
+        const o = obstacles.find(oo => oo.id === ctx.selectedObject!.id);
+        if (o?.shape === 'polygon') pts = parse(o.points);
+      } else if (ctx.selectedObject.kind === 'hall') {
+        const h = halls.find(hh => hh.id === ctx.selectedObject!.id);
+        if (h?.shape === 'polygon') pts = parse(h.points);
+      }
+      if (pts) {
+        drawVertexHandles(ctx.boothGfx, pts, ctx.scale);
+      }
+    }
   }, [halls, booths, pathNodes, pathEdges, obstacles, amenities, connectFromId, selectedObject]);
 
   // ===== Shape complete handler =====
@@ -210,9 +234,34 @@ export default function EditorPage() {
     if (!moveStartPos.current) { const o = prev.find(x => x.id === id); if (o) moveStartPos.current = { kind, id, x: o.x, y: o.y }; }
   };
   const handleObjectMove = useCallback((kind: string, id: number, x: number, y: number) => {
-    if (kind === 'booth') setBooths(prev => { captureMoveStart(prev, kind, id); return prev.map(b => b.id === id ? { ...b, x, y } : b); });
+    if (kind === 'booth') setBooths(prev => {
+      captureMoveStart(prev, kind, id);
+      return prev.map(b => {
+        if (b.id !== id) return b;
+        // 다각형: points 전체 오프셋
+        if (b.shape === 'polygon' && b.points?.length) {
+          const pts = typeof b.points === 'string' ? JSON.parse(b.points as any) : b.points;
+          const dx = x - b.x, dy = y - b.y;
+          const newPts = pts.map((p: any) => ({ x: p.x + dx, y: p.y + dy }));
+          return { ...b, x, y, points: newPts };
+        }
+        return { ...b, x, y };
+      });
+    });
     else if (kind === 'path_node') setPathNodes(prev => { captureMoveStart(prev, kind, id); return prev.map(n => n.id === id ? { ...n, x, y } : n); });
-    else if (kind === 'obstacle') setObstacles(prev => { captureMoveStart(prev, kind, id); return prev.map(o => o.id === id ? { ...o, x, y } : o); });
+    else if (kind === 'obstacle') setObstacles(prev => {
+      captureMoveStart(prev, kind, id);
+      return prev.map(o => {
+        if (o.id !== id) return o;
+        if (o.shape === 'polygon' && o.points?.length) {
+          const pts = typeof o.points === 'string' ? JSON.parse(o.points as any) : o.points;
+          const dx = x - o.x, dy = y - o.y;
+          const newPts = pts.map((p: any) => ({ x: p.x + dx, y: p.y + dy }));
+          return { ...o, x, y, points: newPts };
+        }
+        return { ...o, x, y };
+      });
+    });
     else if (kind === 'amenity') setAmenities(prev => { captureMoveStart(prev, kind, id); return prev.map(a => a.id === id ? { ...a, x, y } : a); });
     else if (kind === 'hall') setHalls(prev => {
       const h = prev.find(hh => hh.id === id);
@@ -229,14 +278,20 @@ export default function EditorPage() {
     moveStartPos.current = null;
     try {
       if (kind === 'booth') {
-        await updateBooth(id, { x, y } as any);
-        setBooths(prev => prev.map(b => b.id === id ? { ...b, x, y } : b));
+        const b = booths.find(bb => bb.id === id);
+        const payload: any = { x, y };
+        if (b?.shape === 'polygon' && b.points?.length) payload.points = JSON.stringify(b.points);
+        await updateBooth(id, payload);
+        setBooths(prev => prev.map(bb => bb.id === id ? { ...bb, x, y, points: b?.points } : bb));
       } else if (kind === 'path_node') {
         await updatePathNode(id, { x, y });
         setPathNodes(prev => prev.map(n => n.id === id ? { ...n, x, y } : n));
       } else if (kind === 'obstacle') {
-        await updateObstacle(id, { x, y } as any);
-        setObstacles(prev => prev.map(o => o.id === id ? { ...o, x, y } : o));
+        const ob = obstacles.find(oo => oo.id === id);
+        const obPayload: any = { x, y };
+        if (ob?.shape === 'polygon' && ob.points?.length) obPayload.points = JSON.stringify(ob.points);
+        await updateObstacle(id, obPayload);
+        setObstacles(prev => prev.map(o => o.id === id ? { ...o, x, y, points: ob?.points } : o));
       } else if (kind === 'amenity') {
         await updateAmenity(id, { x, y });
         setAmenities(prev => prev.map(a => a.id === id ? { ...a, x, y } : a));
@@ -299,6 +354,33 @@ export default function EditorPage() {
       }
     } catch (err) { console.error('Resize end error:', err); }
   }, [pushAction]);
+
+  // ===== Vertex move handlers (다각형 꼭짓점 편집) =====
+  const handleVertexMove = useCallback((kind: string, id: number, vertexIdx: number, x: number, y: number) => {
+    const updatePoints = (pts: any) => {
+      const arr: Point[] = typeof pts === 'string' ? JSON.parse(pts) : [...(pts || [])];
+      if (vertexIdx >= 0 && vertexIdx < arr.length) arr[vertexIdx] = { x, y };
+      return arr;
+    };
+    if (kind === 'booth') setBooths(prev => prev.map(b => b.id === id ? { ...b, points: updatePoints(b.points) } : b));
+    else if (kind === 'obstacle') setObstacles(prev => prev.map(o => o.id === id ? { ...o, points: updatePoints(o.points) } : o));
+    else if (kind === 'hall') setHalls(prev => prev.map(h => h.id === id ? { ...h, points: updatePoints(h.points) } : h));
+  }, []);
+
+  const handleVertexMoveEnd = useCallback(async (kind: string, id: number, vertexIdx: number, x: number, y: number) => {
+    try {
+      if (kind === 'booth') {
+        const b = booths.find(bb => bb.id === id);
+        if (b?.points) await updateBooth(id, { points: JSON.stringify(b.points) } as any);
+      } else if (kind === 'obstacle') {
+        const o = obstacles.find(oo => oo.id === id);
+        if (o?.points) await updateObstacle(id, { points: JSON.stringify(o.points) } as any);
+      } else if (kind === 'hall') {
+        const h = halls.find(hh => hh.id === id);
+        if (h?.points) await updateHall(id, { points: JSON.stringify(h.points) } as any);
+      }
+    } catch (err) { console.error('Vertex move end error:', err); }
+  }, [booths, obstacles, halls]);
 
   // ===== Object delete handler =====
   const handleObjectDelete = useCallback(async (kind: string, id: number) => {
@@ -489,6 +571,8 @@ export default function EditorPage() {
               onObjectMoveEnd={handleObjectMoveEnd}
               onObjectResize={handleObjectResize}
               onObjectResizeEnd={handleObjectResizeEnd}
+              onVertexMove={handleVertexMove}
+              onVertexMoveEnd={handleVertexMoveEnd}
               onObjectDelete={handleObjectDelete}
               setConnectFromId={setConnectFromId}
               renderLayers={renderLayers}

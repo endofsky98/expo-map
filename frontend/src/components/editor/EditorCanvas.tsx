@@ -36,6 +36,8 @@ interface EditorCanvasProps {
   onObjectMoveEnd?: (kind: string, id: number, x: number, y: number) => void;
   onObjectResize?: (kind: string, id: number, x: number, y: number, w: number, h: number) => void;
   onObjectResizeEnd?: (kind: string, id: number, x: number, y: number, w: number, h: number) => void;
+  onVertexMove?: (kind: string, id: number, vertexIdx: number, x: number, y: number) => void;
+  onVertexMoveEnd?: (kind: string, id: number, vertexIdx: number, x: number, y: number) => void;
   onObjectDelete: (kind: string, id: number) => void;
   setConnectFromId: (id: number | null) => void;
   renderLayers: (ctx: LayerContext) => void;
@@ -207,6 +209,8 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     onObjectMoveEnd: props.onObjectMoveEnd,
     onObjectResize: props.onObjectResize,
     onObjectResizeEnd: props.onObjectResizeEnd,
+    onVertexMove: props.onVertexMove,
+    onVertexMoveEnd: props.onVertexMoveEnd,
     onObjectDelete: props.onObjectDelete,
     connectFromId: props.connectFromId,
     setConnectFromId: props.setConnectFromId,
