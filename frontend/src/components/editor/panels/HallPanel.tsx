@@ -30,8 +30,8 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
   }, [hall.id]);
 
   const handleSave = () => {
-    const data: Partial<EditorHall> = {
-      name,
+    const data: any = {
+      name: { ko: name, en: name },
       order,
       area_x: areaX,
       area_y: areaY,

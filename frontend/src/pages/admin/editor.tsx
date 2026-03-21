@@ -148,7 +148,7 @@ export default function EditorPage() {
         pushAction({ type: 'create', kind: 'booth', id: nb.id, before: null, after: nb as unknown as Record<string, unknown> });
       }
       else if (m === 'hall_rect' || m === 'hall_polygon') {
-        const body: any = { floor_id: selectedFloorId, name: `Hall ${Date.now() % 1000}`, order: halls.length + 1 };
+        const body: any = { floor_id: selectedFloorId, name: { ko: `홀 ${Date.now() % 1000}`, en: `Hall ${Date.now() % 1000}` }, order: halls.length + 1 };
         if (data.shape === 'rectangle') Object.assign(body, { shape: 'rectangle', area_x: data.x, area_y: data.y, area_width: data.width, area_height: data.height });
         else if (data.shape === 'polygon') Object.assign(body, { shape: 'polygon', points: JSON.stringify(data.points) });
         const nh = await createHall(body);
