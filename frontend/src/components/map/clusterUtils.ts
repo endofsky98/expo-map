@@ -213,23 +213,15 @@ export function selectRepresentative(
     if (h) hallIdSet.add(h.id);
   }
 
-  // 클러스터 내에 "작은 구역/홀"의 부스가 포함되어 있으면 → 구역/홀 이름 사용
-  // "작다" = 전체 지도 대비 작은 영역 (대각선 2000px 이하)
-  const SMALL_THRESHOLD = 2000;
-  // 작은 구역/홀 우선 (구역 먼저, 홀 나중)
-  for (const list of [allZones, allHalls]) {
-    for (const h of list) {
-      const hw = h.area_width ?? 0;
-      const hh = h.area_height ?? 0;
-      if (hw <= 0 || hh <= 0) continue;
-      const diag = Math.hypot(hw, hh);
-      if (diag > SMALL_THRESHOLD) continue; // 큰 홀은 스킵
-      const inside = booths.find(b => b.hall_id === h.id || boothInsideHall(b, h));
-      if (inside && booths.length > 1) {
-        // 이 작은 구역/홀에 속하지 않는 부스가 하나라도 합쳐져 있으면 → 구역/홀 이름
-        const outside = booths.find(b => b.id !== inside.id && !(b.hall_id === h.id || boothInsideHall(b, h)));
-        if (outside) return { name: hallName(h), booth: inside };
-      }
+  // 클러스터 내 모든 부스가 하나의 홀/구역 안에만 속하면 → 그 홀/구역 이름 표시
+  // (구역 우선 체크, 홀 나중)
+  if (booths.length > 1 && hallIdSet.size === 1) {
+    const onlyHallId = [...hallIdSet][0];
+    // 모든 부스가 이 홀/구역에 속하는지 확인
+    const allInside = booths.every(b => boothHallMap.get(b.id)?.id === onlyHallId);
+    if (allInside) {
+      const h = halls.find(hh => hh.id === onlyHallId);
+      if (h) return { name: hallName(h), booth: booths[0] };
     }
   }
 
