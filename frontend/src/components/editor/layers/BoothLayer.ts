@@ -12,25 +12,44 @@ interface BoothLayerProps {
   selectedObject: SelectedObject;
 }
 
+/** hex color string (#RRGGBB) → 0xRRGGBB number */
+function hexToNum(hex: string): number {
+  return parseInt(hex.replace('#', ''), 16) || LAYER_COLORS.booth.fill;
+}
+
+/** 다국어 이름 → 한국어 우선 */
+function ln(name: unknown): string {
+  if (!name) return '';
+  if (typeof name === 'string') return name;
+  if (typeof name === 'object' && name !== null) {
+    const n = name as Record<string, string>;
+    return n.ko || n.en || Object.values(n)[0] || '';
+  }
+  return String(name);
+}
+
 export function renderBoothLayer(props: BoothLayerProps) {
   const { graphics: g, labelContainer, booths, scale, selectedObject } = props;
   g.clear();
-  // Remove old labels
   labelContainer.removeChildren();
 
-  const colors = LAYER_COLORS.booth;
+  const defaultColors = LAYER_COLORS.booth;
 
   for (const b of booths) {
     const selected = selectedObject?.kind === 'booth' && selectedObject.id === b.id;
+
+    // 카테고리 색상 적용 (category.color 또는 booth.color)
+    const catColor = (b as any).category?.color || b.color;
+    const fillColor = catColor ? hexToNum(catColor) : defaultColors.fill;
+
     const style: DrawStyle = {
-      lineColor: selected ? 0x4f46e5 : colors.line,
+      lineColor: selected ? 0x4f46e5 : (catColor ? hexToNum(catColor) : defaultColors.line),
       lineWidth: 1.5,
-      fillColor: colors.fill,
-      fillAlpha: selected ? colors.selectedAlpha : colors.alpha,
+      fillColor,
+      fillAlpha: selected ? defaultColors.selectedAlpha : defaultColors.alpha,
       selected,
     };
 
-    // Render by shape type
     switch (b.shape) {
       case 'polygon':
         if (b.points && b.points.length >= 3) drawPolygon(g, b.points, style, scale);
@@ -41,22 +60,19 @@ export function renderBoothLayer(props: BoothLayerProps) {
       case 'ellipse':
         if (b.radius_x && b.radius_y) drawEllipse(g, b.x, b.y, b.radius_x, b.radius_y, style, scale);
         break;
-      default: // rectangle
+      default:
         drawRect(g, b.x, b.y, b.width, b.height, style, scale);
-        // 선택된 사각형 부스에 리사이즈 핸들 표시
         if (selected) drawResizeHandles(g, b.x, b.y, b.width, b.height, scale);
         break;
     }
 
-    // Label: 회사명 우선, 없으면 부스번호 (scale >= 0.5)
+    // Label: 회사명 우선, 없으면 부스번호
     if (scale >= 0.5) {
       const cx = b.shape === 'rectangle' ? b.x + b.width / 2 : b.x;
       const cy = b.shape === 'rectangle' ? b.y + b.height / 2 : b.y;
 
-      // 회사명 (company 객체에서 추출)
-      const companyName = b.company_name || ((b as any).company?.name
-        ? (typeof (b as any).company.name === 'string' ? (b as any).company.name : (b as any).company.name.ko || (b as any).company.name.en || '')
-        : '');
+      const companyName = b.company_name || ln((b as any).company?.name);
+      const catName = ln((b as any).category?.name);
       const displayName = companyName || b.booth_number;
 
       if (displayName) {

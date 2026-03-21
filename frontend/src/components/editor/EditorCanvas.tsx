@@ -152,7 +152,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
 
   // ===== Zoom =====
   const applyZoom = useCallback((newScale: number, pivotX: number, pivotY: number) => {
-    const clamped = Math.max(0.1, Math.min(5, newScale));
+    const clamped = Math.max(0.1, Math.min(15, newScale));
     const t = transformRef.current;
     const ratio = clamped / t.scale;
     t.x = pivotX - ratio * (pivotX - t.x);
