@@ -38,6 +38,7 @@ class HallCreate(BaseModel):
     area_height: Optional[float] = None
     shape: str = "rectangle"
     points: Optional[str] = None
+    type: str = "hall"  # 'hall' or 'zone'
 
 class HallUpdate(BaseModel):
     floor_id: Optional[int] = None
@@ -49,6 +50,7 @@ class HallUpdate(BaseModel):
     area_height: Optional[float] = None
     shape: Optional[str] = None
     points: Optional[str] = None
+    type: Optional[str] = None
 
 class HallResponse(BaseModel):
     id: int
@@ -61,6 +63,7 @@ class HallResponse(BaseModel):
     area_height: Optional[float] = None
     shape: str = "rectangle"
     points: Optional[str] = None
+    type: str = "hall"
     created_at: Optional[datetime] = None
     floor: Optional[FloorResponse] = None
 

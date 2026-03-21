@@ -36,6 +36,7 @@ class Hall(Base):
     area_height = Column(Float, nullable=True)
     shape = Column(String(20), default="rectangle")
     points = Column(Text, nullable=True)
+    type = Column(String(20), default="hall")  # 'hall' or 'zone'
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floor = relationship("Floor", back_populates="halls")

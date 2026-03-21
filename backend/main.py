@@ -367,6 +367,7 @@ def migrate_columns():
     # halls
     add_if_missing("halls", "shape", "VARCHAR(20) DEFAULT 'rectangle'")
     add_if_missing("halls", "points", "TEXT")
+    add_if_missing("halls", "type", "VARCHAR(20) DEFAULT 'hall'")
     # obstacles
     add_if_missing("obstacles", "points", "TEXT")
     add_if_missing("obstacles", "name", "TEXT")
