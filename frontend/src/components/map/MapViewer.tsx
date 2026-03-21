@@ -10,7 +10,7 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import { clusterBooths, selectRepresentative, getBoothDisplayName, getBoothCenter, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
+import { clusterBooths, selectRepresentative, getBoothDisplayName, getBoothCenter, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS, setMapDimensions } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -179,6 +179,7 @@ export default function MapViewer({
 
   const imgWidth = currentImage?.width || 800;
   const imgHeight = currentImage?.height || 600;
+  setMapDimensions(imgWidth, imgHeight);
 
   // Refs for data accessed in click handler closure
   const boothsRef = useRef(booths);
@@ -948,10 +949,8 @@ export default function MapViewer({
       }
     }
 
-    // Cluster or show individually based on zoom
-    const forceIndividual = sc >= CLUSTER_MAX_ZOOM;
-    const radius = forceIndividual ? 0 : markerFontSizeRef.current * 3;
-    const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
+    // Supercluster 기반 줌 레벨별 클러스터링
+    const clusters = clusterBooths(visibleBooths, worldToScreen, 0, sc, boothsRef.current);
 
     // Draw PIXI shading: 홀/구역 음영 + 클러스터 음영
     if (clusterGfx) {

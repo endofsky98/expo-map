@@ -1,3 +1,4 @@
+import Supercluster from 'supercluster';
 import { Booth, Hall } from '@/types';
 
 /** 부스 중심 좌표 — 다각형이면 centroid, 아니면 x+w/2, y+h/2 */
@@ -32,142 +33,249 @@ export interface ClusterItem {
 }
 
 // ===== Cluster parameters =====
-export const CLUSTER_RADIUS = 50;        // px — 화면 기준 클러스터 반경
 export const CLUSTER_MAX_ZOOM = 2.5;     // 이 줌 이상이면 항상 개별 표시
 export const CLUSTER_ANIM_MS = 300;      // 애니메이션 시간 (ms)
 export const CLUSTER_MIN_SIZE = 40;      // 클러스터 원 최소 크기 px
 export const CLUSTER_MAX_SIZE = 80;      // 클러스터 원 최대 크기 px
 
+// Supercluster 설정
+const SC_MIN_ZOOM = 0;
+const SC_MAX_ZOOM = 16;
+const SC_RADIUS = 80;    // 클러스터 반경 (px 기준, 256 타일 기준)
+
+// World 좌표를 가상 lng/lat으로 매핑 (supercluster는 geo 좌표 기대)
+// 이미지 크기 기준으로 0~360, 0~180 범위에 매핑
+let mapWidth = 10000;
+let mapHeight = 10000;
+
+export function setMapDimensions(w: number, h: number) {
+  mapWidth = w;
+  mapHeight = h;
+}
+
+function worldToLng(wx: number): number {
+  return (wx / mapWidth) * 360 - 180;
+}
+function worldToLat(wy: number): number {
+  // y 증가 → 아래 → lat 감소
+  return 90 - (wy / mapHeight) * 180;
+}
+function lngToWorld(lng: number): number {
+  return ((lng + 180) / 360) * mapWidth;
+}
+function latToWorld(lat: number): number {
+  return ((90 - lat) / 180) * mapHeight;
+}
+
+// scale → zoom level 변환 (supercluster의 integer zoom 기반)
+export function scaleToZoom(scale: number): number {
+  // scale 0.05 → zoom 0, scale 4.0 → zoom 16
+  // log2 기반 매핑
+  const z = Math.log2(scale * 20); // scale 0.05 → log2(1)=0, scale 4 → log2(80)≈6.3
+  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 2)));
+}
+
+// Supercluster 인스턴스 관리
+let scInstance: Supercluster<{ boothId: number }> | null = null;
+let loadedBoothIds: string = '';
+
+function getOrCreateIndex(booths: Booth[]): Supercluster<{ boothId: number }> {
+  // 부스 목록이 바뀌면 재생성
+  const key = booths.map(b => b.id).sort((a, b) => a - b).join(',');
+  if (scInstance && loadedBoothIds === key) return scInstance;
+
+  scInstance = new Supercluster<{ boothId: number }>({
+    radius: SC_RADIUS,
+    maxZoom: SC_MAX_ZOOM,
+    minZoom: SC_MIN_ZOOM,
+  });
+
+  const points: Supercluster.PointFeature<{ boothId: number }>[] = booths.map(b => {
+    const { cx, cy } = getBoothCenter(b);
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'Point' as const,
+        coordinates: [worldToLng(cx), worldToLat(cy)],
+      },
+      properties: { boothId: b.id },
+    };
+  });
+
+  scInstance.load(points);
+  loadedBoothIds = key;
+  return scInstance;
+}
+
 /**
- * 화면 좌표 기준 greedy 클러스터링
- * O(n²) — 1000개 기준 ~1ms 이내
- * clusterRadius === 0 이면 모두 개별 마커로 반환
+ * Supercluster 기반 클러스터링
+ * booths: 보이는 부스 목록
+ * allBooths: 전체 부스 (supercluster 인덱싱용)
+ * screenPosFn: world→screen 변환 함수
+ * scale: 현재 줌 scale
  */
 export function clusterBooths(
   booths: Booth[],
   screenPosFn: (wx: number, wy: number) => { sx: number; sy: number },
-  clusterRadius: number = CLUSTER_RADIUS,
+  _clusterRadius: number = 0,
+  scale: number = 1,
+  allBooths?: Booth[],
 ): ClusterItem[] {
   if (booths.length === 0) return [];
 
-  // 1. 모든 부스를 화면 좌표로 변환
-  const positions: { booth: Booth; sx: number; sy: number }[] = booths.map((booth) => {
-    const { cx, cy } = getBoothCenter(booth);
-    const { sx, sy } = screenPosFn(cx, cy);
-    return { booth, sx, sy };
-  });
+  // scale >= CLUSTER_MAX_ZOOM이면 개별 표시
+  if (scale >= CLUSTER_MAX_ZOOM) {
+    return booths.map(b => {
+      const { cx, cy } = getBoothCenter(b);
+      const { sx, sy } = screenPosFn(cx, cy);
+      return {
+        id: `booth-${b.id}`,
+        isCluster: false,
+        x: cx, y: cy, sx, sy,
+        count: 1,
+        boothIds: [b.id],
+        representBooth: b,
+        bboxX: b.x, bboxY: b.y,
+        bboxW: b.width, bboxH: b.height,
+      };
+    });
+  }
 
-  const assigned = new Uint8Array(positions.length); // 0 = unassigned
-  const clusters: ClusterItem[] = [];
-  const r2 = clusterRadius * clusterRadius;
+  const indexBooths = allBooths || booths;
+  const index = getOrCreateIndex(indexBooths);
+  const zoom = scaleToZoom(scale);
 
-  for (let i = 0; i < positions.length; i++) {
-    if (assigned[i]) continue;
+  // 보이는 영역의 bbox (world → lng/lat)
+  let minWx = Infinity, minWy = Infinity, maxWx = -Infinity, maxWy = -Infinity;
+  for (const b of booths) {
+    const { cx, cy } = getBoothCenter(b);
+    if (cx < minWx) minWx = cx;
+    if (cy < minWy) minWy = cy;
+    if (cx > maxWx) maxWx = cx;
+    if (cy > maxWy) maxWy = cy;
+  }
+  // 여유 마진
+  const marginW = (maxWx - minWx) * 0.2 || 200;
+  const marginH = (maxWy - minWy) * 0.2 || 200;
+  const bbox: [number, number, number, number] = [
+    worldToLng(minWx - marginW),
+    worldToLat(maxWy + marginH), // lat는 반대
+    worldToLng(maxWx + marginW),
+    worldToLat(minWy - marginH),
+  ];
 
-    // 시드: positions[i]
-    const seed = positions[i];
-    const group: number[] = [i];
-    assigned[i] = 1;
+  const rawClusters = index.getClusters(bbox, zoom);
+  const boothMap = new Map(indexBooths.map(b => [b.id, b]));
+  const visibleIds = new Set(booths.map(b => b.id));
 
-    // clusterRadius > 0 일 때만 그룹핑
-    if (clusterRadius > 0) {
-      for (let j = i + 1; j < positions.length; j++) {
-        if (assigned[j]) continue;
-        const dx = positions[j].sx - seed.sx;
-        const dy = positions[j].sy - seed.sy;
-        if (dx * dx + dy * dy <= r2) {
-          group.push(j);
-          assigned[j] = 1;
+  const results: ClusterItem[] = [];
+
+  for (const feature of rawClusters) {
+    const [lng, lat] = feature.geometry.coordinates;
+    const wx = lngToWorld(lng);
+    const wy = latToWorld(lat);
+    const { sx, sy } = screenPosFn(wx, wy);
+
+    const props = feature.properties as any;
+    if (props.cluster) {
+      // 클러스터
+      const clusterId = props.cluster_id as number;
+      const count = props.point_count as number;
+      // 클러스터에 포함된 부스 ID들
+      const leaves = index.getLeaves(clusterId, Infinity);
+      const boothIds = leaves
+        .map(l => l.properties.boothId)
+        .filter(id => visibleIds.has(id));
+
+      if (boothIds.length === 0) continue;
+
+      // bounding box 계산
+      let bMinX = Infinity, bMinY = Infinity, bMaxX = -Infinity, bMaxY = -Infinity;
+      for (const id of boothIds) {
+        const b = boothMap.get(id);
+        if (!b) continue;
+        if (b.shape === 'polygon' && b.points) {
+          const pts: { x: number; y: number }[] = typeof b.points === 'string' ? JSON.parse(b.points) : b.points;
+          for (const p of pts) {
+            if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y;
+            if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y;
+          }
+        } else {
+          if (b.x < bMinX) bMinX = b.x; if (b.y < bMinY) bMinY = b.y;
+          if (b.x + b.width > bMaxX) bMaxX = b.x + b.width; if (b.y + b.height > bMaxY) bMaxY = b.y + b.height;
         }
       }
-    }
 
-    // 그룹 중심 계산 (화면 좌표 평균)
-    let sumSx = 0, sumSy = 0;
-    let sumWx = 0, sumWy = 0;
-    for (const idx of group) {
-      sumSx += positions[idx].sx;
-      sumSy += positions[idx].sy;
-      sumWx += positions[idx].booth.x + positions[idx].booth.width / 2;
-      sumWy += positions[idx].booth.y + positions[idx].booth.height / 2;
-    }
-    const n = group.length;
-    const cx = sumSx / n;
-    const cy = sumSy / n;
-    const wx = sumWx / n;
-    const wy = sumWy / n;
+      if (boothIds.length === 1) {
+        // 클러스터지만 보이는 부스 1개 → 개별
+        const b = boothMap.get(boothIds[0]);
+        if (b) {
+          const { cx, cy } = getBoothCenter(b);
+          const sp = screenPosFn(cx, cy);
+          results.push({
+            id: `booth-${b.id}`,
+            isCluster: false,
+            x: cx, y: cy, sx: sp.sx, sy: sp.sy,
+            count: 1,
+            boothIds: [b.id],
+            representBooth: b,
+            bboxX: bMinX, bboxY: bMinY,
+            bboxW: bMaxX - bMinX, bboxH: bMaxY - bMinY,
+          });
+        }
+      } else {
+        results.push({
+          id: `cluster-sc-${clusterId}`,
+          isCluster: true,
+          x: wx, y: wy, sx, sy,
+          count: boothIds.length,
+          boothIds,
+          representBooth: undefined,
+          bboxX: bMinX, bboxY: bMinY,
+          bboxW: bMaxX - bMinX, bboxH: bMaxY - bMinY,
+        });
+      }
+    } else {
+      // 개별 포인트
+      const boothId = props.boothId as number;
+      if (!visibleIds.has(boothId)) continue;
+      const b = boothMap.get(boothId);
+      if (!b) continue;
+      const { cx, cy } = getBoothCenter(b);
+      const sp = screenPosFn(cx, cy);
 
-    const boothIds = group.map((idx) => positions[idx].booth.id);
-
-    // 클러스터 bounding box (world 좌표)
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const idx of group) {
-      const b = positions[idx].booth;
+      let bMinX = b.x, bMinY = b.y, bMaxX = b.x + b.width, bMaxY = b.y + b.height;
       if (b.shape === 'polygon' && b.points) {
         const pts: { x: number; y: number }[] = typeof b.points === 'string' ? JSON.parse(b.points) : b.points;
-        for (const p of pts) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }
-      } else {
-        if (b.x < minX) minX = b.x; if (b.y < minY) minY = b.y;
-        if (b.x + b.width > maxX) maxX = b.x + b.width; if (b.y + b.height > maxY) maxY = b.y + b.height;
+        bMinX = Infinity; bMinY = Infinity; bMaxX = -Infinity; bMaxY = -Infinity;
+        for (const p of pts) {
+          if (p.x < bMinX) bMinX = p.x; if (p.y < bMinY) bMinY = p.y;
+          if (p.x > bMaxX) bMaxX = p.x; if (p.y > bMaxY) bMaxY = p.y;
+        }
       }
-    }
 
-    if (n === 1) {
-      // 개별 마커
-      clusters.push({
-        id: `booth-${positions[i].booth.id}`,
+      results.push({
+        id: `booth-${b.id}`,
         isCluster: false,
-        x: wx,
-        y: wy,
-        sx: cx,
-        sy: cy,
+        x: cx, y: cy, sx: sp.sx, sy: sp.sy,
         count: 1,
-        boothIds,
-        representBooth: positions[i].booth,
-        bboxX: minX,
-        bboxY: minY,
-        bboxW: maxX - minX,
-        bboxH: maxY - minY,
-      });
-    } else {
-      // 클러스터 마커
-      clusters.push({
-        id: `cluster-${clusters.length}`,
-        isCluster: true,
-        x: wx,
-        y: wy,
-        sx: cx,
-        sy: cy,
-        count: n,
-        boothIds,
-        representBooth: undefined,
-        bboxX: minX,
-        bboxY: minY,
-        bboxW: maxX - minX,
-        bboxH: maxY - minY,
+        boothIds: [boothId],
+        representBooth: b,
+        bboxX: bMinX, bboxY: bMinY,
+        bboxW: bMaxX - bMinX, bboxH: bMaxY - bMinY,
       });
     }
   }
 
-  return clusters;
+  return results;
 }
 
 /**
  * 부스 개수에 따른 클러스터 원 크기 계산
- * count: 1 → MIN_SIZE, 10+ → MAX_SIZE
  */
 export function clusterSize(count: number): number {
-  const ratio = Math.min(1, (count - 2) / 18); // 2~20개 범위
+  const ratio = Math.min(1, (count - 2) / 18);
   return CLUSTER_MIN_SIZE + ratio * (CLUSTER_MAX_SIZE - CLUSTER_MIN_SIZE);
-}
-
-/**
- * 홀 이름 문자열로 반환
- */
-function hallName(hall: Hall): string {
-  const n = hall.name;
-  if (typeof n === 'string') return n;
-  return n.ko || n.en || '';
 }
 
 /**
@@ -184,21 +292,7 @@ export function getBoothDisplayName(booth: Booth): string {
 
 /**
  * 클러스터 대표 업체 선정
- * 1순위: 홀 이름 (클러스터 내 부스가 속한 홀, type !== 'zone')
- * 2순위: 구역 이름 (type === 'zone')
- * 3순위: 부스 면적 가장 큰 업체 (회사 정보 있음)
- * 4순위: 회사 정보 있는 첫 번째 업체
- * 5순위: 첫 번째 부스
  */
-/** 부스 중심이 홀/구역 영역 안에 있는지 체크 */
-function boothInsideHall(b: Booth, h: Hall): boolean {
-  const { cx, cy } = getBoothCenter(b);
-  if (h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null) {
-    return cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height;
-  }
-  return false;
-}
-
 export function selectRepresentative(
   boothIds: number[],
   allBooths: Booth[],
@@ -209,17 +303,18 @@ export function selectRepresentative(
     .filter((b): b is Booth => !!b);
   if (booths.length === 0) return { name: '', booth: null };
 
-  // 홀/구역 이름 판단은 MapViewer에서 전체 clusters를 보고 후처리
-
-  // 3순위: 부스 면적 가장 큰 업체 (회사명 있음)
   const sorted = [...booths].sort((a, b) => b.width * b.height - a.width * a.height);
   const biggest = sorted.find((b) => b.company?.name);
   if (biggest) return { name: getBoothDisplayName(biggest), booth: biggest };
 
-  // 4순위: 회사/로고 있는 업체
   const withCompany = booths.find((b) => b.company_id || b.company);
   if (withCompany) return { name: getBoothDisplayName(withCompany), booth: withCompany };
 
-  // 5순위: 첫 번째
   return { name: getBoothDisplayName(sorted[0]), booth: sorted[0] };
+}
+
+/** Supercluster 인덱스 재생성 강제 */
+export function invalidateClusterIndex() {
+  loadedBoothIds = '';
+  scInstance = null;
 }
