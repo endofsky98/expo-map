@@ -33,7 +33,7 @@ export interface ClusterItem {
 }
 
 // ===== Cluster parameters =====
-export const CLUSTER_MAX_ZOOM = 3.0;     // 이 줌 이상이면 항상 개별 표시
+export const CLUSTER_MAX_ZOOM = 2.5;     // 이 줌 이상이면 항상 개별 표시
 export const CLUSTER_ANIM_MS = 300;      // 애니메이션 시간 (ms)
 export const CLUSTER_MIN_SIZE = 40;      // 클러스터 원 최소 크기 px
 export const CLUSTER_MAX_SIZE = 80;      // 클러스터 원 최대 크기 px
@@ -72,7 +72,7 @@ export function scaleToZoom(scale: number): number {
   // scale 0.05 → zoom 0, scale 4.0 → zoom 48
   // log2 기반 매핑, 3배 세밀도
   const z = Math.log2(scale * 20);
-  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 0.44)));
+  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 2)));
 }
 
 // Supercluster 인스턴스 관리
