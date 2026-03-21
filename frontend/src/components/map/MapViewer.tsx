@@ -946,7 +946,7 @@ export default function MapViewer({
           badge.style.cssText =
             'position:absolute;left:0;top:0;pointer-events:none;' +
             'min-width:36px;height:36px;border-radius:18px;' +
-            'background:rgba(79,70,229,0.45);color:#fff;' +
+            'background:rgba(79,70,229,0.6);color:#fff;' +
             'font-size:16px;font-weight:700;font-family:Inter,sans-serif;' +
             'display:flex;align-items:center;justify-content:center;' +
             'padding:0 8px;' +
