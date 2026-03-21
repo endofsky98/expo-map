@@ -6,10 +6,11 @@ import {
   MapViewerProps, TileInfo, CurrentPosition, FACILITY_STYLES,
   MIN_ZOOM, MAX_ZOOM, MIN_TILT, MAX_TILT, MIN_BOOTH_SCREEN_SIZE,
   CLICK_THRESHOLD, CLICK_TIME_THRESHOLD, ROTATION_THRESHOLD, ZOOM_THRESHOLD, MIN_MARKER_DIST,
-  maxMarkersForScale, parseZoomLevels, hexStringToNumber, selectTileLevel,
+  parseZoomLevels, hexStringToNumber, selectTileLevel,
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
+import { clusterBooths, clusterSize, ClusterItem, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -72,13 +73,15 @@ export default function MapViewer({
 
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  // Cluster DOM elements: clusterId → div
+  const clusterElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  // Previous cluster state for animation comparison
+  const prevClustersRef = useRef<ClusterItem[]>([]);
   const rafIdRef = useRef<number>(0);
-  const prevVisibleIdsRef = useRef<Set<number>>(new Set());
   const prevScaleRef = useRef<number>(1);
-  const stableIdsRef = useRef<Set<number>>(new Set()); // confirmed markers (only recalc on settle)
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const fadingIdsRef = useRef<Set<number>>(new Set()); // markers mid-fade, don't touch opacity
-  const clusterCountsRef = useRef<Map<number, number>>(new Map()); // cluster counts per visible marker
+  // Track which booth markers are mid-animation so we skip position updates
+  const animatingBoothsRef = useRef<Set<number>>(new Set());
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
@@ -726,212 +729,13 @@ export default function MapViewer({
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
-  // ===== Booths (HTML DOM markers — Mapbox style) =====
+  // ===== Booths (HTML DOM markers — Supercluster style) =====
 
-  // recalcMarkers: called after interaction settles (debounced)
-  // Picks up to MAX_MARKERS using center-weighted sampling, applies fade transitions
-  function recalcMarkers() {
-    const markers = markerElementsRef.current;
-    const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
-    const MAX_MARKERS = maxMarkersForScale(sc);
-    const { width: cw, height: ch } = canvasDimsRef.current;
-    const show = showBoothsRef.current;
-
-    // Get visible booths in viewport
-    const cosR = Math.cos(rot);
-    const sinR = Math.sin(rot);
-    const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
-    const wCorners = scrCorners.map(([sx, sy]) => ({
-      x: ((sx - tx) * cosR + (sy - ty) * sinR) / sc,
-      y: (-(sx - tx) * sinR + (sy - ty) * cosR) / sc,
-    }));
-    const bx0 = Math.min(...wCorners.map(c => c.x));
-    const by0 = Math.min(...wCorners.map(c => c.y));
-    const bx1 = Math.max(...wCorners.map(c => c.x));
-    const by1 = Math.max(...wCorners.map(c => c.y));
-
-    const visibleBooths: Booth[] = [];
-    for (const booth of boothsRef.current) {
-      const cx = booth.x + booth.width / 2;
-      const cy = booth.y + booth.height / 2;
-      if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
-        visibleBooths.push(booth);
-      }
-    }
-
-    // Compute screen positions for all visible booths
-    const boothScreenPos = new Map<number, { sx: number; sy: number }>();
-    for (const booth of visibleBooths) {
-      const wcx = booth.x + booth.width / 2;
-      const wcy = booth.y + booth.height / 2;
-      boothScreenPos.set(booth.id, worldToScreen(wcx, wcy));
-    }
-
-    const MIN_MARKER_DIST = 60; // px minimum distance between markers
-
-    let newIds: Set<number>;
-    if (visibleBooths.length <= MAX_MARKERS) {
-      newIds = new Set(visibleBooths.map(b => b.id));
-    } else {
-      const focusX = cw / 2;
-      const focusY = ch * (2 / 3);
-      const maxDist = Math.sqrt(cw * cw + ch * ch) / 2;
-
-      // 1) Keep existing stable markers that are still visible AND not too far from focus
-      const oldIds = stableIdsRef.current;
-      const kept = new Set<number>();
-      const keptPositions: { sx: number; sy: number }[] = [];
-
-      // Score old markers — drop those whose probability fell too low
-      for (const id of oldIds) {
-        const pos = boothScreenPos.get(id);
-        if (!pos) continue; // left viewport
-        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
-        const normalized = dist / maxDist;
-        // Drop if too far (probability < 15%)
-        if (normalized > 0.85) continue;
-        if (kept.size >= MAX_MARKERS) break;
-        kept.add(id);
-        keptPositions.push(pos);
-      }
-
-      // 2) Fill remaining slots with weighted random selection + minimum distance
-      const candidates = visibleBooths.filter(b => !kept.has(b.id));
-      const scored: { id: number; weight: number; sx: number; sy: number }[] = [];
-      for (const booth of candidates) {
-        const pos = boothScreenPos.get(booth.id)!;
-        const dist = Math.sqrt((pos.sx - focusX) ** 2 + (pos.sy - focusY) ** 2);
-        const normalized = dist / maxDist;
-
-        // 1순위: 부스 면적 (width * height 비례, 최대 3배 가중)
-        const area = booth.width * booth.height;
-        const maxArea = 10000; // 정규화 기준
-        const areaWeight = 1 + Math.min(area / maxArea, 1) * 2; // 1~3
-
-        // 2순위: 회사 정보 유무 (company_id 있으면 2배)
-        const companyWeight = booth.company_id || booth.company ? 2 : 1;
-
-        // 3순위: 화면 중심 가까운 순 (기존 가우시안)
-        const distWeight = Math.exp(-2.5 * normalized * normalized);
-
-        // 최종 가중치
-        const weight = distWeight * areaWeight * companyWeight;
-        scored.push({ id: booth.id, weight, ...pos });
-      }
-
-      // Weighted random selection without replacement, respecting min distance
-      const pool = [...scored];
-      while (kept.size < MAX_MARKERS && pool.length > 0) {
-        const totalWeight = pool.reduce((sum, s) => sum + s.weight, 0);
-        if (totalWeight <= 0) break;
-        let r = Math.random() * totalWeight;
-        let picked = pool.length - 1;
-        for (let i = 0; i < pool.length; i++) {
-          r -= pool[i].weight;
-          if (r <= 0) { picked = i; break; }
-        }
-        const candidate = pool[picked];
-        pool.splice(picked, 1);
-
-        // Check minimum distance from all already-placed markers
-        const tooClose = keptPositions.some(p => {
-          const dx = p.sx - candidate.sx;
-          const dy = p.sy - candidate.sy;
-          return dx * dx + dy * dy < MIN_MARKER_DIST * MIN_MARKER_DIST;
-        });
-        if (tooClose) continue;
-
-        kept.add(candidate.id);
-        keptPositions.push({ sx: candidate.sx, sy: candidate.sy });
-      }
-      newIds = kept;
-    }
-
-    // 클러스터 카운트 계산: newIds에 없는 부스를 가장 가까운 선택된 마커에 할당
-    const clusterCounts = new Map<number, number>();
-    for (const id of newIds) clusterCounts.set(id, 0);
-
-    for (const booth of visibleBooths) {
-      if (newIds.has(booth.id)) continue;
-      const pos = boothScreenPos.get(booth.id)!;
-      if (!pos) continue;
-      let nearestId = -1, nearestDist = Infinity;
-      for (const id of newIds) {
-        const p = boothScreenPos.get(id)!;
-        if (!p) continue;
-        const d = (p.sx - pos.sx) ** 2 + (p.sy - pos.sy) ** 2;
-        if (d < nearestDist) { nearestDist = d; nearestId = id; }
-      }
-      if (nearestId >= 0) clusterCounts.set(nearestId, (clusterCounts.get(nearestId) || 0) + 1);
-    }
-    clusterCountsRef.current = clusterCounts;
-
-    const oldIds = stableIdsRef.current;
-
-    // FadeOut markers that are being removed
-    for (const id of oldIds) {
-      if (!newIds.has(id)) {
-        const el = markers.get(id);
-        if (el) {
-          fadingIdsRef.current.add(id);
-          el.style.transition = 'opacity 1s ease-out';
-          el.style.opacity = '0';
-          setTimeout(() => {
-            fadingIdsRef.current.delete(id);
-            if (!stableIdsRef.current.has(id)) {
-              el.style.display = 'none';
-              el.style.transition = '';
-            }
-          }, 1000);
-        }
-      }
-    }
-
-    // FadeIn new markers
-    for (const id of newIds) {
-      if (!oldIds.has(id)) {
-        const el = markers.get(id);
-        if (el) {
-          const booth = boothMapRef.current.get(id);
-          if (booth) {
-            const wcx = booth.x + booth.width / 2;
-            const wcy = booth.y + booth.height / 2;
-            const { sx, sy } = worldToScreen(wcx, wcy);
-            el.style.display = 'flex';
-            el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
-            fadingIdsRef.current.add(id);
-            el.style.opacity = '0';
-            el.style.transition = 'none';
-            // Force layout flush so browser registers opacity:0 before transition starts
-            void el.offsetHeight;
-            el.style.transition = 'opacity 1s ease-in';
-            el.style.opacity = '1';
-            setTimeout(() => {
-              fadingIdsRef.current.delete(id);
-            }, 1000);
-          }
-        }
-      }
-    }
-
-    stableIdsRef.current = newIds;
-    prevVisibleIdsRef.current = newIds;
-  }
-
-  // updateMarkerPositions: called on every transform change via rAF
-  function updateMarkerPositions() {
-    const overlay = markerOverlayRef.current;
-    if (!overlay) return;
-    const markers = markerElementsRef.current;
+  // Helper: compute viewport-visible booths
+  function getVisibleBooths(): Booth[] {
     const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
     const { width: cw, height: ch } = canvasDimsRef.current;
     const show = showBoothsRef.current;
-    const selId = selectedBoothIdRef.current;
-    const actCats = activeCategoriesRef.current;
-    const catColors = categoryColorMapRef.current;
-    const lnFn = lnRef.current;
-
-    // Rotation-aware viewport bounds in world space
     const cosR = Math.cos(rot);
     const sinR = Math.sin(rot);
     const scrCorners = [[0, 0], [cw, 0], [cw, ch], [0, ch]];
@@ -943,55 +747,292 @@ export default function MapViewer({
     const by0 = Math.min(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
     const bx1 = Math.max(wCorners[0].x, wCorners[1].x, wCorners[2].x, wCorners[3].x);
     const by1 = Math.max(wCorners[0].y, wCorners[1].y, wCorners[2].y, wCorners[3].y);
-
-    // Viewport culling
-    const visibleBooths: Booth[] = [];
+    const result: Booth[] = [];
     for (const booth of boothsRef.current) {
       const cx = booth.x + booth.width / 2;
       const cy = booth.y + booth.height / 2;
       if (show && cx >= bx0 && cx <= bx1 && cy >= by0 && cy <= by1) {
-        visibleBooths.push(booth);
+        result.push(booth);
+      }
+    }
+    return result;
+  }
+
+  // Create a cluster DOM element and add it to the overlay
+  function createClusterElement(cluster: ClusterItem, overlay: HTMLDivElement): HTMLDivElement {
+    const size = clusterSize(cluster.count);
+    const shadowSize = size * 2.5;
+
+    const el = document.createElement('div');
+    el.className = 'cluster-marker';
+    el.setAttribute('data-cluster-id', cluster.id);
+    el.style.position = 'absolute';
+    el.style.left = '0';
+    el.style.top = '0';
+    el.style.willChange = 'transform';
+    el.style.pointerEvents = 'auto';
+    el.style.cursor = 'pointer';
+    el.style.zIndex = '8';
+    el.style.display = 'flex';
+    el.style.alignItems = 'center';
+    el.style.justifyContent = 'center';
+    el.style.transform = `translate(${cluster.sx}px, ${cluster.sy}px) translate(-50%, -50%)`;
+
+    // Shadow / area glow (behind the circle)
+    const shadow = document.createElement('div');
+    shadow.style.position = 'absolute';
+    shadow.style.width = `${shadowSize}px`;
+    shadow.style.height = `${shadowSize}px`;
+    shadow.style.borderRadius = '50%';
+    shadow.style.background = 'radial-gradient(ellipse, rgba(79,70,229,0.08) 0%, transparent 70%)';
+    shadow.style.transform = 'translate(-50%, -50%)';
+    shadow.style.left = '50%';
+    shadow.style.top = '50%';
+    shadow.style.pointerEvents = 'none';
+    el.appendChild(shadow);
+
+    // Cluster circle
+    const circle = document.createElement('div');
+    circle.style.width = `${size}px`;
+    circle.style.height = `${size}px`;
+    circle.style.borderRadius = '50%';
+    circle.style.display = 'flex';
+    circle.style.alignItems = 'center';
+    circle.style.justifyContent = 'center';
+    circle.style.background = 'rgba(79,70,229,0.15)';
+    circle.style.border = '2px solid rgba(79,70,229,0.4)';
+    circle.style.position = 'relative';
+    circle.style.zIndex = '1';
+    circle.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease, opacity ${CLUSTER_ANIM_MS}ms ease`;
+
+    const countSpan = document.createElement('span');
+    countSpan.textContent = String(cluster.count);
+    countSpan.style.fontSize = `${Math.round(size * 0.33)}px`;
+    countSpan.style.fontWeight = '700';
+    countSpan.style.fontFamily = 'Inter, sans-serif';
+    countSpan.style.color = '#4f46e5';
+    countSpan.style.pointerEvents = 'none';
+    circle.appendChild(countSpan);
+    el.appendChild(circle);
+
+    // Click → zoom in to fit cluster bbox
+    el.addEventListener('pointerup', (e) => {
+      e.stopPropagation();
+      const boothMap = boothMapRef.current;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const id of cluster.boothIds) {
+        const b = boothMap.get(id);
+        if (!b) continue;
+        minX = Math.min(minX, b.x);
+        minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + b.width);
+        maxY = Math.max(maxY, b.y + b.height);
+      }
+      if (!isFinite(minX)) return;
+      const { width: cw, height: ch } = canvasDimsRef.current;
+      const bw = maxX - minX;
+      const bh = maxY - minY;
+      const padding = 1.4;
+      const targetScale = Math.min(cw / (bw * padding), ch / (bh * padding));
+      const pivotX = cw / 2;
+      const pivotY = ch / 2;
+      // Pan so the cluster center is at screen center, then zoom
+      const centerWx = (minX + maxX) / 2;
+      const centerWy = (minY + maxY) / 2;
+      const t = transformRef.current;
+      t.x = cw / 2 - centerWx * t.scale;
+      t.y = ch / 2 - centerWy * t.scale;
+      clampPosition(t);
+      const mc = mainContainerRef.current;
+      if (mc) syncContainerPosition(mc, t);
+      animateZoom(targetScale, pivotX, pivotY, CLUSTER_ANIM_MS);
+    });
+
+    overlay.appendChild(el);
+    return el;
+  }
+
+  // recalcMarkers: compute new clusters, animate transitions
+  function recalcMarkers() {
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const markerEls = markerElementsRef.current;
+    const clusterEls = clusterElementsRef.current;
+    const { scale: sc } = transformRef.current;
+    const { height: ch } = canvasDimsRef.current;
+
+    const visibleBooths = getVisibleBooths();
+
+    // At high zoom, always show individual markers (no clustering)
+    const forceIndividual = sc >= CLUSTER_MAX_ZOOM;
+    const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
+
+    const newClusters = clusterBooths(visibleBooths, worldToScreen, radius);
+    const prevClusters = prevClustersRef.current;
+
+    // Build prev-state lookup: boothId → which cluster it was in
+    const prevBoothToCluster = new Map<number, ClusterItem>();
+    for (const pc of prevClusters) {
+      for (const bid of pc.boothIds) {
+        prevBoothToCluster.set(bid, pc);
       }
     }
 
-    const MAX_MARKERS = maxMarkersForScale(sc);
-    const visibleBoothIds = new Set(visibleBooths.map(b => b.id));
-
-    // During interaction: keep stable set, only drop markers that left viewport
-    const stable = stableIdsRef.current;
-    const currentDisplay = new Set<number>();
-    for (const id of stable) {
-      if (visibleBoothIds.has(id)) currentDisplay.add(id);
+    // Build new-state lookup: boothId → new ClusterItem
+    const newBoothToCluster = new Map<number, ClusterItem>();
+    for (const nc of newClusters) {
+      for (const bid of nc.boothIds) {
+        newBoothToCluster.set(bid, nc);
+      }
     }
 
-    // Schedule a settle recalculation (debounced 300ms after last interaction)
+    // --- Hide ALL individual markers first (we'll re-show the ones that are now individual) ---
+    for (const [id, el] of markerEls) {
+      if (!animatingBoothsRef.current.has(id)) {
+        el.style.display = 'none';
+      }
+    }
+
+    // --- Remove old cluster elements ---
+    const newClusterIds = new Set(newClusters.map(c => c.id));
+    for (const [cid, cel] of clusterEls) {
+      if (!newClusterIds.has(cid)) {
+        cel.remove();
+        clusterEls.delete(cid);
+      }
+    }
+
+    // --- Process new clusters ---
+    for (const nc of newClusters) {
+      if (nc.isCluster) {
+        // === CLUSTER MARKER ===
+        let cel = clusterEls.get(nc.id);
+        if (!cel) {
+          cel = createClusterElement(nc, overlay);
+          clusterEls.set(nc.id, cel);
+          // Entrance animation
+          const circle = cel.querySelector('div:last-child') as HTMLDivElement | null;
+          if (circle) {
+            circle.style.opacity = '0';
+            circle.style.transform = 'scale(0.5)';
+            void circle.offsetHeight;
+            circle.style.opacity = '1';
+            circle.style.transform = 'scale(1)';
+          }
+        } else {
+          // Update position
+          cel.style.transform = `translate(${nc.sx}px, ${nc.sy}px) translate(-50%, -50%)`;
+          // Update count
+          const span = cel.querySelector('span');
+          if (span) span.textContent = String(nc.count);
+        }
+
+        // Animate individual markers that just collapsed into this cluster
+        for (const bid of nc.boothIds) {
+          const prev = prevBoothToCluster.get(bid);
+          if (!prev || !prev.isCluster) {
+            // Was individual (or newly visible) → animate to cluster center
+            const el = markerEls.get(bid);
+            if (!el) continue;
+            const booth = boothMapRef.current.get(bid);
+            if (!booth) continue;
+            const wcx = booth.x + booth.width / 2;
+            const wcy = booth.y + booth.height / 2;
+            const { sx: bsx, sy: bsy } = worldToScreen(wcx, wcy);
+
+            animatingBoothsRef.current.add(bid);
+            el.style.display = 'flex';
+            el.style.transition = 'none';
+            el.style.transform = `translate(${bsx}px, ${bsy}px) translate(-50%, -100%)`;
+            el.style.opacity = '1';
+            void el.offsetHeight;
+            el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-in, opacity ${CLUSTER_ANIM_MS}ms ease-in`;
+            el.style.transform = `translate(${nc.sx}px, ${nc.sy}px) translate(-50%, -100%)`;
+            el.style.opacity = '0';
+            setTimeout(() => {
+              animatingBoothsRef.current.delete(bid);
+              if (newBoothToCluster.get(bid)?.isCluster) {
+                el.style.display = 'none';
+                el.style.transition = '';
+              }
+            }, CLUSTER_ANIM_MS);
+          }
+        }
+      } else {
+        // === INDIVIDUAL MARKER ===
+        const booth = nc.representBooth!;
+        const el = markerEls.get(booth.id);
+        if (!el) continue;
+
+        const { sx, sy } = worldToScreen(booth.x + booth.width / 2, booth.y + booth.height / 2);
+
+        const prev = prevBoothToCluster.get(booth.id);
+        const wasCluster = prev?.isCluster ?? false;
+
+        if (wasCluster) {
+          // Cluster → individual: animate from cluster center to booth position
+          animatingBoothsRef.current.add(booth.id);
+          el.style.display = 'flex';
+          el.style.transition = 'none';
+          el.style.transform = `translate(${prev!.sx}px, ${prev!.sy}px) translate(-50%, -100%) scale(0.5)`;
+          el.style.opacity = '0';
+          void el.offsetHeight;
+          el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-out, opacity ${CLUSTER_ANIM_MS}ms ease-out`;
+          el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(1)`;
+          el.style.opacity = '1';
+          setTimeout(() => {
+            animatingBoothsRef.current.delete(booth.id);
+            // Confirm display if still individual
+            if (!newBoothToCluster.get(booth.id)?.isCluster) {
+              el.style.transition = '';
+            }
+          }, CLUSTER_ANIM_MS);
+        } else {
+          // Was already individual — just update position
+          if (!animatingBoothsRef.current.has(booth.id)) {
+            el.style.display = 'flex';
+            el.style.transition = '';
+            el.style.opacity = '1';
+            el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
+          }
+        }
+      }
+    }
+
+    prevClustersRef.current = newClusters;
+  }
+
+  // updateMarkerPositions: called on every transform change via rAF
+  // Re-positions individual markers + cluster markers, and triggers recalcMarkers (debounced)
+  function updateMarkerPositions() {
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const markerEls = markerElementsRef.current;
+    const clusterEls = clusterElementsRef.current;
+    const { scale: sc } = transformRef.current;
+    const { height: ch } = canvasDimsRef.current;
+    const selId = selectedBoothIdRef.current;
+    const actCats = activeCategoriesRef.current;
+    const catColors = categoryColorMapRef.current;
+    const lnFn = lnRef.current;
+
+    // Debounced recalc after interaction settles
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(() => {
       recalcMarkers();
     }, 300);
 
-    const sampledIds = currentDisplay;
-    const prevVisible = prevVisibleIdsRef.current;
-
+    // Update positions of all currently-displayed individual markers
     for (const booth of boothsRef.current) {
-      const el = markers.get(booth.id);
-      if (!el) continue;
-
-      const isDisplayed = sampledIds.has(booth.id);
-
-      if (!isDisplayed) {
-        // Don't hide if mid-fade (managed by recalcMarkers)
-        if (!prevVisible.has(booth.id) && !fadingIdsRef.current.has(booth.id)) {
-          el.style.display = 'none';
-        }
-        continue;
-      }
+      const el = markerEls.get(booth.id);
+      if (!el || el.style.display === 'none') continue;
+      if (animatingBoothsRef.current.has(booth.id)) continue;
 
       const wcx = booth.x + booth.width / 2;
       const wcy = booth.y + booth.height / 2;
       const { sx, sy } = worldToScreen(wcx, wcy);
 
-      // Perspective scale: when tilted, markers near top (far) shrink, near bottom (close) grow
+      // Perspective scale: when tilted, markers near top shrink, near bottom grow
       const tilt = transformRef.current.tilt;
       let pScale = 1;
       if (tilt > 0) {
@@ -999,15 +1040,11 @@ export default function MapViewer({
         pScale = 0.5 + normalizedY * 0.8;
       }
 
-      // Position update only (no fade logic here — recalcMarkers handles transitions)
-      el.style.display = 'flex';
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(${pScale.toFixed(3)})`;
 
-      // Category filter opacity — skip if mid-fade
-      if (!fadingIdsRef.current.has(booth.id)) {
-        const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-        el.style.opacity = String(opacity);
-      }
+      // Category filter opacity
+      const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
+      el.style.opacity = String(opacity);
 
       // Update SVG pin color for selection
       const isSelected = booth.id === selId;
@@ -1032,12 +1069,10 @@ export default function MapViewer({
       if (nameEl) {
         const companyName = lnFn(booth.company?.name) || '';
         nameEl.textContent = companyName || booth.booth_number;
-        // 회사명이 있으면 부스번호 표시, 없으면 숨기기
         if (numEl) {
           numEl.textContent = booth.booth_number;
           numEl.style.display = companyName ? '' : 'none';
         } else if (companyName && labelEl) {
-          // numEl 없으면 생성
           const ns = document.createElement('div');
           ns.setAttribute('data-num', '');
           ns.textContent = booth.booth_number;
@@ -1047,22 +1082,15 @@ export default function MapViewer({
           labelEl.insertBefore(ns, nameEl);
         }
       }
-
-      // 클러스터 카운트 표시
-      const clusterEl = el.querySelector('[data-cluster]') as HTMLElement;
-      if (clusterEl) {
-        const count = clusterCountsRef.current.get(booth.id) || 0;
-        if (count > 0) {
-          clusterEl.textContent = `외 ${count}개`;
-          clusterEl.style.display = '';
-        } else {
-          clusterEl.style.display = 'none';
-        }
-      }
     }
 
-    // Save current visible set for next frame comparison
-    prevVisibleIdsRef.current = new Set(sampledIds);
+    // Update positions of cluster elements
+    for (const [cid, cel] of clusterEls) {
+      const clusterIdAttr = cel.getAttribute('data-cluster-id');
+      const cur = prevClustersRef.current.find(c => c.id === clusterIdAttr);
+      if (!cur) continue;
+      cel.style.transform = `translate(${cur.sx}px, ${cur.sy}px) translate(-50%, -50%)`;
+    }
   }
 
   useEffect(() => {
@@ -1145,19 +1173,10 @@ export default function MapViewer({
         }
         label.appendChild(nameSpan);
 
-        // 클러스터 카운트 라벨 (마커 아래 "외 N개")
-        const clusterLabel = document.createElement('div');
-        clusterLabel.setAttribute('data-cluster', '');
-        clusterLabel.style.fontSize = '11px';
-        clusterLabel.style.color = '#6b7280';
-        clusterLabel.style.textAlign = 'center';
-        clusterLabel.style.whiteSpace = 'nowrap';
-        clusterLabel.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
-        clusterLabel.style.display = 'none'; // 기본 숨김
-
         el.appendChild(pinSvg);
         el.appendChild(label);
-        el.appendChild(clusterLabel);
+        // Individual markers start hidden — recalcMarkers will show them
+        el.style.display = 'none';
 
         // Click handler
         el.addEventListener('pointerup', (e) => {
