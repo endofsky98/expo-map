@@ -43,7 +43,7 @@ export default function EditorPage() {
   const [floors, setFloors] = useState<{ id: number; name: string }[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
   const [categories, setCategories] = useState<{ id: number; name: string | Record<string, string> }[]>([]);
-  const [companies, setCompanies] = useState<{ id: number; name: string | Record<string, string> }[]>([]);
+  const [companies, setCompanies] = useState<{ id: number; name: string | Record<string, string>; category_id?: number | null }[]>([]);
 
   // ===== Data =====
   const [halls, setHalls] = useState<EditorHall[]>([]);
@@ -73,7 +73,7 @@ export default function EditorPage() {
       if (mapped.length > 0 && !selectedFloorId) setSelectedFloorId(mapped[0].id);
     }).catch(() => {});
     fetchCategories().then(c => setCategories(c.map(cc => ({ id: cc.id, name: cc.name })))).catch(() => {});
-    fetchCompanies().then(c => setCompanies(c.map(cc => ({ id: cc.id, name: cc.name })))).catch(() => {});
+    fetchCompanies().then(c => setCompanies(c.map(cc => ({ id: cc.id, name: cc.name, category_id: cc.category_id })))).catch(() => {});
   }, []);
 
   // ===== Fetch data when floor changes =====

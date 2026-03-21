@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { EditorBooth } from '../editorTypes';
 
-interface Company { id: number; name: string | Record<string, string>; }
+interface Company { id: number; name: string | Record<string, string>; category_id?: number | null; }
 
 interface BoothPanelProps {
   booth: EditorBooth;
@@ -111,7 +111,15 @@ export function BoothPanel({ booth, categories, companies, onSave, onDelete }: B
           </button>
         </div>
         {companyMode === 'select' ? (
-          <select className={input} value={form.company_id ?? ''} onChange={e => set('company_id', e.target.value ? Number(e.target.value) : null)}>
+          <select className={input} value={form.company_id ?? ''} onChange={e => {
+            const compId = e.target.value ? Number(e.target.value) : null;
+            set('company_id', compId);
+            // 회사의 카테고리 자동 선택
+            if (compId) {
+              const comp = companies.find(c => c.id === compId);
+              if (comp?.category_id) set('category_id', comp.category_id);
+            }
+          }}>
             <option value="">회사 없음</option>
             {companies.map(c => <option key={c.id} value={c.id}>{ln(c.name)}</option>)}
           </select>
