@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import * as PIXI from 'pixi.js';
 import { Booth, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
 import { useI18n } from '@/lib/i18n';
@@ -10,7 +10,7 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import { clusterBooths, clusterSize, ClusterItem, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
+import { clusterBooths, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM, selectRepresentative, getBoothDisplayName } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -71,17 +71,9 @@ export default function MapViewer({
   onMapClickRef.current = onMapClick;
   onZoomChangeRef.current = onZoomChange;
 
-  const markerOverlayRef = useRef<HTMLDivElement | null>(null);
-  const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
-  // Cluster DOM elements: clusterId → div
-  const clusterElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
-  // Previous cluster state for animation comparison
-  const prevClustersRef = useRef<ClusterItem[]>([]);
-  const rafIdRef = useRef<number>(0);
-  const prevScaleRef = useRef<number>(1);
+  // PIXI label container (world 좌표 — mainContainer 자식)
+  const boothLabelContainerRef = useRef<PIXI.Container | null>(null);
   const settleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track which booth markers are mid-animation so we skip position updates
-  const animatingBoothsRef = useRef<Set<number>>(new Set());
   const inertiaRafRef = useRef<number>(0);
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
@@ -216,9 +208,12 @@ export default function MapViewer({
     return { sx, sy };
   }
 
-  // 마커 위치 즉시 업데이트 (rAF 지연 제거 — 드래그 시 즉시 따라감)
+  // debounced booth label re-render (드래그/줌 settle 후 호출)
   function scheduleMarkerUpdate() {
-    updateMarkerPositions();
+    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
+    settleTimerRef.current = setTimeout(() => {
+      renderBoothLabels();
+    }, 300);
   }
 
   // Clamp: image must overlap screen center — image cannot leave the center point
@@ -438,7 +433,10 @@ export default function MapViewer({
     mainContainer.addChild(tileLayerRef.current);
     mainContainer.addChild(obstacleLayerRef.current);
     mainContainer.addChild(routeLayerRef.current);
-    // boothLayer removed — booths are now HTML DOM markers
+    // boothLabelContainer: PIXI 텍스트/그래픽 라벨 레이어 (world 좌표 — pan/zoom 자동 적용)
+    const boothLabelContainer = new PIXI.Container();
+    boothLabelContainerRef.current = boothLabelContainer;
+    mainContainer.addChild(boothLabelContainer);
     mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(overlayLayerRef.current);
     mainContainerRef.current = mainContainer;
@@ -501,6 +499,7 @@ export default function MapViewer({
       app.destroy(true);
       pixiApp.current = null;
       mainContainerRef.current = null;
+      boothLabelContainerRef.current = null;
       canvasRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -725,7 +724,7 @@ export default function MapViewer({
     }
   }, [currentRoutePoints, routeTransitionMarkers, routeFacilityMarkers]);
 
-  // ===== Booths (HTML DOM markers — Supercluster style) =====
+  // ===== Booths (PIXI 텍스트 라벨 — world 좌표) =====
 
   // Helper: compute viewport-visible booths
   function getVisibleBooths(): Booth[] {
@@ -754,448 +753,115 @@ export default function MapViewer({
     return result;
   }
 
-  // Create a cluster DOM element and add it to the overlay
-  function createClusterElement(cluster: ClusterItem, overlay: HTMLDivElement): HTMLDivElement {
-    const size = clusterSize(cluster.count);
-    const shadowSize = size * 2.5;
+  // ===== PIXI Booth Labels =====
 
-    const el = document.createElement('div');
-    el.className = 'cluster-marker';
-    el.setAttribute('data-cluster-id', cluster.id);
-    el.style.position = 'absolute';
-    el.style.left = '0';
-    el.style.top = '0';
-    el.style.willChange = 'transform';
-    el.style.pointerEvents = 'auto';
-    el.style.cursor = 'pointer';
-    el.style.zIndex = '8';
-    el.style.display = 'flex';
-    el.style.alignItems = 'center';
-    el.style.justifyContent = 'center';
-    el.style.transform = `translate(${cluster.sx}px, ${cluster.sy}px) translate(-50%, -50%)`;
+  /**
+   * renderBoothLabels — 부스 라벨을 PIXI.Container에 직접 렌더링.
+   * mainContainer의 자식이므로 pan/zoom 자동 적용 (world 좌표 사용).
+   *
+   * - scale < CLUSTER_MAX_ZOOM: 클러스터 모드 (bounding box 음영 + 대표업체명 + "외 N개")
+   * - scale >= CLUSTER_MAX_ZOOM: 개별 부스 라벨 모드
+   */
+  function renderBoothLabels() {
+    const container = boothLabelContainerRef.current;
+    if (!container) return;
+    container.removeChildren();
 
-    // Shadow / area glow (behind the circle)
-    const shadow = document.createElement('div');
-    shadow.style.position = 'absolute';
-    shadow.style.width = `${shadowSize}px`;
-    shadow.style.height = `${shadowSize}px`;
-    shadow.style.borderRadius = '50%';
-    shadow.style.background = 'radial-gradient(ellipse, rgba(79,70,229,0.08) 0%, transparent 70%)';
-    shadow.style.transform = 'translate(-50%, -50%)';
-    shadow.style.left = '50%';
-    shadow.style.top = '50%';
-    shadow.style.pointerEvents = 'none';
-    el.appendChild(shadow);
+    if (!showBoothsRef.current) return;
 
-    // Cluster circle
-    const circle = document.createElement('div');
-    circle.style.width = `${size}px`;
-    circle.style.height = `${size}px`;
-    circle.style.borderRadius = '50%';
-    circle.style.display = 'flex';
-    circle.style.alignItems = 'center';
-    circle.style.justifyContent = 'center';
-    circle.style.background = 'rgba(79,70,229,0.15)';
-    circle.style.border = '2px solid rgba(79,70,229,0.4)';
-    circle.style.position = 'relative';
-    circle.style.zIndex = '1';
-    circle.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease, opacity ${CLUSTER_ANIM_MS}ms ease`;
-
-    const countSpan = document.createElement('span');
-    countSpan.textContent = String(cluster.count);
-    countSpan.style.fontSize = `${Math.round(size * 0.33)}px`;
-    countSpan.style.fontWeight = '700';
-    countSpan.style.fontFamily = 'Inter, sans-serif';
-    countSpan.style.color = '#4f46e5';
-    countSpan.style.pointerEvents = 'none';
-    circle.appendChild(countSpan);
-    el.appendChild(circle);
-
-    // Click → zoom in to fit cluster bbox
-    el.addEventListener('pointerup', (e) => {
-      e.stopPropagation();
-      const boothMap = boothMapRef.current;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const id of cluster.boothIds) {
-        const b = boothMap.get(id);
-        if (!b) continue;
-        minX = Math.min(minX, b.x);
-        minY = Math.min(minY, b.y);
-        maxX = Math.max(maxX, b.x + b.width);
-        maxY = Math.max(maxY, b.y + b.height);
-      }
-      if (!isFinite(minX)) return;
-      const { width: cw, height: ch } = canvasDimsRef.current;
-      const bw = maxX - minX;
-      const bh = maxY - minY;
-      const padding = 1.4;
-      const targetScale = Math.min(cw / (bw * padding), ch / (bh * padding));
-      const pivotX = cw / 2;
-      const pivotY = ch / 2;
-      // Pan so the cluster center is at screen center, then zoom
-      const centerWx = (minX + maxX) / 2;
-      const centerWy = (minY + maxY) / 2;
-      const t = transformRef.current;
-      t.x = cw / 2 - centerWx * t.scale;
-      t.y = ch / 2 - centerWy * t.scale;
-      clampPosition(t);
-      const mc = mainContainerRef.current;
-      if (mc) syncContainerPosition(mc, t);
-      animateZoom(targetScale, pivotX, pivotY, CLUSTER_ANIM_MS);
-    });
-
-    overlay.appendChild(el);
-    return el;
-  }
-
-  // recalcMarkers: compute new clusters, animate transitions
-  function recalcMarkers() {
-    const overlay = markerOverlayRef.current;
-    if (!overlay) return;
-    const markerEls = markerElementsRef.current;
-    const clusterEls = clusterElementsRef.current;
     const { scale: sc } = transformRef.current;
-    const { height: ch } = canvasDimsRef.current;
-
+    const dpr = window.devicePixelRatio || 1;
     const visibleBooths = getVisibleBooths();
 
-    // At high zoom, always show individual markers (no clustering)
+    // 클러스터링 수행
     const forceIndividual = sc >= CLUSTER_MAX_ZOOM;
     const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
+    const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
 
-    const newClusters = clusterBooths(visibleBooths, worldToScreen, radius);
-    const prevClusters = prevClustersRef.current;
+    for (const cluster of clusters) {
+      if (cluster.isCluster && cluster.count > 1) {
+        // ===== 클러스터: bounding box 음영 + 대표업체명 + "외 N개" =====
+        const bx = cluster.bboxX ?? cluster.x;
+        const by = cluster.bboxY ?? cluster.y;
+        const bw = cluster.bboxW ?? 40;
+        const bh = cluster.bboxH ?? 40;
+        const pad = 8; // world px padding
 
-    // Build prev-state lookup: boothId → which cluster it was in
-    const prevBoothToCluster = new Map<number, ClusterItem>();
-    for (const pc of prevClusters) {
-      for (const bid of pc.boothIds) {
-        prevBoothToCluster.set(bid, pc);
-      }
-    }
+        // 배경 반투명 사각형
+        const bg = new PIXI.Graphics();
+        bg.beginFill(0x4f46e5, 0.1);
+        bg.lineStyle(1.5, 0x4f46e5, 0.25);
+        bg.drawRoundedRect(bx - pad, by - pad, bw + pad * 2, bh + pad * 2, 10);
+        bg.endFill();
+        container.addChild(bg);
 
-    // Build new-state lookup: boothId → new ClusterItem
-    const newBoothToCluster = new Map<number, ClusterItem>();
-    for (const nc of newClusters) {
-      for (const bid of nc.boothIds) {
-        newBoothToCluster.set(bid, nc);
-      }
-    }
+        // 대표 업체 선정
+        const rep = selectRepresentative(cluster.boothIds, boothsRef.current);
+        const repName = rep ? getBoothDisplayName(rep) : '';
 
-    // --- Hide ALL individual markers first (we'll re-show the ones that are now individual) ---
-    for (const [id, el] of markerEls) {
-      if (!animatingBoothsRef.current.has(id)) {
-        el.style.display = 'none';
-      }
-    }
+        // 텍스트 크기: world 좌표 기준 (줌에 반비례하여 화면 크기 일정 유지)
+        const targetScreenPx = 13; // 화면에서 보이길 원하는 px
+        const fontSize = Math.max(8, Math.min(30, targetScreenPx / sc));
 
-    // --- Remove old cluster elements ---
-    const newClusterIds = new Set(newClusters.map(c => c.id));
-    for (const [cid, cel] of clusterEls) {
-      if (!newClusterIds.has(cid)) {
-        cel.remove();
-        clusterEls.delete(cid);
-      }
-    }
-
-    // --- Process new clusters ---
-    for (const nc of newClusters) {
-      if (nc.isCluster) {
-        // === CLUSTER MARKER ===
-        let cel = clusterEls.get(nc.id);
-        if (!cel) {
-          cel = createClusterElement(nc, overlay);
-          clusterEls.set(nc.id, cel);
-          // Entrance animation
-          const circle = cel.querySelector('div:last-child') as HTMLDivElement | null;
-          if (circle) {
-            circle.style.opacity = '0';
-            circle.style.transform = 'scale(0.5)';
-            void circle.offsetHeight;
-            circle.style.opacity = '1';
-            circle.style.transform = 'scale(1)';
-          }
-        } else {
-          // Update position
-          cel.style.transform = `translate(${nc.sx}px, ${nc.sy}px) translate(-50%, -50%)`;
-          // Update count
-          const span = cel.querySelector('span');
-          if (span) span.textContent = String(nc.count);
-        }
-
-        // Animate individual markers that just collapsed into this cluster
-        for (const bid of nc.boothIds) {
-          const prev = prevBoothToCluster.get(bid);
-          if (!prev || !prev.isCluster) {
-            // Was individual (or newly visible) → animate to cluster center
-            const el = markerEls.get(bid);
-            if (!el) continue;
-            const booth = boothMapRef.current.get(bid);
-            if (!booth) continue;
-            const wcx = booth.x + booth.width / 2;
-            const wcy = booth.y + booth.height / 2;
-            const { sx: bsx, sy: bsy } = worldToScreen(wcx, wcy);
-
-            animatingBoothsRef.current.add(bid);
-            el.style.display = 'flex';
-            el.style.transition = 'none';
-            el.style.transform = `translate(${bsx}px, ${bsy}px) translate(-50%, -100%)`;
-            el.style.opacity = '1';
-            void el.offsetHeight;
-            el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-in, opacity ${CLUSTER_ANIM_MS}ms ease-in`;
-            el.style.transform = `translate(${nc.sx}px, ${nc.sy}px) translate(-50%, -100%)`;
-            el.style.opacity = '0';
-            setTimeout(() => {
-              animatingBoothsRef.current.delete(bid);
-              if (newBoothToCluster.get(bid)?.isCluster) {
-                el.style.display = 'none';
-                el.style.transition = '';
-              }
-            }, CLUSTER_ANIM_MS);
-          }
+        if (repName) {
+          const label = cluster.count > 1 ? `${repName}\n외 ${cluster.count - 1}개` : repName;
+          const text = new PIXI.Text(label, {
+            fontFamily: 'Inter, sans-serif',
+            fontSize,
+            fontWeight: '700',
+            fill: '#4f46e5',
+            align: 'center',
+            wordWrap: false,
+          });
+          text.resolution = dpr * 2;
+          text.anchor.set(0.5, 0.5);
+          text.position.set(bx + bw / 2, by + bh / 2);
+          container.addChild(text);
         }
       } else {
-        // === INDIVIDUAL MARKER ===
-        const booth = nc.representBooth!;
-        const el = markerEls.get(booth.id);
-        if (!el) continue;
+        // ===== 개별 부스 라벨 =====
+        const booth = cluster.representBooth;
+        if (!booth) continue;
 
-        const { sx, sy } = worldToScreen(booth.x + booth.width / 2, booth.y + booth.height / 2);
+        // 카테고리 필터 적용
+        const actCats = activeCategoriesRef.current;
+        const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
 
-        const prev = prevBoothToCluster.get(booth.id);
-        const wasCluster = prev?.isCluster ?? false;
+        const name = getBoothDisplayName(booth);
+        if (!name) continue;
 
-        if (wasCluster) {
-          // Cluster → individual: animate from cluster center to booth position
-          animatingBoothsRef.current.add(booth.id);
-          el.style.display = 'flex';
-          el.style.transition = 'none';
-          el.style.transform = `translate(${prev!.sx}px, ${prev!.sy}px) translate(-50%, -100%) scale(0.5)`;
-          el.style.opacity = '0';
-          void el.offsetHeight;
-          el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-out, opacity ${CLUSTER_ANIM_MS}ms ease-out`;
-          el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(1)`;
-          el.style.opacity = '1';
-          setTimeout(() => {
-            animatingBoothsRef.current.delete(booth.id);
-            // Confirm display if still individual
-            if (!newBoothToCluster.get(booth.id)?.isCluster) {
-              el.style.transition = '';
-            }
-          }, CLUSTER_ANIM_MS);
-        } else {
-          // Was already individual — just update position
-          if (!animatingBoothsRef.current.has(booth.id)) {
-            el.style.display = 'flex';
-            el.style.transition = '';
-            el.style.opacity = '1';
-            el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%)`;
-          }
-        }
-      }
-    }
+        const targetScreenPx = 11;
+        const fontSize = Math.max(7, Math.min(24, targetScreenPx / sc));
 
-    prevClustersRef.current = newClusters;
-  }
+        const cx = booth.x + booth.width / 2;
+        const cy = booth.y + booth.height / 2;
 
-  // updateMarkerPositions: called on every transform change via rAF
-  // Re-positions individual markers + cluster markers, and triggers recalcMarkers (debounced)
-  function updateMarkerPositions() {
-    const overlay = markerOverlayRef.current;
-    if (!overlay) return;
-    const markerEls = markerElementsRef.current;
-    const clusterEls = clusterElementsRef.current;
-    const { scale: sc } = transformRef.current;
-    const { height: ch } = canvasDimsRef.current;
-    const selId = selectedBoothIdRef.current;
-    const actCats = activeCategoriesRef.current;
-    const catColors = categoryColorMapRef.current;
-    const lnFn = lnRef.current;
-
-    // Debounced recalc after interaction settles
-    if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
-    settleTimerRef.current = setTimeout(() => {
-      recalcMarkers();
-    }, 300);
-
-    // Update positions of all currently-displayed individual markers
-    for (const booth of boothsRef.current) {
-      const el = markerEls.get(booth.id);
-      if (!el || el.style.display === 'none') continue;
-      if (animatingBoothsRef.current.has(booth.id)) continue;
-
-      const wcx = booth.x + booth.width / 2;
-      const wcy = booth.y + booth.height / 2;
-      const { sx, sy } = worldToScreen(wcx, wcy);
-
-      // Perspective scale: when tilted, markers near top shrink, near bottom grow
-      const tilt = transformRef.current.tilt;
-      let pScale = 1;
-      if (tilt > 0) {
-        const normalizedY = Math.max(0, Math.min(1, sy / ch));
-        pScale = 0.5 + normalizedY * 0.8;
-      }
-
-      el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(${pScale.toFixed(3)})`;
-
-      // Category filter opacity
-      const opacity = actCats.size === 0 ? 1 : (booth.category_id && actCats.has(booth.category_id) ? 1 : 0.2);
-      el.style.opacity = String(opacity);
-
-      // Update SVG pin color for selection
-      const isSelected = booth.id === selId;
-      const fill = booth.color || (booth.category_id && catColors[booth.category_id]) || '#ef4444';
-      const paths = el.querySelectorAll('svg path');
-      const circles = el.querySelectorAll('svg circle');
-      if (paths.length >= 2) {
-        paths[0].setAttribute('fill', fill);
-        paths[0].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
-        paths[0].setAttribute('stroke-width', isSelected ? '3' : '2.5');
-        paths[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
-      }
-      if (circles.length >= 2) {
-        circles[0].setAttribute('fill', fill);
-        circles[1].setAttribute('stroke', isSelected ? '#4f46e5' : '#fff');
-      }
-
-      // Update label: 부스번호(위 작은) + 회사명(아래 큰)
-      const nameEl = el.querySelector('[data-name]') as HTMLElement;
-      const numEl = el.querySelector('[data-num]') as HTMLElement;
-      const labelEl = el.querySelector('[data-label]') as HTMLElement;
-      if (nameEl) {
-        const companyName = lnFn(booth.company?.name) || '';
-        nameEl.textContent = companyName || booth.booth_number;
-        if (numEl) {
-          numEl.textContent = booth.booth_number;
-          numEl.style.display = companyName ? '' : 'none';
-        } else if (companyName && labelEl) {
-          const ns = document.createElement('div');
-          ns.setAttribute('data-num', '');
-          ns.textContent = booth.booth_number;
-          ns.style.fontSize = '12px'; ns.style.fontWeight = '500';
-          ns.style.color = '#6b7280'; ns.style.whiteSpace = 'nowrap';
-          ns.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
-          labelEl.insertBefore(ns, nameEl);
-        }
-      }
-    }
-
-    // Update positions of cluster elements
-    for (const [cid, cel] of clusterEls) {
-      const clusterIdAttr = cel.getAttribute('data-cluster-id');
-      const cur = prevClustersRef.current.find(c => c.id === clusterIdAttr);
-      if (!cur) continue;
-      cel.style.transform = `translate(${cur.sx}px, ${cur.sy}px) translate(-50%, -50%)`;
-    }
-  }
-
-  useEffect(() => {
-    const overlay = markerOverlayRef.current;
-    if (!overlay) return;
-    const markers = markerElementsRef.current;
-    const currentIds = new Set(booths.map(b => b.id));
-
-    // Remove deleted booths
-    for (const [id, el] of markers) {
-      if (!currentIds.has(id)) {
-        el.remove();
-        markers.delete(id);
-      }
-    }
-
-    // Create new marker DOM elements
-    for (const booth of booths) {
-      if (!markers.has(booth.id)) {
-        const el = document.createElement('div');
-        el.className = 'booth-marker';
-        el.style.position = 'absolute';
-        el.style.left = '0';
-        el.style.top = '0';
-        el.style.willChange = 'transform';
-        el.style.pointerEvents = 'auto';
-        el.style.cursor = 'pointer';
-        el.style.zIndex = '10';
-        el.style.display = 'flex';
-        el.style.flexDirection = 'column';
-        el.style.alignItems = 'center';
-
-        const fill = booth.color || (booth.category_id && categoryColorMap[booth.category_id]) || '#ef4444';
-
-        // SVG map pin (realistic pin shape)
-        const pinSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        pinSvg.setAttribute('width', '14');
-        pinSvg.setAttribute('height', '18');
-        pinSvg.setAttribute('viewBox', '0 0 28 36');
-        pinSvg.style.filter = 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))';
-        pinSvg.innerHTML =
-          `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="${fill}" stroke="#fff" stroke-width="2.5"/>` +
-          `<circle cx="14" cy="14" r="8" fill="${fill}"/>` +
-          `<circle cx="14" cy="14" r="8" fill="none" stroke="#fff" stroke-width="2"/>` +
-          `<path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" stroke-width="2"/>`;
-
-        // Label wrapper
-        const label = document.createElement('div');
-        label.setAttribute('data-label', '');
-        label.style.textAlign = 'center';
-        label.style.marginTop = '1px';
-        label.style.lineHeight = '1.2';
-
-        // 부스번호 (위, 작은 글씨)
-        const numSpan = document.createElement('div');
-        numSpan.setAttribute('data-num', '');
-        numSpan.textContent = booth.booth_number;
-        numSpan.style.fontSize = '12px';
-        numSpan.style.fontWeight = '500';
-        numSpan.style.color = '#6b7280';
-        numSpan.style.whiteSpace = 'nowrap';
-        numSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
-
-        // 회사명 (아래, 큰 글씨)
-        const nameSpan = document.createElement('div');
-        nameSpan.setAttribute('data-name', '');
-        const initCompanyName = lnRef.current(booth.company?.name) || '';
-        nameSpan.textContent = initCompanyName || booth.booth_number;
-        nameSpan.style.fontSize = '24px';
-        nameSpan.style.fontWeight = '700';
-        nameSpan.style.fontFamily = 'Inter, sans-serif';
-        nameSpan.style.color = '#1f2937';
-        nameSpan.style.whiteSpace = 'nowrap';
-        nameSpan.style.overflow = 'visible';
-        nameSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
-
-        // 회사명 있으면 부스번호+회사명, 없으면 회사명 자리에 부스번호만
-        if (initCompanyName) {
-          label.appendChild(numSpan);
-        }
-        label.appendChild(nameSpan);
-
-        el.appendChild(pinSvg);
-        el.appendChild(label);
-        // Individual markers start hidden — recalcMarkers will show them
-        el.style.display = 'none';
-
-        // Click handler
-        el.addEventListener('pointerup', (e) => {
-          e.stopPropagation();
-          onBoothClickRef.current(booth);
-          if (typeof window !== 'undefined' && typeof (window as any).onBoothClick === 'function') {
-            (window as any).onBoothClick(booth.id, booth);
-          }
+        const text = new PIXI.Text(name, {
+          fontFamily: 'Inter, sans-serif',
+          fontSize,
+          fontWeight: '600',
+          fill: '#1f2937',
+          align: 'center',
+          wordWrap: false,
         });
-
-        overlay.appendChild(el);
-        markers.set(booth.id, el);
+        text.resolution = dpr * 2;
+        text.alpha = opacity;
+        text.anchor.set(0.5, 0.5);
+        text.position.set(cx, cy);
+        container.addChild(text);
       }
     }
+  }
 
-    // Initial marker calculation + position update
-    recalcMarkers();
+  // booths 변경 시 라벨 재렌더
+  useEffect(() => {
+    renderBoothLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
 
-  // Redraw markers on style/filter changes
+  // 필터/선택 변경 시 라벨 재렌더
   useEffect(() => {
-    updateMarkerPositions();
+    renderBoothLabels();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedBoothId, showBooths, activeCategories, categories, ln]);
 
@@ -1357,13 +1023,6 @@ export default function MapViewer({
         canvasPadRef={canvasPadRef}
         containerRef={containerRef}
       /> */}
-      {/* HTML DOM marker overlay — sits above canvas, pointer-events pass through except on markers */}
-      <div
-        ref={markerOverlayRef}
-        className="absolute inset-0 overflow-hidden"
-        style={{ pointerEvents: 'none', zIndex: 5 }}
-      />
-
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
         <div

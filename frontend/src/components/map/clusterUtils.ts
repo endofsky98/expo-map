@@ -11,6 +11,11 @@ export interface ClusterItem {
   count: number;        // 클러스터: 부스 수, 개별: 1
   boothIds: number[];   // 포함된 부스 ID 목록
   representBooth?: Booth; // 개별 마커일 때 부스 데이터
+  // 클러스터 bounding box (world 좌표)
+  bboxX?: number;
+  bboxY?: number;
+  bboxW?: number;
+  bboxH?: number;
 }
 
 // ===== Cluster parameters =====
@@ -79,6 +84,16 @@ export function clusterBooths(
 
     const boothIds = group.map((idx) => positions[idx].booth.id);
 
+    // 클러스터 bounding box (world 좌표)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const idx of group) {
+      const b = positions[idx].booth;
+      if (b.x < minX) minX = b.x;
+      if (b.y < minY) minY = b.y;
+      if (b.x + b.width > maxX) maxX = b.x + b.width;
+      if (b.y + b.height > maxY) maxY = b.y + b.height;
+    }
+
     if (n === 1) {
       // 개별 마커
       clusters.push({
@@ -104,6 +119,10 @@ export function clusterBooths(
         count: n,
         boothIds,
         representBooth: undefined,
+        bboxX: minX,
+        bboxY: minY,
+        bboxW: maxX - minX,
+        bboxH: maxY - minY,
       });
     }
   }
@@ -118,4 +137,44 @@ export function clusterBooths(
 export function clusterSize(count: number): number {
   const ratio = Math.min(1, (count - 2) / 18); // 2~20개 범위
   return CLUSTER_MIN_SIZE + ratio * (CLUSTER_MAX_SIZE - CLUSTER_MIN_SIZE);
+}
+
+/**
+ * 클러스터 대표 업체 선정
+ * 1순위: hall_id 있는 부스
+ * 2순위: 면적 큰 순
+ * 3순위: 회사 정보 있는 부스
+ * 4순위: 첫 번째 부스
+ */
+export function selectRepresentative(boothIds: number[], allBooths: Booth[]): Booth | null {
+  const booths = boothIds
+    .map((id) => allBooths.find((b) => b.id === id))
+    .filter((b): b is Booth => !!b);
+  if (booths.length === 0) return null;
+
+  // 1순위: hall_id 있는 부스
+  const hallBooth = booths.find((b) => b.hall_id);
+  if (hallBooth) return hallBooth;
+
+  // 2순위: 면적 큰 순
+  const sorted = [...booths].sort((a, b) => b.width * b.height - a.width * a.height);
+
+  // 3순위: 회사 정보 있는 부스 (면적 동률 고려)
+  const withCompany = sorted.find((b) => b.company_id || b.company);
+  if (withCompany) return withCompany;
+
+  // 4순위: 첫 번째
+  return sorted[0];
+}
+
+/**
+ * 부스 표시 이름 반환
+ */
+export function getBoothDisplayName(booth: Booth): string {
+  if (booth.company?.name) {
+    const name = booth.company.name;
+    if (typeof name === 'string') return name;
+    return name.ko || name.en || '';
+  }
+  return booth.booth_number || '';
 }
