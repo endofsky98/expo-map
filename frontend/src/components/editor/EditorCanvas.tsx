@@ -134,22 +134,32 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       bgSpriteRef.current = null;
     }
 
-    const tex = PIXI.Texture.from(props.imageUrl);
-    const sprite = new PIXI.Sprite(tex);
-    sprite.width = props.imageWidth;
-    sprite.height = props.imageHeight;
-    bgSpriteRef.current = sprite;
-    mc.addChildAt(sprite, 0); // behind all layers
+    // Load image with error handling
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const tex = PIXI.Texture.from(img);
+      const sprite = new PIXI.Sprite(tex);
+      // Use actual loaded dimensions for accurate rendering
+      const w = props.imageWidth || img.naturalWidth;
+      const h = props.imageHeight || img.naturalHeight;
+      sprite.width = w;
+      sprite.height = h;
+      bgSpriteRef.current = sprite;
+      mc.addChildAt(sprite, 0);
 
-    // Fit to canvas
-    const div = containerRef.current!;
-    const fitScale = Math.min(div.clientWidth / props.imageWidth, div.clientHeight / props.imageHeight) * 0.9;
-    const t = transformRef.current;
-    t.scale = fitScale;
-    t.x = (div.clientWidth - props.imageWidth * fitScale) / 2;
-    t.y = (div.clientHeight - props.imageHeight * fitScale) / 2;
-    mc.scale.set(fitScale);
-    mc.position.set(t.x, t.y);
+      // Fit to canvas
+      const div = containerRef.current!;
+      const fitScale = Math.min(div.clientWidth / w, div.clientHeight / h) * 0.9;
+      const t = transformRef.current;
+      t.scale = fitScale;
+      t.x = (div.clientWidth - w * fitScale) / 2;
+      t.y = (div.clientHeight - h * fitScale) / 2;
+      mc.scale.set(fitScale);
+      mc.position.set(t.x, t.y);
+    };
+    img.onerror = () => console.error('Editor: failed to load map image', props.imageUrl);
+    img.src = props.imageUrl;
   }, [ready, props.imageUrl, props.imageWidth, props.imageHeight]);
 
   // ===== Zoom =====

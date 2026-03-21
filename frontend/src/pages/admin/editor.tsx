@@ -96,11 +96,21 @@ export default function EditorPage() {
     const currentImg = (imgs as any[]).find((i: any) => i.is_current);
     if (currentImg) {
       const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
-      // Use high_path or original for editor (full resolution)
-      const path = currentImg.high_path || currentImg.file_path;
+      // medium_path for editor (high is too large for PIXI single texture)
+      const path = currentImg.medium_path || currentImg.high_path || currentImg.file_path;
       setImageUrl(`${baseUrl}${path}`);
-      setImageWidth(currentImg.width || 2000);
-      setImageHeight(currentImg.height || 1500);
+      // Parse zoom_levels for medium size, or fallback
+      let w = 1870, h = 2460; // default medium
+      try {
+        const levels = typeof currentImg.zoom_levels === 'string' ? JSON.parse(currentImg.zoom_levels) : currentImg.zoom_levels;
+        if (Array.isArray(levels)) {
+          // level 2 is typically medium
+          const med = levels.find((l: any) => l.level === 2) || levels[0];
+          if (med) { w = med.width; h = med.height; }
+        }
+      } catch {}
+      setImageWidth(w);
+      setImageHeight(h);
     } else {
       setImageUrl(null);
     }
