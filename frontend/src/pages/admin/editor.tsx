@@ -20,11 +20,11 @@ import { renderObstacleLayer } from '@/components/editor/layers/ObstacleLayer';
 import { renderAmenityLayer } from '@/components/editor/layers/AmenityLayer';
 
 // Panels
-import BoothPanel from '@/components/editor/panels/BoothPanel';
-import PathPanel from '@/components/editor/panels/PathPanel';
-import ObstaclePanel from '@/components/editor/panels/ObstaclePanel';
-import AmenityPanel from '@/components/editor/panels/AmenityPanel';
-import HallPanel from '@/components/editor/panels/HallPanel';
+import { BoothPanel } from '@/components/editor/panels/BoothPanel';
+import { PathPanel } from '@/components/editor/panels/PathPanel';
+import { ObstaclePanel } from '@/components/editor/panels/ObstaclePanel';
+import { AmenityPanel } from '@/components/editor/panels/AmenityPanel';
+import { HallPanel } from '@/components/editor/panels/HallPanel';
 
 // API
 import { fetchFloors, fetchHalls, fetchBooths, fetchObstacles, fetchImages } from '@/lib/api';
@@ -256,7 +256,7 @@ export default function EditorPage() {
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout title="에디터">
       {/* Top bar: floor selector */}
       <div className="flex items-center gap-4 px-4 py-2 bg-gray-800 border-b border-gray-700">
         <span className="text-white text-sm font-medium">📋 에디터</span>
