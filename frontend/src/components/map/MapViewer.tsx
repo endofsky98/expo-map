@@ -184,6 +184,7 @@ export default function MapViewer({
   currentFloorIdRef.current = currentFloorId;
 
   // PIXI cluster shading layer ref
+  const clusterContainerRef = useRef<PIXI.Container | null>(null);
   const clusterGfxRef = useRef<PIXI.Graphics | null>(null);
 
   // World coordinate → screen pixel (accounts for tilt via CSS perspective)
@@ -447,8 +448,11 @@ export default function MapViewer({
     mainContainer.addChild(routeLayerRef.current);
 
     // Cluster shading layer — sits above tiles/obstacles/route, below facilities
+    const clusterContainer = new PIXI.Container();
     const clusterGfx = new PIXI.Graphics();
-    mainContainer.addChild(clusterGfx);
+    clusterContainer.addChild(clusterGfx);
+    mainContainer.addChild(clusterContainer);
+    clusterContainerRef.current = clusterContainer;
     clusterGfxRef.current = clusterGfx;
 
     // boothLayer removed — booths are now HTML DOM markers
@@ -516,6 +520,7 @@ export default function MapViewer({
       mainContainerRef.current = null;
       canvasRef.current = null;
       clusterGfxRef.current = null;
+      clusterContainerRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -777,9 +782,15 @@ export default function MapViewer({
     const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
     const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
 
-    // Draw PIXI cluster shading (world coordinates — auto follows pan/zoom)
-    if (clusterGfx) {
+    // Draw PIXI cluster shading + count text (world coordinates — auto follows pan/zoom)
+    const cc = clusterContainerRef.current;
+    if (clusterGfx && cc) {
       clusterGfx.clear();
+      // 이전 텍스트 제거 (Graphics 외 자식)
+      for (let i = cc.children.length - 1; i >= 0; i--) {
+        if (cc.children[i] !== clusterGfx) cc.removeChildAt(i);
+      }
+      const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
       for (const c of clusters) {
         if (c.isCluster && c.count > 1) {
           const pad = 20;
@@ -793,6 +804,19 @@ export default function MapViewer({
             12,
           );
           clusterGfx.endFill();
+          // 영역 한가운데 숫자
+          const countText = new PIXI.Text(String(c.count), {
+            fontSize: Math.max(40, 60 / sc),
+            fontFamily: 'Inter, -apple-system, sans-serif',
+            fontWeight: '700',
+            fill: '#4f46e5',
+          });
+          countText.resolution = dpr * 2;
+          countText.anchor.set(0.5, 0.5);
+          countText.x = c.bboxX + c.bboxW / 2;
+          countText.y = c.bboxY + c.bboxH / 2;
+          countText.alpha = 0.6;
+          cc.addChild(countText);
         }
       }
     }
@@ -872,29 +896,7 @@ export default function MapViewer({
 
       // Update cluster badge
       const clusterInfo = [...clusterReps.values()].find((v) => v.boothId === id);
-      let badge = el.querySelector('[data-badge]') as HTMLElement | null;
-      if (clusterInfo && clusterInfo.count > 1) {
-        if (!badge) {
-          badge = document.createElement('div');
-          badge.setAttribute('data-badge', '');
-          badge.style.cssText =
-            'min-width:20px;height:20px;' +
-            'border-radius:10px;background:#4f46e5;color:#fff;font-size:11px;font-weight:700;' +
-            'display:flex;align-items:center;justify-content:center;padding:0 4px;pointer-events:none;' +
-            'margin-top:-2px;';
-          // 핀 SVG 바로 아래, 라벨 위에 삽입
-          const labelEl = el.querySelector('[data-label]');
-          if (labelEl) {
-            el.insertBefore(badge, labelEl);
-          } else {
-            el.appendChild(badge);
-          }
-        }
-        badge.textContent = String(clusterInfo.count);
-        badge.style.display = 'flex';
-      } else if (badge) {
-        badge.style.display = 'none';
-      }
+      // 클러스터 숫자는 PIXI 영역 중앙에 표시 (DOM 배지 불필요)
     }
 
     stableIdsRef.current = newIds;
