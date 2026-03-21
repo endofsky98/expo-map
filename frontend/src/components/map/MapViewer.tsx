@@ -39,6 +39,7 @@ export default function MapViewer({
   onLongPress,
   navStartPoint,
   navEndPoint,
+  navCurrentPos,
 }: MapViewerProps) {
   const { ln } = useI18n();
   const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
@@ -204,6 +205,9 @@ export default function MapViewer({
   const navStartPointRef = useRef(navStartPoint);
   const navEndPointRef = useRef(navEndPoint);
   navStartPointRef.current = navStartPoint;
+  const navCurrentPosRef = useRef(navCurrentPos);
+  navCurrentPosRef.current = navCurrentPos;
+  const navCurrentMarkerRef = useRef<HTMLDivElement | null>(null);
   navEndPointRef.current = navEndPoint;
   const clusterBadgesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
@@ -1387,6 +1391,18 @@ export default function MapViewer({
         endEl.style.display = 'none';
       }
     }
+    // 현재 위치 마커
+    const curEl = navCurrentMarkerRef.current;
+    const ncp = navCurrentPosRef.current;
+    if (curEl) {
+      if (ncp) {
+        const sp = worldToScreen(ncp.x, ncp.y);
+        curEl.style.display = 'flex';
+        curEl.style.transform = `translate(${sp.sx - 10}px, ${sp.sy - 10}px)`;
+      } else {
+        curEl.style.display = 'none';
+      }
+    }
   }
 
   useEffect(() => {
@@ -1522,7 +1538,7 @@ export default function MapViewer({
   useEffect(() => {
     updateMarkerPositions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navStartPoint, navEndPoint]);
+  }, [navStartPoint, navEndPoint, navCurrentPos]);
 
   // ===== Facilities =====
   useEffect(() => {
@@ -1668,6 +1684,21 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerFontDown = () => setMarkerFontSize(s => Math.max(10, s - 4));
       (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
       (window as unknown as Record<string, unknown>).__mapViewerSetTilt = (deg: number) => applyTilt(deg);
+      (window as unknown as Record<string, unknown>).__mapViewerPanToWorld = (wx: number, wy: number, scale?: number) => {
+        const mc = mainContainerRef.current;
+        if (!mc) return;
+        const { width: cw, height: ch } = canvasDimsRef.current;
+        const sc = scale ?? transformRef.current.scale;
+        transformRef.current.scale = sc;
+        transformRef.current.x = cw / 2 - wx * sc;
+        transformRef.current.y = ch / 2 - wy * sc;
+        clampPosition(transformRef.current);
+        syncContainerPosition(mc, transformRef.current);
+        mc.scale.set(sc);
+        onZoomChange?.(sc);
+        renderTilesFnRef.current();
+        scheduleMarkerUpdate();
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dimensions]);
@@ -1706,6 +1737,11 @@ export default function MapViewer({
           <circle cx="14" cy="14" r="8" fill="#ef4444"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
         </svg>
         <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>도착</span>
+      </div>
+
+      {/* 현재 위치 마커 (네비게이션 모드) */}
+      <div ref={navCurrentMarkerRef} className="absolute pointer-events-none" style={{ display: 'none', zIndex: 6 }}>
+        <div style={{ width: 20, height: 20, borderRadius: '50%', background: '#3b82f6', border: '3px solid #fff', boxShadow: '0 0 0 4px rgba(59,130,246,0.3), 0 2px 6px rgba(0,0,0,0.3)' }} />
       </div>
 
       {/* Facility tooltip overlay */}

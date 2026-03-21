@@ -48,6 +48,7 @@ export interface MapViewerProps {
   onLongPress?: (worldX: number, worldY: number, screenX: number, screenY: number) => void;
   navStartPoint?: { x: number; y: number } | null;
   navEndPoint?: { x: number; y: number } | null;
+  navCurrentPos?: { x: number; y: number } | null;
 }
 
 export const MIN_ZOOM = 0.1;

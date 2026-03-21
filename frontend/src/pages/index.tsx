@@ -57,6 +57,10 @@ export default function HomePage() {
   const [navStart, setNavStart] = useState<{ boothId?: number; x: number; y: number } | null>(null);
   const [navEnd, setNavEnd] = useState<{ boothId?: number; x: number; y: number } | null>(null);
   const [longPressChoice, setLongPressChoice] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
+  // 네비게이션 모드
+  const [navActive, setNavActive] = useState(false);
+  const [navCurDist, setNavCurDist] = useState(0); // 현재 위치 (경로상 거리 px)
+  const [navConfirm, setNavConfirm] = useState<'cancel' | 'arrived' | null>(null);
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -323,6 +327,101 @@ export default function HomePage() {
     }
   }, [navStart, navEnd]);
 
+  // 경로 위 거리 d에서의 좌표
+  function posAtDist(d: number): { x: number; y: number } | null {
+    if (!clientRoute) return null;
+    const path = clientRoute.path;
+    let traveled = 0;
+    for (let i = 1; i < path.length; i++) {
+      const dx = path[i].x - path[i-1].x, dy = path[i].y - path[i-1].y;
+      const segLen = Math.hypot(dx, dy);
+      if (traveled + segLen >= d) {
+        const t = segLen > 0 ? (d - traveled) / segLen : 0;
+        return { x: path[i-1].x + dx * t, y: path[i-1].y + dy * t };
+      }
+      traveled += segLen;
+    }
+    return path[path.length - 1];
+  }
+
+  // 현재 위치 좌표
+  const navCurrentPos = navActive ? posAtDist(navCurDist) : null;
+
+  // 네비게이션 시작
+  function startNavigation() {
+    if (!clientRoute) return;
+    setNavActive(true);
+    setNavCurDist(0);
+    // 출발 지점으로 이동 + 버드뷰
+    const pos = clientRoute.path[0];
+    const panTo = (window as any).__mapViewerPanToWorld;
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (panTo) panTo(pos.x, pos.y, 2);
+    if (setTilt) setTilt(30);
+  }
+
+  // 다음 (100px 전진)
+  function navNext() {
+    if (!clientRoute) return;
+    const newDist = Math.min(navCurDist + 100, clientRoute.distance);
+    setNavCurDist(newDist);
+    const pos = posAtDist(newDist);
+    if (pos) {
+      const panTo = (window as any).__mapViewerPanToWorld;
+      if (panTo) panTo(pos.x, pos.y);
+    }
+    // 도착 체크
+    if (newDist >= clientRoute.distance) {
+      setNavConfirm('arrived');
+    }
+  }
+
+  // 이전 (100px 후퇴)
+  function navPrev() {
+    if (!clientRoute) return;
+    const newDist = Math.max(navCurDist - 100, 0);
+    setNavCurDist(newDist);
+    const pos = posAtDist(newDist);
+    if (pos) {
+      const panTo = (window as any).__mapViewerPanToWorld;
+      if (panTo) panTo(pos.x, pos.y);
+    }
+  }
+
+  // 취소
+  function navCancel() {
+    setNavConfirm('cancel');
+  }
+
+  // 취소 확인
+  function navCancelConfirm() {
+    setNavActive(false);
+    setNavCurDist(0);
+    setNavConfirm(null);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(0);
+  }
+
+  // 도착 — 경로 삭제 질문
+  function navArrivedDeleteRoute() {
+    setNavActive(false);
+    setNavCurDist(0);
+    setNavConfirm(null);
+    setNavStart(null);
+    setNavEnd(null);
+    setClientRoute(null);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(0);
+  }
+
+  function navArrivedKeepRoute() {
+    setNavActive(false);
+    setNavCurDist(0);
+    setNavConfirm(null);
+    const setTilt = (window as any).__mapViewerSetTilt;
+    if (setTilt) setTilt(0);
+  }
+
   function handleFontUp() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerFontUp;
     if (fn) fn();
@@ -392,7 +491,12 @@ export default function HomePage() {
               <span className="text-gray-600 dark:text-gray-400">
                 도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
-              <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+              <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+              {clientRoute && !navActive && (
+                <button onClick={startNavigation} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                  🧭 네비게이션
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -456,6 +560,7 @@ export default function HomePage() {
               onLongPress={handleLongPress}
               navStartPoint={navStart}
               navEndPoint={navEnd}
+              navCurrentPos={navCurrentPos}
             />
           )}
 
@@ -476,8 +581,8 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* 경로 지우기 버튼 */}
-          {clientRoute && (
+          {/* 경로 지우기 버튼 (네비게이션 비활성일 때만) */}
+          {clientRoute && !navActive && (
             <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
               <button
                 onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); }}
@@ -485,6 +590,59 @@ export default function HomePage() {
               >
                 ✕ 경로 지우기
               </button>
+            </div>
+          )}
+
+          {/* 네비게이션 모드 하단 바 */}
+          {navActive && (
+            <div className="absolute bottom-0 left-0 right-0 z-40 p-4 bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2 max-w-lg mx-auto">
+                <button onClick={navPrev} className="px-4 py-3 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                  ◀ 이전
+                </button>
+                <button onClick={navNext} className="flex-1 py-3 text-sm font-bold rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                  다음 ▶
+                </button>
+                <button onClick={navCancel} className="px-4 py-3 text-sm font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
+                  취소
+                </button>
+              </div>
+              {clientRoute && (
+                <div className="mt-2 max-w-lg mx-auto">
+                  <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                    <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (navCurDist / clientRoute.distance) * 100)}%` }} />
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-1">
+                    {Math.round(navCurDist)}px / {Math.round(clientRoute.distance)}px
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* 네비게이션 확인 다이얼로그 */}
+          {navConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+              <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-xl p-6 w-72">
+                {navConfirm === 'cancel' ? (
+                  <>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 text-center">네비게이션을 취소하시겠습니까?</p>
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={() => setNavConfirm(null)} className="flex-1 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">아니오</button>
+                      <button onClick={navCancelConfirm} className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white">예, 취소</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400 mb-2">🎉 도착하였습니다!</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 text-center">경로를 삭제하시겠습니까?</p>
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={navArrivedKeepRoute} className="flex-1 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">경로 유지</button>
+                      <button onClick={navArrivedDeleteRoute} className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white">삭제</button>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 
