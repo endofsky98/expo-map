@@ -290,9 +290,9 @@ export default function HomePage() {
   }
 
   // 롱프레스 → 출발/도착 선택
-  function handleLongPress(worldX: number, worldY: number) {
+  function handleLongPress(worldX: number, worldY: number, screenX?: number, screenY?: number) {
     // 화면 중앙에 팝업
-    setLongPressChoice({ x: worldX, y: worldY, screenX: window.innerWidth / 2, screenY: window.innerHeight / 2 });
+    setLongPressChoice({ x: worldX, y: worldY, screenX: screenX ?? window.innerWidth / 2, screenY: screenY ?? window.innerHeight / 2 });
   }
 
   function handleLongPressStart() {
@@ -461,8 +461,8 @@ export default function HomePage() {
 
           {/* 롱프레스 출발/도착 선택 팝업 */}
           {longPressChoice && (
-            <div className="absolute z-50 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-3 w-48"
-              style={{ left: longPressChoice.screenX - 96, top: longPressChoice.screenY - 40 }}>
+            <div className="fixed z-50 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-3 w-48"
+              style={{ left: Math.min(longPressChoice.screenX - 96, window.innerWidth - 200), top: Math.max(8, longPressChoice.screenY - 80) }}>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">{nearestName(longPressChoice.x, longPressChoice.y)} 근처</p>
               <div className="flex gap-2">
                 <button onClick={handleLongPressStart} className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 transition-colors">

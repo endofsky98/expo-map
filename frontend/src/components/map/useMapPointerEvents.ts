@@ -21,7 +21,7 @@ export interface PointerEventDeps {
   currentFloorIdRef: React.MutableRefObject<number | null>;
   onBoothClickRef: React.MutableRefObject<(booth: Booth) => void>;
   onMapClickRef: React.MutableRefObject<((x: number, y: number, floorId: number) => void) | undefined>;
-  onLongPressRef: React.MutableRefObject<((wx: number, wy: number) => void) | undefined>;
+  onLongPressRef: React.MutableRefObject<((wx: number, wy: number, sx: number, sy: number) => void) | undefined>;
   stopInertia: () => void;
   applyTransform: (newScale: number, newRotation: number, pivotX: number, pivotY: number) => void;
   applyZoom: (newScale: number, pivotX: number, pivotY: number) => void;
@@ -109,8 +109,8 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
         const wy0 = (-dx00 * sinR0 + dy00 * cosR0) / sc0;
         longPressTimer = setTimeout(() => {
           longPressFired = true;
-          onLongPressRef.current?.(wx0, wy0);
-        }, 500);
+          onLongPressRef.current?.(wx0, wy0, e.clientX, e.clientY);
+        }, 1000);
       }
     }
 
