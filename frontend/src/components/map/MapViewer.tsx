@@ -1111,38 +1111,22 @@ export default function MapViewer({
       return best;
     }
 
-    // 합칠 때: 개별 핀 → 클러스터 중심으로 슬라이드 + fade out
+    // 사라지는 마커 즉시 숨김
     for (const id of oldIds) {
       if (!newIds.has(id)) {
         const el = markers.get(id);
         if (el) {
-          fadingIdsRef.current.add(id);
-          const target = findNearestClusterCenter(id);
-          if (target) {
-            const { sx: tsx, sy: tsy } = worldToScreen(target.wx, target.wy);
-            el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-in, opacity ${CLUSTER_ANIM_MS}ms ease-in`;
-            el.style.transform = `translate(${tsx}px, ${tsy}px) translate(-50%, -100%) scale(0.3)`;
-            el.style.opacity = '0';
-          } else {
-            el.style.transition = `opacity ${CLUSTER_ANIM_MS}ms ease-out`;
-            el.style.opacity = '0';
-          }
-          setTimeout(() => {
-            fadingIdsRef.current.delete(id);
-            if (!stableIdsRef.current.has(id)) {
-              el.style.display = 'none';
-              el.style.transition = '';
-            }
-          }, CLUSTER_ANIM_MS);
+          el.style.display = 'none';
+          el.style.transition = 'none';
+          el.style.opacity = '1';
         }
       }
     }
 
-    // 나뉠 때: 클러스터 중심에서 시작 → 실제 위치로 슬라이드 + fade in
+    // 새로 나타나는 마커 즉시 표시
     for (const id of newIds) {
       const el = markers.get(id);
       if (!el) continue;
-
       if (!oldIds.has(id)) {
         const booth = boothMapRef.current.get(id);
         if (booth) {
@@ -1150,27 +1134,12 @@ export default function MapViewer({
           const wcx = center ? center.wx : getBoothCenter(booth).cx;
           const wcy = center ? center.wy : getBoothCenter(booth).cy;
           const { sx, sy } = worldToScreen(wcx, wcy);
-          // 이전 클러스터 중심에서 시작 (나뉘는 효과)
-          const prevCenter = findNearestClusterCenter(id);
-          const startWx = prevCenter ? prevCenter.wx : wcx;
-          const startWy = prevCenter ? prevCenter.wy : wcy;
-          const { sx: startSx, sy: startSy } = worldToScreen(startWx, startWy);
-
           el.style.display = 'flex';
           el.style.transition = 'none';
-          el.style.transform = `translate(${startSx}px, ${startSy}px) translate(-50%, -100%) scale(0.3)`;
-          el.style.opacity = '0';
-          void el.offsetHeight; // force layout flush
-          el.style.transition = `transform ${CLUSTER_ANIM_MS}ms ease-out, opacity ${CLUSTER_ANIM_MS}ms ease-out`;
           el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(1)`;
           el.style.opacity = '1';
-          fadingIdsRef.current.add(id);
-          setTimeout(() => {
-            fadingIdsRef.current.delete(id);
-          }, CLUSTER_ANIM_MS);
         }
       }
-
     }
 
     // DOM 배지: 클러스터 영역 한가운데에 숫자 표시
@@ -1430,7 +1399,7 @@ export default function MapViewer({
         el.style.pointerEvents = 'auto';
         el.style.cursor = 'pointer';
         el.style.zIndex = '10';
-        el.style.display = 'flex';
+        el.style.display = 'none';
         el.style.flexDirection = 'column';
         el.style.alignItems = 'center';
 
