@@ -213,36 +213,22 @@ export function selectRepresentative(
     if (h) hallIdSet.add(h.id);
   }
 
-  // 2개 이상 서로 다른 홀/구역에 걸쳐 있을 때만 → 홀/구역 이름으로 대표
-  // 단, 홀/구역 영역이 클러스터 bbox보다 작을 때만 (충분히 작아서 합쳐진 경우)
-  if (hallIdSet.size >= 2) {
-    // 부스가 가장 많이 속한 홀/구역 선택
-    const countMap = new Map<number, number>();
-    for (const [, h] of boothHallMap) {
-      if (h) countMap.set(h.id, (countMap.get(h.id) || 0) + 1);
-    }
-    let bestHallId = 0, bestCount = 0;
-    for (const [hid, cnt] of countMap) {
-      if (cnt > bestCount) { bestHallId = hid; bestCount = cnt; }
-    }
-    const bestHall = halls.find(h => h.id === bestHallId);
-    if (bestHall) {
-      // 홀/구역 영역이 충분히 작은지 확인 — 클러스터에 합쳐질 만큼 작아야 함
-      const hw = bestHall.area_width ?? 0;
-      const hh = bestHall.area_height ?? 0;
-      const hallDiag = Math.hypot(hw, hh);
-      // 클러스터 bbox 대각선
-      const clusterBboxes = booths.map(b => ({ x: b.x, y: b.y, x2: b.x + b.width, y2: b.y + b.height }));
-      const cbx0 = Math.min(...clusterBboxes.map(c => c.x));
-      const cby0 = Math.min(...clusterBboxes.map(c => c.y));
-      const cbx1 = Math.max(...clusterBboxes.map(c => c.x2));
-      const cby1 = Math.max(...clusterBboxes.map(c => c.y2));
-      const clusterDiag = Math.hypot(cbx1 - cbx0, cby1 - cby0);
-
-      // 홀 대각선이 클러스터 대각선의 80% 이하면 "충분히 작다"고 판단
-      if (hallDiag > 0 && hallDiag <= clusterDiag * 0.8) {
-        const repBooth = booths.find(b => boothHallMap.get(b.id)?.id === bestHallId) || booths[0];
-        return { name: hallName(bestHall), booth: repBooth };
+  // 클러스터 내에 "작은 구역/홀"의 부스가 포함되어 있으면 → 구역/홀 이름 사용
+  // "작다" = 전체 지도 대비 작은 영역 (대각선 2000px 이하)
+  const SMALL_THRESHOLD = 2000;
+  // 작은 구역/홀 우선 (구역 먼저, 홀 나중)
+  for (const list of [allZones, allHalls]) {
+    for (const h of list) {
+      const hw = h.area_width ?? 0;
+      const hh = h.area_height ?? 0;
+      if (hw <= 0 || hh <= 0) continue;
+      const diag = Math.hypot(hw, hh);
+      if (diag > SMALL_THRESHOLD) continue; // 큰 홀은 스킵
+      const inside = booths.find(b => b.hall_id === h.id || boothInsideHall(b, h));
+      if (inside && booths.length > 1) {
+        // 이 작은 구역/홀에 속하지 않는 부스가 하나라도 합쳐져 있으면 → 구역/홀 이름
+        const outside = booths.find(b => b.id !== inside.id && !(b.hall_id === h.id || boothInsideHall(b, h)));
+        if (outside) return { name: hallName(h), booth: inside };
       }
     }
   }
