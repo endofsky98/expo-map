@@ -127,7 +127,14 @@ export default function useEditorPointer(deps: PointerDeps) {
       const m = d.mode;
       const w = wp(e);
 
-      if (m === 'pan') { isPanning = true; return; } // 이동 모드: 팬만
+      if (m === 'pan') {
+        // 이동 모드: 팬만 — 바로 드래그 시작
+        const t = d.transformRef.current!;
+        dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
+        isDragging = true;
+        isPanning = true;
+        return;
+      }
       if (isDrawMode(m)) { isDrawing = true; drawPoints = [w]; return; }
       if (isPolygonMode(m)) return; // click 처리는 pointerup에서
 
