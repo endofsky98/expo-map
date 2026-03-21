@@ -272,7 +272,11 @@ export default function EditorPage() {
       const booth = booths.find(b => b.id === selectedObject.id);
       if (!booth) return null;
       // company 객체에서 company_id 추출
-      const boothWithCompany = { ...booth, company_id: booth.company_id ?? (booth as any).company?.id ?? null };
+      const boothWithCompany = {
+        ...booth,
+        company_id: booth.company_id ?? (booth as any).company?.id ?? null,
+        category_id: booth.category_id ?? (booth as any).category?.id ?? null,
+      };
       return <BoothPanel booth={boothWithCompany} categories={categories} companies={companies}
         onSave={async (id, data) => { try { await updateBooth(id, data as any); setBooths(prev => prev.map(b => b.id === id ? { ...b, ...data } : b)); } catch(e) { console.error('부스 저장 실패:', e); } }}
         onDelete={async (id) => { try { await deleteBooth(id); setBooths(prev => prev.filter(b => b.id !== id)); setSelectedObject(null); } catch(e) { console.error('부스 삭제 실패:', e); alert('삭제 실패: ' + (e as any)?.message); } }} />;
