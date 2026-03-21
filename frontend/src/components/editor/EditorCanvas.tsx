@@ -136,36 +136,25 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       bgSpriteRef.current = null;
     }
 
-    // Load image with error handling
-    console.log('[EditorCanvas] Loading image:', props.imageUrl, 'size:', props.imageWidth, 'x', props.imageHeight);
-    const img = new Image();
-    img.crossOrigin = 'anonymous';  // CORS 활성화 — status 0 에러 방지
-    img.onload = () => {
-      console.log('[EditorCanvas] Image loaded successfully');
-      const tex = PIXI.Texture.from(img);
-      const sprite = new PIXI.Sprite(tex);
-      // Use actual loaded dimensions for accurate rendering
-      const w = props.imageWidth || img.naturalWidth;
-      const h = props.imageHeight || img.naturalHeight;
-      sprite.width = w;
-      sprite.height = h;
-      bgSpriteRef.current = sprite;
-      mc.addChildAt(sprite, 0);
-      console.log('[EditorCanvas] Sprite added to canvas, size:', w, 'x', h);
+    // Load image — PIXI.Texture.from(url) 방식 (CorridorVisualEditor와 동일)
+    console.log('[EditorCanvas] Loading:', props.imageUrl, props.imageWidth, 'x', props.imageHeight);
+    const tex = PIXI.Texture.from(props.imageUrl);
+    const sprite = new PIXI.Sprite(tex);
+    sprite.width = props.imageWidth;
+    sprite.height = props.imageHeight;
+    bgSpriteRef.current = sprite;
+    mc.addChildAt(sprite, 0);
 
-      // Fit to canvas
-      const div = containerRef.current!;
-      const fitScale = Math.min(div.clientWidth / w, div.clientHeight / h) * 0.9;
-      const t = transformRef.current;
-      t.scale = fitScale;
-      t.x = (div.clientWidth - w * fitScale) / 2;
-      t.y = (div.clientHeight - h * fitScale) / 2;
-      mc.scale.set(fitScale);
-      mc.position.set(t.x, t.y);
-      console.log('[EditorCanvas] Transform applied. Scale:', fitScale, 'pos:', t.x, t.y);
-    };
-    img.onerror = (e) => console.error('[EditorCanvas] FAILED to load map image:', props.imageUrl, e);
-    img.src = props.imageUrl;
+    // Fit to canvas
+    const div = containerRef.current!;
+    const fitScale = Math.min(div.clientWidth / props.imageWidth, div.clientHeight / props.imageHeight) * 0.9;
+    const t = transformRef.current;
+    t.scale = fitScale;
+    t.x = (div.clientWidth - props.imageWidth * fitScale) / 2;
+    t.y = (div.clientHeight - props.imageHeight * fitScale) / 2;
+    mc.scale.set(fitScale);
+    mc.position.set(t.x, t.y);
+    console.log('[EditorCanvas] Fit:', fitScale, 'div:', div.clientWidth, 'x', div.clientHeight);
   }, [ready, props.imageUrl, props.imageWidth, props.imageHeight]);
 
   // ===== Zoom =====
