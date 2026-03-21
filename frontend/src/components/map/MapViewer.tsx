@@ -10,7 +10,7 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import { clusterBooths, selectRepresentative, getBoothDisplayName, CLUSTER_RADIUS, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
+import { clusterBooths, selectRepresentative, getBoothDisplayName, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -44,6 +44,11 @@ export default function MapViewer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasDimsRef = useRef({ width: 800, height: 600 });
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+
+  // 글자 크기 상태 (기본 24px, 클러스터 반경 = fontSize * 3)
+  const [markerFontSize, setMarkerFontSize] = useState(24);
+  const markerFontSizeRef = useRef(24);
+  markerFontSizeRef.current = markerFontSize;
 
 
   // Layer refs
@@ -779,7 +784,7 @@ export default function MapViewer({
 
     // Cluster or show individually based on zoom
     const forceIndividual = sc >= CLUSTER_MAX_ZOOM;
-    const radius = forceIndividual ? 0 : CLUSTER_RADIUS;
+    const radius = forceIndividual ? 0 : markerFontSizeRef.current * 3;
     const clusters = clusterBooths(visibleBooths, worldToScreen, radius);
 
     // Draw PIXI cluster shading (world coordinates — auto follows pan/zoom)
@@ -1094,9 +1099,11 @@ export default function MapViewer({
       if (nameEl) {
         const companyName = lnFn(booth.company?.name) || '';
         nameEl.textContent = companyName || booth.booth_number;
+        nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
         // 회사명이 있으면 부스번호 표시, 없으면 숨기기
         if (numEl) {
           numEl.textContent = booth.booth_number;
+          numEl.style.fontSize = `${Math.round(markerFontSizeRef.current / 2)}px`;
           numEl.style.display = companyName ? '' : 'none';
         } else if (companyName && labelEl) {
           // numEl 없으면 생성
@@ -1179,7 +1186,7 @@ export default function MapViewer({
         const numSpan = document.createElement('div');
         numSpan.setAttribute('data-num', '');
         numSpan.textContent = booth.booth_number;
-        numSpan.style.fontSize = '12px';
+        numSpan.style.fontSize = `${Math.round(markerFontSizeRef.current / 2)}px`;
         numSpan.style.fontWeight = '500';
         numSpan.style.color = '#6b7280';
         numSpan.style.whiteSpace = 'nowrap';
@@ -1190,7 +1197,7 @@ export default function MapViewer({
         nameSpan.setAttribute('data-name', '');
         const initCompanyName = lnRef.current(booth.company?.name) || '';
         nameSpan.textContent = initCompanyName || booth.booth_number;
-        nameSpan.style.fontSize = '24px';
+        nameSpan.style.fontSize = `${markerFontSizeRef.current}px`;
         nameSpan.style.fontWeight = '700';
         nameSpan.style.fontFamily = 'Inter, sans-serif';
         nameSpan.style.color = '#1f2937';
@@ -1225,6 +1232,13 @@ export default function MapViewer({
     recalcMarkers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
+
+  // 글자 크기 변경 시 클러스터 + 마커 재계산
+  useEffect(() => {
+    recalcMarkers();
+    updateMarkerPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markerFontSize]);
 
   // Redraw markers on style/filter changes
   useEffect(() => {
@@ -1396,6 +1410,19 @@ export default function MapViewer({
         className="absolute inset-0 overflow-hidden"
         style={{ pointerEvents: 'none', zIndex: 5 }}
       />
+
+      {/* 글자 크기 조절 버튼 */}
+      <div className="absolute bottom-4 right-4 flex items-center gap-1 bg-white/90 backdrop-blur rounded-full shadow-lg px-2 py-1" style={{ zIndex: 30 }}>
+        <button
+          onClick={() => setMarkerFontSize(s => Math.max(10, s - 4))}
+          className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-indigo-600 font-bold text-lg rounded-full hover:bg-indigo-50 transition-colors"
+        >−</button>
+        <span className="text-xs font-semibold text-gray-500 min-w-[28px] text-center">{markerFontSize}</span>
+        <button
+          onClick={() => setMarkerFontSize(s => Math.min(48, s + 4))}
+          className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-indigo-600 font-bold text-lg rounded-full hover:bg-indigo-50 transition-colors"
+        >+</button>
+      </div>
 
       {/* Facility tooltip overlay */}
       {facilityTooltip && (
