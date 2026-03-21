@@ -78,7 +78,7 @@ export function renderBoothLayer(props: BoothLayerProps) {
     }
 
     // Label: 회사명 우선, 없으면 부스번호
-    if (scale >= 0.15) {
+    if (scale >= 0.5) {
       let cx: number, cy: number;
       if (b.shape === 'polygon' && pts && pts.length >= 3) {
         // 다각형 centroid
@@ -100,7 +100,7 @@ export function renderBoothLayer(props: BoothLayerProps) {
       }
 
       // 회사명이 있으면 부스번호를 아래에 작게
-      if (companyName && scale >= 0.3) {
+      if (companyName && scale >= 0.8) {
         const numLabel = createLabel(b.booth_number, cx, cy + 14 / scale, '#94a3b8', scale, { x: 0.5, y: 0.5 });
         labelContainer.addChild(numLabel);
       }
