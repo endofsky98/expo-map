@@ -846,9 +846,9 @@ export default function MapViewer({
     const app = pixiApp.current;
     if (!app) return;
 
-    const NUM_BARS = 3;        // 프로그레스바 개수
-    const BAR_LEN = 0.15;      // 각 바 길이 (전체 경로의 15%)
-    const SPEED = 0.006;       // 느린 속도
+    const BAR_PIXELS = 300;    // 각 바 길이 (픽셀)
+    const BAR_SPACING = 400;   // 바 간격 (픽셀)
+    const SPEED = 0.003;       // 두배 천천히
 
     // 경로 위 특정 거리의 (x,y) 좌표 구하기 (clamp — 경로 밖이면 null)
     function pointAtDist(path: { x: number; y: number }[], d: number, totalLen: number): { x: number; y: number } | null {
@@ -871,23 +871,22 @@ export default function MapViewer({
       const anim = routeAnimRef.current;
       if (!animGfx || !anim) { if (animGfx) animGfx.clear(); return; }
 
-      // phase: 0→1+BAR_LEN (바가 완전히 빠져나갈 때까지)
-      anim.phase = (anim.phase + dt * SPEED) % (1 + BAR_LEN);
+      const { path, totalLen } = anim;
+      const cycleLen = totalLen + BAR_PIXELS; // 바가 완전히 빠져나갈 때까지
+      anim.phase = (anim.phase + dt * SPEED) % 1;
       animGfx.clear();
 
-      const { path, totalLen } = anim;
-      const barPixels = totalLen * BAR_LEN;
-      const spacing = totalLen / NUM_BARS;
+      const numBars = Math.max(1, Math.ceil(totalLen / BAR_SPACING));
 
-      for (let b = 0; b < NUM_BARS; b++) {
-        // 각 바의 시작점 (출발=0 → 도착=totalLen, wrap 없음)
-        const barHead = anim.phase * totalLen + b * spacing;
+      for (let b = 0; b < numBars; b++) {
+        // 각 바의 머리 위치
+        const barHead = anim.phase * cycleLen + b * BAR_SPACING - BAR_PIXELS;
 
         const steps = 12;
-        const stepLen = barPixels / steps;
+        const stepLen = BAR_PIXELS / steps;
         for (let s = 0; s < steps; s++) {
-          const d0 = barHead - barPixels + s * stepLen;      // 꼬리→머리
-          const d1 = barHead - barPixels + (s + 1) * stepLen;
+          const d0 = barHead + s * stepLen;
+          const d1 = barHead + (s + 1) * stepLen;
           const p0 = pointAtDist(path, d0, totalLen);
           const p1 = pointAtDist(path, d1, totalLen);
           if (!p0 || !p1) continue;  // 경로 밖이면 스킵
