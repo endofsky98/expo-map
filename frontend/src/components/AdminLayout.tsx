@@ -51,7 +51,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   const navItems = [
     { href: '/admin', label: t('nav.dashboard'), icon: LayoutDashboard },
-    { href: '/admin/corridors', label: t('nav.corridors'), icon: Network },
+    { href: '/admin/editor', label: t('nav.corridors'), icon: Network },
     { href: '/admin/floors', label: t('nav.floors'), icon: Layers },
     { href: '/admin/booths', label: t('nav.booths'), icon: Grid3X3 },
     { href: '/admin/images', label: t('nav.images'), icon: ImageIcon },
