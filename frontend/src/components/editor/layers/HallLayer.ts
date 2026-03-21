@@ -22,11 +22,14 @@ export function renderHallLayer(props: HallLayerProps) {
 
   for (const hall of sorted) {
     const selected = selectedObject?.kind === 'hall' && selectedObject.id === hall.id;
+    const isZone = (hall as any).type === 'zone';
+    const zoneColors = { line: 0x06b6d4, fill: 0x06b6d4 }; // cyan
+    const baseColors = isZone ? zoneColors : colors;
     const style: DrawStyle = {
-      lineColor: selected ? 0x7c3aed : colors.line,
+      lineColor: selected ? 0x7c3aed : baseColors.line,
       lineWidth: 2,
       lineAlpha: selected ? 0.9 : 0.5,
-      fillColor: colors.fill,
+      fillColor: baseColors.fill,
       fillAlpha: selected ? colors.selectedAlpha : colors.alpha,
       selected,
     };

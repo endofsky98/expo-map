@@ -23,6 +23,8 @@ const BUTTONS: { mode: EditorMode; label: string; group: string }[] = [
   { mode: 'delete',           label: '삭제',     group: 'general' },
   { mode: 'hall_rect',        label: '홀□',      group: 'hall' },
   { mode: 'hall_polygon',     label: '홀⬠',     group: 'hall' },
+  { mode: 'zone_rect',        label: '구역□',    group: 'zone' },
+  { mode: 'zone_polygon',     label: '구역⬠',   group: 'zone' },
   { mode: 'booth_rect',       label: '부스□',    group: 'booth' },
   { mode: 'booth_polygon',    label: '부스⬠',   group: 'booth' },
   { mode: 'booth_circle',     label: '부스○',    group: 'booth' },
@@ -47,7 +49,7 @@ const AMENITY_TYPES: { value: AmenityType; label: string }[] = Object.entries(AM
 );
 
 const GROUP_LABELS: Record<string, string> = {
-  general: '일반', hall: '홀', booth: '부스', path: '통로', obstacle: '장애물', amenity: '편의',
+  general: '일반', hall: '홀', zone: '구역', booth: '부스', path: '통로', obstacle: '장애물', amenity: '편의',
 };
 
 export default function EditorToolbar(props: ToolbarProps) {

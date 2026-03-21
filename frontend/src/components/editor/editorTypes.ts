@@ -92,6 +92,7 @@ export interface EditorHall {
 export type EditorMode =
   | 'select'
   | 'hall_rect' | 'hall_polygon'
+  | 'zone_rect' | 'zone_polygon'
   | 'booth_rect' | 'booth_polygon' | 'booth_circle' | 'booth_ellipse'
   | 'path_node' | 'path_connect' | 'path_crossfloor'
   | 'obstacle_rect' | 'obstacle_polygon' | 'obstacle_circle'

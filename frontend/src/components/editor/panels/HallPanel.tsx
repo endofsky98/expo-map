@@ -43,7 +43,7 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
 
   return (
     <div className="flex flex-col gap-3 p-4 text-sm text-slate-200">
-      <h3 className="font-semibold text-slate-100 text-base">Hall</h3>
+      <h3 className="font-semibold text-slate-100 text-base">{(hall as any).type === 'zone' ? '구역 (Zone)' : '홀 (Hall)'}</h3>
 
       {/* Shape (display only) */}
       <div className="flex flex-col gap-1">

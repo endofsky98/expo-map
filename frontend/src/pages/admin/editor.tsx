@@ -148,13 +148,22 @@ export default function EditorPage() {
         pushAction({ type: 'create', kind: 'booth', id: nb.id, before: null, after: nb as unknown as Record<string, unknown> });
       }
       else if (m === 'hall_rect' || m === 'hall_polygon') {
-        const body: any = { floor_id: selectedFloorId, name: { ko: `홀 ${Date.now() % 1000}`, en: `Hall ${Date.now() % 1000}` }, order: halls.length + 1 };
+        const body: any = { floor_id: selectedFloorId, name: { ko: `홀 ${Date.now() % 1000}`, en: `Hall ${Date.now() % 1000}` }, order: halls.length + 1, type: 'hall' };
         if (data.shape === 'rectangle') Object.assign(body, { shape: 'rectangle', area_x: data.x, area_y: data.y, area_width: data.width, area_height: data.height });
         else if (data.shape === 'polygon') Object.assign(body, { shape: 'polygon', points: JSON.stringify(data.points) });
         const nh = await createHall(body);
         setHalls(prev => [...prev, nh as any]);
         setSelectedObject({ kind: 'hall', id: nh.id });
         pushAction({ type: 'create', kind: 'hall', id: nh.id, before: null, after: nh as unknown as Record<string, unknown> });
+      }
+      else if (m === 'zone_rect' || m === 'zone_polygon') {
+        const body: any = { floor_id: selectedFloorId, name: { ko: `구역 ${Date.now() % 1000}`, en: `Zone ${Date.now() % 1000}` }, order: halls.length + 1, type: 'zone' };
+        if (data.shape === 'rectangle') Object.assign(body, { shape: 'rectangle', area_x: data.x, area_y: data.y, area_width: data.width, area_height: data.height });
+        else if (data.shape === 'polygon') Object.assign(body, { shape: 'polygon', points: JSON.stringify(data.points) });
+        const nz = await createHall(body);
+        setHalls(prev => [...prev, nz as any]);
+        setSelectedObject({ kind: 'hall', id: nz.id });
+        pushAction({ type: 'create', kind: 'hall', id: nz.id, before: null, after: nz as unknown as Record<string, unknown> });
       }
       else if (m === 'obstacle_rect' || m === 'obstacle_polygon' || m === 'obstacle_circle') {
         const body: any = { floor_id: selectedFloorId };

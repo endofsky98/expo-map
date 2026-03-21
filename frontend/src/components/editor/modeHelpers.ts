@@ -4,7 +4,7 @@
 import type { EditorMode } from './editorTypes';
 
 export function isRectMode(m: EditorMode): boolean {
-  return m === 'hall_rect' || m === 'booth_rect' || m === 'obstacle_rect';
+  return m === 'hall_rect' || m === 'zone_rect' || m === 'booth_rect' || m === 'obstacle_rect';
 }
 
 export function isCircleMode(m: EditorMode): boolean {
@@ -12,7 +12,7 @@ export function isCircleMode(m: EditorMode): boolean {
 }
 
 export function isPolygonMode(m: EditorMode): boolean {
-  return m === 'hall_polygon' || m === 'booth_polygon' || m === 'obstacle_polygon';
+  return m === 'hall_polygon' || m === 'zone_polygon' || m === 'booth_polygon' || m === 'obstacle_polygon';
 }
 
 /** rect, circle, ellipse — 드래그로 그리는 모드 */

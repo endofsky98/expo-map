@@ -11,6 +11,7 @@ const NODE_RADIUS = 8;
 function rectColor(mode: EditorMode): number {
   if (mode === 'booth_rect') return 0x22c55e;
   if (mode === 'obstacle_rect') return 0xef4444;
+  if (mode === 'zone_rect') return 0x06b6d4; // cyan for zone
   return 0x8b5cf6; // hall
 }
 
@@ -18,6 +19,7 @@ function rectColor(mode: EditorMode): number {
 function polyColor(mode: EditorMode): number {
   if (mode === 'booth_polygon') return 0x22c55e;
   if (mode === 'obstacle_polygon') return 0xef4444;
+  if (mode === 'zone_polygon') return 0x06b6d4; // cyan for zone
   return 0x8b5cf6; // hall
 }
 
@@ -33,6 +35,7 @@ export function drawPreview(
   switch (mode) {
     // ===== 사각형 =====
     case 'hall_rect':
+    case 'zone_rect':
     case 'booth_rect':
     case 'obstacle_rect': {
       if (points.length < 2) return;
@@ -50,6 +53,7 @@ export function drawPreview(
 
     // ===== 다각형 =====
     case 'hall_polygon':
+    case 'zone_polygon':
     case 'booth_polygon':
     case 'obstacle_polygon': {
       const c = polyColor(mode);
