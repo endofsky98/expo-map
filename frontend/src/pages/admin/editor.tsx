@@ -529,6 +529,8 @@ export default function EditorPage() {
         setMode('select');
       } else if (e.key === 'd' || e.key === 'D') {
         setMode('delete');
+      } else if (e.key === 'b' || e.key === 'B') {
+        setMode('booth_rect');
       }
     }
     window.addEventListener('keydown', onKeyDown);

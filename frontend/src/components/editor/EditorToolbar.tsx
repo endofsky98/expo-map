@@ -26,7 +26,7 @@ const BUTTONS: { mode: EditorMode; label: string; group: string }[] = [
   { mode: 'hall_polygon',     label: '홀⬠',     group: 'hall' },
   { mode: 'zone_rect',        label: '구역□',    group: 'zone' },
   { mode: 'zone_polygon',     label: '구역⬠',   group: 'zone' },
-  { mode: 'booth_rect',       label: '부스□',    group: 'booth' },
+  { mode: 'booth_rect',       label: '부스□(B)', group: 'booth' },
   { mode: 'booth_polygon',    label: '부스⬠',   group: 'booth' },
   { mode: 'booth_circle',     label: '부스○',    group: 'booth' },
   { mode: 'booth_ellipse',    label: '부스⬮',    group: 'booth' },
