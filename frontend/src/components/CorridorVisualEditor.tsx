@@ -4,6 +4,14 @@ import { Booth, CorridorNode, CorridorEdge, Obstacle, Facility, MapImage, ZoomLe
 
 export type EditorMode = 'select' | 'add_node' | 'connect' | 'delete' | 'draw_corridor' | 'draw_booth' | 'draw_obstacle' | 'place_facility';
 
+export type SelectedObject =
+  | { type: 'node'; id: number }
+  | { type: 'booth'; id: number }
+  | { type: 'obstacle'; id: number }
+  | { type: 'facility'; id: number }
+  | { type: 'edge'; id: number }
+  | null;
+
 interface CorridorVisualEditorProps {
   nodes: CorridorNode[];
   edges: CorridorEdge[];
@@ -38,6 +46,9 @@ interface CorridorVisualEditorProps {
   onFacilityDelete?: (facilityId: number) => void;
   // 편의시설 타입 (place_facility 모드에서 사용)
   facilityType?: string;
+  // 통합 선택 관리
+  selectedObject?: SelectedObject;
+  onObjectSelect?: (obj: SelectedObject) => void;
 }
 
 const NODE_COLORS: Record<string, number> = {
@@ -127,6 +138,8 @@ export default function CorridorVisualEditor({
   onFacilityMove,
   onFacilityDelete,
   facilityType = 'restroom',
+  selectedObject = null,
+  onObjectSelect,
 }: CorridorVisualEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
@@ -192,6 +205,10 @@ export default function CorridorVisualEditor({
   onFacilityDeleteRef.current = onFacilityDelete;
   const facilityTypeRef = useRef(facilityType);
   facilityTypeRef.current = facilityType;
+  const onObjectSelectRef = useRef(onObjectSelect);
+  onObjectSelectRef.current = onObjectSelect;
+  const selectedObjectRef = useRef(selectedObject);
+  selectedObjectRef.current = selectedObject;
 
   // Data refs for pointer handler access
   const nodesRef = useRef(nodes);
@@ -567,10 +584,12 @@ export default function CorridorVisualEditor({
         return;
       }
 
-      // Booth/obstacle/facility drag completion
+      // Booth/obstacle/facility drag completion or click-select
       if (isDraggingBooth && draggedBoothId !== null) {
         drawPreviewGraphics.clear();
-        if (!isClick) {
+        if (isClick) {
+          onObjectSelectRef.current?.({ type: 'booth', id: draggedBoothId });
+        } else {
           const rect2 = canvas.getBoundingClientRect();
           const sx3 = e.clientX - rect2.left;
           const sy3 = e.clientY - rect2.top;
@@ -585,7 +604,9 @@ export default function CorridorVisualEditor({
       }
       if (isDraggingObstacle && draggedObstacleId !== null) {
         drawPreviewGraphics.clear();
-        if (!isClick) {
+        if (isClick) {
+          onObjectSelectRef.current?.({ type: 'obstacle', id: draggedObstacleId });
+        } else {
           const rect2 = canvas.getBoundingClientRect();
           const sx3 = e.clientX - rect2.left;
           const sy3 = e.clientY - rect2.top;
@@ -600,7 +621,9 @@ export default function CorridorVisualEditor({
       }
       if (isDraggingFacility && draggedFacilityId !== null) {
         drawPreviewGraphics.clear();
-        if (!isClick) {
+        if (isClick) {
+          onObjectSelectRef.current?.({ type: 'facility', id: draggedFacilityId });
+        } else {
           const rect2 = canvas.getBoundingClientRect();
           const sx3 = e.clientX - rect2.left;
           const sy3 = e.clientY - rect2.top;
@@ -619,6 +642,7 @@ export default function CorridorVisualEditor({
         if (isClick && draggedNodeId !== null) {
           // Node click in select mode
           onNodeSelectRef.current(draggedNodeId);
+          onObjectSelectRef.current?.({ type: 'node', id: draggedNodeId });
         } else if (draggedContainer && draggedNodeId !== null) {
           // Node drag completed
           onNodeMoveRef.current(draggedNodeId, Math.round(draggedContainer.x), Math.round(draggedContainer.y));
@@ -664,6 +688,7 @@ export default function CorridorVisualEditor({
       const m = modeRef.current;
       if (m === 'select') {
         onNodeSelectRef.current(nodeId);
+        onObjectSelectRef.current?.({ type: 'node', id: nodeId });
       } else if (m === 'connect') {
         if (connectFromIdRef.current === null) {
           onConnectStartRef.current(nodeId);
@@ -727,7 +752,42 @@ export default function CorridorVisualEditor({
           if (Math.hypot(wx - f.x, wy - f.y) <= 12) { onFacilityDeleteRef.current?.(f.id); return; }
         }
       } else if (m === 'select') {
+        // Hit test edges for selection
+        const edgesData = edgesRef.current;
+        const nm = nodeMapRef.current;
+        for (const edge of edgesData) {
+          const from = nm[edge.from_node_id];
+          const to = nm[edge.to_node_id];
+          if (!from || !to) continue;
+          const dist = pointToSegmentDist(wx, wy, from.x, from.y, to.x, to.y);
+          if (dist < 10 / sc) {
+            onObjectSelectRef.current?.({ type: 'edge', id: edge.id });
+            return;
+          }
+        }
+        // Hit test booths
+        for (const b of boothsRef.current) {
+          if (wx >= b.x && wx <= b.x + b.width && wy >= b.y && wy <= b.y + b.height) {
+            onObjectSelectRef.current?.({ type: 'booth', id: b.id });
+            return;
+          }
+        }
+        // Hit test obstacles
+        for (const o of obstaclesRef.current) {
+          const ow = o.width || 40, oh = o.height || 40;
+          if (o.shape === 'circle' && o.radius) {
+            if (Math.hypot(wx - o.x, wy - o.y) <= o.radius) { onObjectSelectRef.current?.({ type: 'obstacle', id: o.id }); return; }
+          } else if (wx >= o.x && wx <= o.x + ow && wy >= o.y && wy <= o.y + oh) {
+            onObjectSelectRef.current?.({ type: 'obstacle', id: o.id }); return;
+          }
+        }
+        // Hit test facilities
+        for (const f of facilitiesRef.current) {
+          if (Math.hypot(wx - f.x, wy - f.y) <= 12) { onObjectSelectRef.current?.({ type: 'facility', id: f.id }); return; }
+        }
+        // Nothing hit — deselect
         onNodeSelectRef.current(null);
+        onObjectSelectRef.current?.(null);
       }
     }
 
@@ -791,11 +851,13 @@ export default function CorridorVisualEditor({
     layer.removeChildren();
     layer.interactiveChildren = false;
     const sc = transformRef.current.scale;
+    const selBooth = selectedObject?.type === 'booth' ? selectedObject.id : null;
 
     for (const b of booths) {
+      const isSel = b.id === selBooth;
       const g = new PIXI.Graphics();
-      g.lineStyle(1 / sc, 0x6366f1, 0.25);
-      g.beginFill(0x6366f1, 0.13);
+      g.lineStyle((isSel ? 3 : 1) / sc, isSel ? 0x4f46e5 : 0x6366f1, isSel ? 0.9 : 0.25);
+      g.beginFill(0x6366f1, isSel ? 0.25 : 0.13);
       g.drawRect(b.x, b.y, b.width, b.height);
       g.endFill();
       layer.addChild(g);
@@ -803,13 +865,14 @@ export default function CorridorVisualEditor({
       const text = new PIXI.Text(b.booth_number, {
         fontSize: 8 / sc,
         fontFamily: 'Inter, sans-serif',
-        fill: '#6366f1',
+        fill: isSel ? '#4f46e5' : '#6366f1',
+        fontWeight: isSel ? 'bold' : 'normal',
       });
       text.x = b.x + 2 / sc;
       text.y = b.y + 2 / sc;
       layer.addChild(text);
     }
-  }, [booths]);
+  }, [booths, selectedObject]);
 
   // ===== Obstacles =====
   useEffect(() => {
@@ -817,23 +880,25 @@ export default function CorridorVisualEditor({
     layer.removeChildren();
     layer.interactiveChildren = false;
     const sc = transformRef.current.scale;
+    const selObs = selectedObject?.type === 'obstacle' ? selectedObject.id : null;
 
     for (const obs of obstacles) {
+      const isSel = obs.id === selObs;
       const g = new PIXI.Graphics();
       if (obs.shape === 'circle' && obs.radius) {
-        g.lineStyle(1 / sc, 0xef4444);
-        g.beginFill(0xef4444, 0.19);
+        g.lineStyle((isSel ? 3 : 1) / sc, isSel ? 0xb91c1c : 0xef4444);
+        g.beginFill(0xef4444, isSel ? 0.35 : 0.19);
         g.drawCircle(obs.x, obs.y, obs.radius);
         g.endFill();
       } else {
-        g.lineStyle(1 / sc, 0xef4444);
-        g.beginFill(0xef4444, 0.19);
+        g.lineStyle((isSel ? 3 : 1) / sc, isSel ? 0xb91c1c : 0xef4444);
+        g.beginFill(0xef4444, isSel ? 0.35 : 0.19);
         g.drawRect(obs.x, obs.y, obs.width || 40, obs.height || 40);
         g.endFill();
       }
       layer.addChild(g);
     }
-  }, [obstacles]);
+  }, [obstacles, selectedObject]);
 
   // ===== Facilities =====
   useEffect(() => {
@@ -841,6 +906,7 @@ export default function CorridorVisualEditor({
     layer.removeChildren();
     layer.interactiveChildren = false;
     const sc = transformRef.current.scale;
+    const selFac = selectedObject?.type === 'facility' ? selectedObject.id : null;
 
     const FACILITY_COLORS: Record<string, number> = {
       restroom: 0x3b82f6,
@@ -852,10 +918,16 @@ export default function CorridorVisualEditor({
     };
 
     for (const f of facilities) {
+      const isSel = f.id === selFac;
       const color = FACILITY_COLORS[f.type] || 0x6b7280;
       const g = new PIXI.Graphics();
-      g.lineStyle(1.5 / sc, color, 0.8);
-      g.beginFill(color, 0.3);
+      if (isSel) {
+        g.lineStyle(3 / sc, 0x1d4ed8, 1);
+        g.beginFill(color, 0.5);
+      } else {
+        g.lineStyle(1.5 / sc, color, 0.8);
+        g.beginFill(color, 0.3);
+      }
       g.drawCircle(f.x, f.y, 8 / sc);
       g.endFill();
       layer.addChild(g);
@@ -871,7 +943,7 @@ export default function CorridorVisualEditor({
       label.y = f.y;
       layer.addChild(label);
     }
-  }, [facilities]);
+  }, [facilities, selectedObject]);
 
   // ===== Edges =====
   useEffect(() => {
