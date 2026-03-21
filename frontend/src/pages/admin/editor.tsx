@@ -285,14 +285,25 @@ export default function EditorPage() {
           {connectFromId && <span className="text-[10px] text-yellow-600 dark:text-yellow-400">연결: #{connectFromId}</span>}
         </div>
 
-        {/* Mobile: horizontal toolbar at top */}
-        <EditorToolbar
-          mode={mode} onModeChange={setMode}
-          pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
-          amenityType={amenityType} onAmenityTypeChange={setAmenityType}
-        />
+        {/* Mobile only: horizontal toolbar at top */}
+        <div className="md:hidden">
+          <EditorToolbar
+            mode={mode} onModeChange={setMode}
+            pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
+            amenityType={amenityType} onAmenityTypeChange={setAmenityType}
+          />
+        </div>
 
         <div className="flex flex-1 min-h-0">
+          {/* PC only: left toolbar (inside flex row) */}
+          <div className="hidden md:block">
+            <EditorToolbar
+              mode={mode} onModeChange={setMode}
+              pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
+              amenityType={amenityType} onAmenityTypeChange={setAmenityType}
+            />
+          </div>
+
           {/* Canvas */}
           <div className="flex-1 min-w-0">
             <EditorCanvas

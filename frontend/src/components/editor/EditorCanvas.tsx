@@ -1,5 +1,5 @@
 /**
- * EditorCanvas.tsx — PIXI 앱 초기화 + 배경 이미지 + 레이어 조립
+ * EditorCanvas.tsx — PIXI canvas (CorridorVisualEditor 초기화 패턴 그대로 사용)
  */
 import React, { useRef, useEffect, useCallback, useState, useImperativeHandle, forwardRef } from 'react';
 import * as PIXI from 'pixi.js';
@@ -55,7 +55,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   const appRef = useRef<PIXI.Application | null>(null);
   const mainContainerRef = useRef<PIXI.Container | null>(null);
   const previewGraphicsRef = useRef<PIXI.Graphics | null>(null);
-  const transformRef = useRef({ x: 0, y: 0, scale: 1 });
+  const transformRef = useRef({ x: 0, y: 0, scale: 0.6 });
   const bgSpriteRef = useRef<PIXI.Sprite | null>(null);
 
   const hallGfxRef = useRef<PIXI.Graphics | null>(null);
@@ -67,116 +67,99 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
 
   const [ready, setReady] = useState(false);
 
-  // ===== PIXI Init (rAF로 레이아웃 완료 후 실행) =====
+  // ===== PIXI Init (CorridorVisualEditor와 동일 패턴) =====
   useEffect(() => {
-    const div = containerRef.current;
-    if (!div) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const w = el.offsetWidth || 800;
+    const h = el.offsetHeight || 500;
 
-    let rafId: number;
-    let app: PIXI.Application | null = null;
-    let ro: ResizeObserver | null = null;
-
-    rafId = requestAnimationFrame(() => {
-      const w = div.clientWidth || 800;
-      const h = div.clientHeight || 600;
-      const dpr = window.devicePixelRatio || 1;
-
-      app = new PIXI.Application({
-        width: w, height: h,
-        resolution: dpr,
-        autoDensity: true,
-        backgroundAlpha: 0,
-        antialias: true,
-      });
-      appRef.current = app;
-      canvasRef.current = app.view as HTMLCanvasElement;
-      (canvasRef.current as HTMLElement).style.cursor = 'grab';
-      (canvasRef.current as HTMLElement).style.display = 'block';
-      (canvasRef.current as HTMLElement).style.width = '100%';
-      (canvasRef.current as HTMLElement).style.height = '100%';
-      (canvasRef.current as HTMLElement).style.touchAction = 'none';
-      div.appendChild(canvasRef.current as HTMLElement);
-
-      const mc = new PIXI.Container();
-      mainContainerRef.current = mc;
-      app.stage.addChild(mc);
-
-      // Layer order: bg(0) → hall → obstacle → booth → boothLabel → path → amenity → preview
-      const hallGfx = new PIXI.Graphics(); hallGfxRef.current = hallGfx; mc.addChild(hallGfx);
-      const obstGfx = new PIXI.Graphics(); obstacleGfxRef.current = obstGfx; mc.addChild(obstGfx);
-      const boothGfx = new PIXI.Graphics(); boothGfxRef.current = boothGfx; mc.addChild(boothGfx);
-      const boothLabels = new PIXI.Container(); boothLabelRef.current = boothLabels; mc.addChild(boothLabels);
-      const pathGfx = new PIXI.Graphics(); pathGfxRef.current = pathGfx; mc.addChild(pathGfx);
-      const amenGfx = new PIXI.Graphics(); amenityGfxRef.current = amenGfx; mc.addChild(amenGfx);
-      const preview = new PIXI.Graphics(); previewGraphicsRef.current = preview; mc.addChild(preview);
-
-      ro = new ResizeObserver(() => {
-        if (!app) return;
-        const nw = div.clientWidth, nh = div.clientHeight;
-        app.renderer.resize(nw, nh);
-      });
-      ro.observe(div);
-
-      setReady(true);
+    const app = new PIXI.Application({
+      width: w,
+      height: h,
+      backgroundColor: 0xf3f4f6,
+      antialias: true,
+      resolution: window.devicePixelRatio || 1,
+      autoDensity: true,
     });
+    appRef.current = app;
+
+    el.appendChild(app.view as HTMLCanvasElement);
+    const canvas = app.view as HTMLCanvasElement;
+    canvasRef.current = canvas;
+    canvas.style.touchAction = 'none';
+    canvas.style.userSelect = 'none';
+    canvas.style.overscrollBehavior = 'none';
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.cursor = 'grab';
+
+    const mc = new PIXI.Container();
+    mainContainerRef.current = mc;
+    app.stage.addChild(mc);
+
+    // Layer order: hall → obstacle → booth → boothLabel → path → amenity → preview
+    const hallGfx = new PIXI.Graphics(); hallGfxRef.current = hallGfx; mc.addChild(hallGfx);
+    const obstGfx = new PIXI.Graphics(); obstacleGfxRef.current = obstGfx; mc.addChild(obstGfx);
+    const boothGfx = new PIXI.Graphics(); boothGfxRef.current = boothGfx; mc.addChild(boothGfx);
+    const boothLabels = new PIXI.Container(); boothLabelRef.current = boothLabels; mc.addChild(boothLabels);
+    const pathGfx = new PIXI.Graphics(); pathGfxRef.current = pathGfx; mc.addChild(pathGfx);
+    const amenGfx = new PIXI.Graphics(); amenityGfxRef.current = amenGfx; mc.addChild(amenGfx);
+    const preview = new PIXI.Graphics(); previewGraphicsRef.current = preview; mc.addChild(preview);
+
+    // Initial transform
+    const initialScale = 0.6;
+    transformRef.current = { x: 0, y: 0, scale: initialScale };
+    mc.scale.set(initialScale);
+
+    // Resize
+    const ro = new ResizeObserver(() => {
+      const nw = el.offsetWidth || 800, nh = el.offsetHeight || 500;
+      app.renderer.resize(nw, nh);
+    });
+    ro.observe(el);
+
+    setReady(true);
 
     return () => {
-      cancelAnimationFrame(rafId);
-      ro?.disconnect();
-      if (app) {
-        app.destroy(true, { children: true });
-        appRef.current = null;
-      }
+      ro.disconnect();
+      app.destroy(true, { children: true });
+      appRef.current = null;
     };
   }, []);
 
-  // ===== Background Image =====
+  // ===== Background Image (CorridorVisualEditor 패턴) =====
   useEffect(() => {
-    if (!ready || !props.imageUrl || !props.imageWidth || !props.imageHeight) return;
-    const mc = mainContainerRef.current;
-    if (!mc) return;
+    if (!ready || !props.imageUrl) return;
+    const mc = mainContainerRef.current!;
 
-    // Remove old bg sprite
     if (bgSpriteRef.current) {
       mc.removeChild(bgSpriteRef.current);
       bgSpriteRef.current.destroy();
       bgSpriteRef.current = null;
     }
 
-    // PIXI.Texture.from — same pattern as CorridorVisualEditor
     const tex = PIXI.Texture.from(props.imageUrl);
     const sprite = new PIXI.Sprite(tex);
     sprite.width = props.imageWidth;
     sprite.height = props.imageHeight;
     bgSpriteRef.current = sprite;
-    mc.addChildAt(sprite, 0); // index 0 = below all layers
-
-    // Fit image to canvas
-    const div = containerRef.current!;
-    const cw = div.clientWidth || appRef.current?.renderer.width || 800;
-    const ch = div.clientHeight || appRef.current?.renderer.height || 600;
-    const fitScale = Math.min(cw / props.imageWidth, ch / props.imageHeight) * 0.9;
-    const t = transformRef.current;
-    t.scale = fitScale;
-    t.x = (cw - props.imageWidth * fitScale) / 2;
-    t.y = (ch - props.imageHeight * fitScale) / 2;
-    mc.scale.set(fitScale);
-    mc.position.set(t.x, t.y);
+    mc.addChildAt(sprite, 0);
   }, [ready, props.imageUrl, props.imageWidth, props.imageHeight]);
 
   // ===== Zoom =====
   const applyZoom = useCallback((newScale: number, pivotX: number, pivotY: number) => {
-    const s = Math.max(0.05, Math.min(10, newScale));
+    const clamped = Math.max(0.1, Math.min(5, newScale));
     const t = transformRef.current;
+    const ratio = clamped / t.scale;
+    t.x = pivotX - ratio * (pivotX - t.x);
+    t.y = pivotY - ratio * (pivotY - t.y);
+    t.scale = clamped;
     const mc = mainContainerRef.current;
-    if (!mc) return;
-    const wx = (pivotX - t.x) / t.scale;
-    const wy = (pivotY - t.y) / t.scale;
-    t.scale = s;
-    t.x = pivotX - wx * s;
-    t.y = pivotY - wy * s;
-    mc.scale.set(s);
-    mc.position.set(t.x, t.y);
+    if (mc) {
+      mc.position.set(t.x, t.y);
+      mc.scale.set(clamped);
+    }
   }, []);
 
   // ===== Render layers =====
@@ -227,8 +210,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   return (
     <div
       ref={containerRef}
-      className="w-full h-full bg-white relative overflow-hidden"
-      style={{ touchAction: 'none' }}
+      className="w-full h-full relative overflow-hidden"
     />
   );
 });
