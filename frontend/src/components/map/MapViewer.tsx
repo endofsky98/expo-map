@@ -1517,6 +1517,7 @@ export default function MapViewer({
 
     // Initial marker calculation + position update
     recalcMarkers();
+    updateMarkerPositions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booths]);
 
