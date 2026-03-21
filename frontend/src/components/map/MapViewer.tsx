@@ -1507,7 +1507,7 @@ export default function MapViewer({
   }, [dimensions]);
 
   return (
-    <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: '#ffffff', cursor: 'grab' }}>
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden" style={{ touchAction: 'none', overscrollBehavior: 'none', background: '#ffffff', cursor: 'grab', userSelect: 'none', WebkitUserSelect: 'none' }}>
 
       {/* Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
       <WallOverlay
@@ -1521,7 +1521,7 @@ export default function MapViewer({
       <div
         ref={markerOverlayRef}
         className="absolute inset-0 overflow-hidden"
-        style={{ pointerEvents: 'none', zIndex: 5 }}
+        style={{ pointerEvents: 'none', zIndex: 5, userSelect: 'none', WebkitUserSelect: 'none' }}
       />
 
       {/* 글자 크기 조절은 외부(index.tsx)에서 제어 */}
