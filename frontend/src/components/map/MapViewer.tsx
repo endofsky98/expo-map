@@ -1556,15 +1556,20 @@ export default function MapViewer({
 
       {/* 글자 크기 조절은 외부(index.tsx)에서 제어 */}
 
-      {/* 출발/도착 핀 마커 */}
+      {/* 출발/도착 핀 마커 — 부스 핀과 동일한 스타일 */}
       {navStartPoint && (() => {
         const t = transformRef.current;
         const sc = t.scale, cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
         const sx = t.x + sc * (navStartPoint.x * cosR - navStartPoint.y * sinR);
         const sy = t.y + sc * (navStartPoint.x * sinR + navStartPoint.y * cosR);
         return (
-          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 12, top: sy - 32 }}>
-            <svg width="24" height="32" viewBox="0 0 24 32"><path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20s12-11 12-20C24 5.37 18.63 0 12 0z" fill="#22c55e" stroke="#fff" strokeWidth="2"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
+          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 7, top: sy - 18, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
+              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#22c55e" stroke="#fff" strokeWidth="2.5"/>
+              <circle cx="14" cy="14" r="8" fill="#22c55e"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
+              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" strokeWidth="2"/>
+            </svg>
+            <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>출발</span>
           </div>
         );
       })()}
@@ -1574,8 +1579,13 @@ export default function MapViewer({
         const sx = t.x + sc * (navEndPoint.x * cosR - navEndPoint.y * sinR);
         const sy = t.y + sc * (navEndPoint.x * sinR + navEndPoint.y * cosR);
         return (
-          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 12, top: sy - 32 }}>
-            <svg width="24" height="32" viewBox="0 0 24 32"><path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20s12-11 12-20C24 5.37 18.63 0 12 0z" fill="#ef4444" stroke="#fff" strokeWidth="2"/><circle cx="12" cy="12" r="5" fill="#fff"/></svg>
+          <div className="absolute z-20 pointer-events-none" style={{ left: sx - 7, top: sy - 18, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
+              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#ef4444" stroke="#fff" strokeWidth="2.5"/>
+              <circle cx="14" cy="14" r="8" fill="#ef4444"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
+              <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="none" stroke="#fff" strokeWidth="2"/>
+            </svg>
+            <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>도착</span>
           </div>
         );
       })()}
