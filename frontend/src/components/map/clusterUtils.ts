@@ -72,7 +72,7 @@ export function scaleToZoom(scale: number): number {
   // scale 0.05 → zoom 0, scale 4.0 → zoom 48
   // log2 기반 매핑, 3배 세밀도
   const z = Math.log2(scale * 20);
-  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 0.22)));
+  return Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, Math.round(z * 0.44)));
 }
 
 // Supercluster 인스턴스 관리
