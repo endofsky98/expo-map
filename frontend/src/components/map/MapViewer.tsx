@@ -226,11 +226,7 @@ export default function MapViewer({
 
   // Schedule marker position update via rAF (debounced)
   function scheduleMarkerUpdate() {
-    if (rafIdRef.current) return;
-    rafIdRef.current = requestAnimationFrame(() => {
-      rafIdRef.current = 0;
-      updateMarkerPositions();
-    });
+    updateMarkerPositions();
   }
 
   // Clamp: image must overlap screen center — image cannot leave the center point
