@@ -229,9 +229,11 @@ export default function EditorPage() {
     if (selectedObject.kind === 'booth') {
       const booth = booths.find(b => b.id === selectedObject.id);
       if (!booth) return null;
-      return <BoothPanel booth={booth} categories={categories} companies={companies}
-        onSave={async (id, data) => { await updateBooth(id, data as any); setBooths(prev => prev.map(b => b.id === id ? { ...b, ...data } : b)); }}
-        onDelete={async (id) => { await deleteBooth(id); setBooths(prev => prev.filter(b => b.id !== id)); setSelectedObject(null); }} />;
+      // company 객체에서 company_id 추출
+      const boothWithCompany = { ...booth, company_id: booth.company_id ?? (booth as any).company?.id ?? null };
+      return <BoothPanel booth={boothWithCompany} categories={categories} companies={companies}
+        onSave={async (id, data) => { try { await updateBooth(id, data as any); setBooths(prev => prev.map(b => b.id === id ? { ...b, ...data } : b)); } catch(e) { console.error('부스 저장 실패:', e); } }}
+        onDelete={async (id) => { try { await deleteBooth(id); setBooths(prev => prev.filter(b => b.id !== id)); setSelectedObject(null); } catch(e) { console.error('부스 삭제 실패:', e); alert('삭제 실패: ' + (e as any)?.message); } }} />;
     }
 
     if (selectedObject.kind === 'path_node' || selectedObject.kind === 'path_edge') {
@@ -270,7 +272,7 @@ export default function EditorPage() {
   }
 
   return (
-    <AdminLayout title="">
+    <AdminLayout title="에디터">
       <div className="h-[calc(100vh-64px)] flex flex-col">
         {/* Top bar: floor selector + mobile toolbar */}
         <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
@@ -287,25 +289,14 @@ export default function EditorPage() {
           {connectFromId && <span className="text-[10px] text-yellow-600 dark:text-yellow-400">연결: #{connectFromId}</span>}
         </div>
 
-        {/* Mobile only: horizontal toolbar at top */}
-        <div className="md:hidden">
-          <EditorToolbar
-            mode={mode} onModeChange={setMode}
-            pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
-            amenityType={amenityType} onAmenityTypeChange={setAmenityType}
-          />
-        </div>
+        {/* Toolbar — 상단 수평 (PC+모바일 공통) */}
+        <EditorToolbar
+          mode={mode} onModeChange={setMode}
+          pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
+          amenityType={amenityType} onAmenityTypeChange={setAmenityType}
+        />
 
         <div className="flex flex-1 min-h-0">
-          {/* PC only: left toolbar (inside flex row) */}
-          <div className="hidden md:block">
-            <EditorToolbar
-              mode={mode} onModeChange={setMode}
-              pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
-              amenityType={amenityType} onAmenityTypeChange={setAmenityType}
-            />
-          </div>
-
           {/* Canvas */}
           <div className="flex-1 min-w-0">
             <EditorCanvas
