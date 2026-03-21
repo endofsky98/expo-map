@@ -51,6 +51,7 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
 
   const navItems = [
     { href: '/admin', label: t('nav.dashboard'), icon: LayoutDashboard },
+    { href: '/admin/corridors', label: t('nav.corridors'), icon: Network },
     { href: '/admin/floors', label: t('nav.floors'), icon: Layers },
     { href: '/admin/booths', label: t('nav.booths'), icon: Grid3X3 },
     { href: '/admin/images', label: t('nav.images'), icon: ImageIcon },
@@ -58,7 +59,6 @@ export default function AdminLayout({ children, title }: AdminLayoutProps) {
     { href: '/admin/categories', label: t('nav.categories'), icon: Tag },
     { href: '/admin/facilities', label: t('nav.facilities'), icon: MapPin },
     { href: '/admin/obstacles', label: t('nav.obstacles'), icon: Columns3 },
-    { href: '/admin/corridors', label: t('nav.corridors'), icon: Network },
   ];
 
   function isActive(href: string) {

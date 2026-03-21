@@ -396,7 +396,7 @@ export default function CorridorsPage() {
         )}
 
         {/* Visual Editor + Side Panel */}
-        <div className="flex gap-4">
+        <div className="flex flex-col-reverse md:flex-row gap-4">
           {/* Canvas */}
           <div className="flex-1 bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 overflow-hidden" style={{ height: '65vh', minHeight: 400 }}>
             {loading ? (
@@ -439,7 +439,7 @@ export default function CorridorsPage() {
           </div>
 
           {/* Side Panel: selected node info */}
-          <div className="w-72 shrink-0 space-y-4">
+          <div className="w-full md:w-72 md:shrink-0 space-y-4">
             {selectedNode ? (
               <>
                 <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-sm border border-gray-200 dark:border-gray-500/40 p-4">
