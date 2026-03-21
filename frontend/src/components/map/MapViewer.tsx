@@ -1065,7 +1065,7 @@ export default function MapViewer({
         label.setAttribute('data-label', '');
         const initCompanyName = lnRef.current(booth.company?.name) || '';
         label.textContent = initCompanyName || booth.booth_number;
-        label.style.fontSize = '12px';
+        label.style.fontSize = '24px';
         label.style.fontWeight = '700';
         label.style.fontFamily = 'Inter, sans-serif';
         label.style.color = '#1f2937';
