@@ -1,5 +1,5 @@
 import { Booth, Category, Company, MapImage, Floor, Hall, Facility, CorridorNode, CorridorEdge, RouteResult, Obstacle, Setting } from '@/types';
-import { getToken } from '@/lib/auth';
+import { getToken, clearToken } from '@/lib/auth';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
 const REQUEST_TIMEOUT = 5000;
@@ -34,6 +34,12 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     clearTimeout(timeoutId);
     if (!res.ok) {
       const errorBody = await res.text().catch(() => '');
+      // 401 → 토큰 만료, 자동 로그인 페이지 이동
+      if (res.status === 401 && typeof window !== 'undefined') {
+        clearToken();
+        window.location.href = '/admin/login';
+        throw new Error('세션 만료. 다시 로그인해주세요.');
+      }
       throw new Error(`API Error ${res.status}: ${errorBody || res.statusText}`);
     }
     return res.json();
