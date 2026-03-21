@@ -1071,9 +1071,7 @@ export default function MapViewer({
         label.style.color = '#1f2937';
         label.style.textAlign = 'center';
         label.style.whiteSpace = 'nowrap';
-        label.style.maxWidth = '90px';
-        label.style.overflow = 'hidden';
-        label.style.textOverflow = 'ellipsis';
+        label.style.overflow = 'visible';
         label.style.marginTop = '1px';
         label.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
         label.style.lineHeight = '1.2';
