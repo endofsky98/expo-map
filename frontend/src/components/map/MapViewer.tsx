@@ -1058,6 +1058,10 @@ export default function MapViewer({
       }
 
       // Position update only (no fade logic here — recalcMarkers handles transitions)
+      // transition 제거: 슬라이드 애니메이션 후 남은 transition이 드래그 시 지연 유발
+      if (!fadingIdsRef.current.has(booth.id)) {
+        el.style.transition = 'none';
+      }
       el.style.display = 'flex';
       el.style.transform = `translate(${sx}px, ${sy}px) translate(-50%, -100%) scale(${pScale.toFixed(3)})`;
 
