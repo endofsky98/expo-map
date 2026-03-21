@@ -372,7 +372,7 @@ export default function HomePage() {
     const panTo = (window as any).__mapViewerPanToWorld;
     const setTilt = (window as any).__mapViewerSetTilt;
     if (setTilt) setTilt(60);
-    if (panTo) panTo(pos.x, pos.y, 1, rot);
+    if (panTo) panTo(pos.x, pos.y, 0.5, rot);
   }
 
   // 다음 (100px 전진)
