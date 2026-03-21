@@ -184,8 +184,21 @@ export default function EditorPage() {
     }
   }, []);
 
-  // ===== Object move handler =====
-  const handleObjectMove = useCallback(async (kind: string, id: number, x: number, y: number) => {
+  // ===== Object move handler (로컬 state만 갱신, API 미호출) =====
+  const handleObjectMove = useCallback((kind: string, id: number, x: number, y: number) => {
+    if (kind === 'booth') {
+      setBooths(prev => prev.map(b => b.id === id ? { ...b, x, y } : b));
+    } else if (kind === 'path_node') {
+      setPathNodes(prev => prev.map(n => n.id === id ? { ...n, x, y } : n));
+    } else if (kind === 'obstacle') {
+      setObstacles(prev => prev.map(o => o.id === id ? { ...o, x, y } : o));
+    } else if (kind === 'amenity') {
+      setAmenities(prev => prev.map(a => a.id === id ? { ...a, x, y } : a));
+    }
+  }, []);
+
+  // ===== Object move end handler (API 저장) =====
+  const handleObjectMoveEnd = useCallback(async (kind: string, id: number, x: number, y: number) => {
     try {
       if (kind === 'booth') {
         await updateBooth(id, { x, y } as any);
@@ -201,7 +214,36 @@ export default function EditorPage() {
         setAmenities(prev => prev.map(a => a.id === id ? { ...a, x, y } : a));
       }
     } catch (err) {
-      console.error('Move error:', err);
+      console.error('Move end error:', err);
+    }
+  }, []);
+
+  // ===== Object resize handler (로컬 state만 갱신) =====
+  const handleObjectResize = useCallback((kind: string, id: number, x: number, y: number, w: number, h: number) => {
+    if (kind === 'booth') {
+      setBooths(prev => prev.map(b => b.id === id ? { ...b, x, y, width: w, height: h } : b));
+    } else if (kind === 'obstacle') {
+      setObstacles(prev => prev.map(o => o.id === id ? { ...o, x, y, width: w, height: h } : o));
+    } else if (kind === 'hall') {
+      setHalls(prev => prev.map(hl => hl.id === id ? { ...hl, area_x: x, area_y: y, area_width: w, area_height: h } : hl));
+    }
+  }, []);
+
+  // ===== Object resize end handler (API 저장) =====
+  const handleObjectResizeEnd = useCallback(async (kind: string, id: number, x: number, y: number, w: number, h: number) => {
+    try {
+      if (kind === 'booth') {
+        await updateBooth(id, { x, y, width: w, height: h } as any);
+        setBooths(prev => prev.map(b => b.id === id ? { ...b, x, y, width: w, height: h } : b));
+      } else if (kind === 'obstacle') {
+        await updateObstacle(id, { x, y, width: w, height: h } as any);
+        setObstacles(prev => prev.map(o => o.id === id ? { ...o, x, y, width: w, height: h } : o));
+      } else if (kind === 'hall') {
+        await updateHall(id, { area_x: x, area_y: y, area_width: w, area_height: h } as any);
+        setHalls(prev => prev.map(hl => hl.id === id ? { ...hl, area_x: x, area_y: y, area_width: w, area_height: h } : hl));
+      }
+    } catch (err) {
+      console.error('Resize end error:', err);
     }
   }, []);
 
@@ -309,6 +351,9 @@ export default function EditorPage() {
               onShapeComplete={handleShapeComplete}
               onNodeConnect={handleNodeConnect}
               onObjectMove={handleObjectMove}
+              onObjectMoveEnd={handleObjectMoveEnd}
+              onObjectResize={handleObjectResize}
+              onObjectResizeEnd={handleObjectResizeEnd}
               onObjectDelete={handleObjectDelete}
               setConnectFromId={setConnectFromId}
               renderLayers={renderLayers}

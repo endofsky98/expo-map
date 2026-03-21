@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import type { EditorObstacle, SelectedObject, DrawStyle } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
 import { drawRect, drawPolygon, drawCircle } from '../ShapeDrawer';
+import { drawResizeHandles } from '../resizeHandles';
 
 interface ObstacleLayerProps {
   graphics: PIXI.Graphics;
@@ -40,6 +41,8 @@ export function renderObstacleLayer(props: ObstacleLayerProps) {
       default: // rectangle
         if (obs.width != null && obs.height != null) {
           drawRect(g, obs.x, obs.y, obs.width, obs.height, style, scale);
+          // 선택된 사각형 장애물에 리사이즈 핸들 표시
+          if (selected) drawResizeHandles(g, obs.x, obs.y, obs.width, obs.height, scale);
         }
         break;
     }

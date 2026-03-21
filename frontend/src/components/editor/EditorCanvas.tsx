@@ -33,6 +33,9 @@ interface EditorCanvasProps {
   onShapeComplete: (mode: EditorMode, data: ShapeCompleteData) => void;
   onNodeConnect: (fromId: number, toId: number) => void;
   onObjectMove: (kind: string, id: number, x: number, y: number) => void;
+  onObjectMoveEnd?: (kind: string, id: number, x: number, y: number) => void;
+  onObjectResize?: (kind: string, id: number, x: number, y: number, w: number, h: number) => void;
+  onObjectResizeEnd?: (kind: string, id: number, x: number, y: number, w: number, h: number) => void;
   onObjectDelete: (kind: string, id: number) => void;
   setConnectFromId: (id: number | null) => void;
   renderLayers: (ctx: LayerContext) => void;
@@ -193,10 +196,14 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     pathEdges: props.pathEdges,
     obstacles: props.obstacles,
     amenities: props.amenities,
+    selectedObject: props.selectedObject,
     onObjectSelect: props.onObjectSelect,
     onShapeComplete: props.onShapeComplete,
     onNodeConnect: props.onNodeConnect,
     onObjectMove: props.onObjectMove,
+    onObjectMoveEnd: props.onObjectMoveEnd,
+    onObjectResize: props.onObjectResize,
+    onObjectResizeEnd: props.onObjectResizeEnd,
     onObjectDelete: props.onObjectDelete,
     connectFromId: props.connectFromId,
     setConnectFromId: props.setConnectFromId,

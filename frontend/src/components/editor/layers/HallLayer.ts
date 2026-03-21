@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import type { EditorHall, SelectedObject, DrawStyle } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
 import { drawRect, drawPolygon } from '../ShapeDrawer';
+import { drawResizeHandles } from '../resizeHandles';
 
 interface HallLayerProps {
   graphics: PIXI.Graphics;
@@ -44,6 +45,8 @@ export function renderHallLayer(props: HallLayerProps) {
           hall.area_width != null && hall.area_height != null
         ) {
           drawRect(g, hall.area_x, hall.area_y, hall.area_width, hall.area_height, style, scale);
+          // 선택된 사각형 홀에 리사이즈 핸들 표시
+          if (selected) drawResizeHandles(g, hall.area_x, hall.area_y, hall.area_width, hall.area_height, scale);
         }
         break;
     }

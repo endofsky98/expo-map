@@ -2,6 +2,7 @@ import * as PIXI from 'pixi.js';
 import type { EditorBooth, SelectedObject, DrawStyle } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
 import { drawRect, drawPolygon, drawCircle, drawEllipse, createLabel } from '../ShapeDrawer';
+import { drawResizeHandles } from '../resizeHandles';
 
 interface BoothLayerProps {
   graphics: PIXI.Graphics;
@@ -42,6 +43,8 @@ export function renderBoothLayer(props: BoothLayerProps) {
         break;
       default: // rectangle
         drawRect(g, b.x, b.y, b.width, b.height, style, scale);
+        // 선택된 사각형 부스에 리사이즈 핸들 표시
+        if (selected) drawResizeHandles(g, b.x, b.y, b.width, b.height, scale);
         break;
     }
 
