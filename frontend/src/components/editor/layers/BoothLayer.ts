@@ -79,8 +79,16 @@ export function renderBoothLayer(props: BoothLayerProps) {
 
     // Label: 회사명 우선, 없으면 부스번호
     if (scale >= 0.5) {
-      const cx = b.shape === 'rectangle' ? b.x + b.width / 2 : b.x;
-      const cy = b.shape === 'rectangle' ? b.y + b.height / 2 : b.y;
+      let cx: number, cy: number;
+      if (b.shape === 'polygon' && pts && pts.length >= 3) {
+        // 다각형 centroid
+        cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+        cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+      } else if (b.shape === 'circle' || b.shape === 'ellipse') {
+        cx = b.x; cy = b.y;
+      } else {
+        cx = b.x + b.width / 2; cy = b.y + b.height / 2;
+      }
 
       const companyName = b.company_name || ln((b as any).company?.name);
       const catName = ln((b as any).category?.name);

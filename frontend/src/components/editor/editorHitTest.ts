@@ -21,6 +21,12 @@ interface HitTestData {
   amenities: Amenity[];
 }
 
+function parsePoints(pts: any): Point[] | null {
+  if (!pts) return null;
+  if (Array.isArray(pts)) return pts;
+  try { return JSON.parse(pts); } catch { return null; }
+}
+
 /** 우선순위: pathNode > amenity > booth > obstacle > pathEdge > hall */
 export function hitTestAll(
   wx: number, wy: number, scale: number, data: HitTestData,
@@ -45,8 +51,9 @@ export function hitTestAll(
       if (hitTestCircle(wx, wy, b.x, b.y, b.radius)) return { kind: 'booth', id: b.id };
     } else if (b.shape === 'ellipse' && b.radius_x && b.radius_y) {
       if (hitTestEllipse(wx, wy, b.x, b.y, b.radius_x, b.radius_y)) return { kind: 'booth', id: b.id };
-    } else if (b.shape === 'polygon' && b.points && b.points.length >= 3) {
-      if (hitTestPolygon(wx, wy, b.points)) return { kind: 'booth', id: b.id };
+    } else if (b.shape === 'polygon') {
+      const pts = parsePoints(b.points);
+      if (pts && pts.length >= 3 && hitTestPolygon(wx, wy, pts)) return { kind: 'booth', id: b.id };
     } else {
       if (hitTestRect(wx, wy, b.x, b.y, b.width, b.height)) return { kind: 'booth', id: b.id };
     }
@@ -56,8 +63,9 @@ export function hitTestAll(
   for (const o of data.obstacles) {
     if (o.shape === 'circle' && o.radius) {
       if (hitTestCircle(wx, wy, o.x, o.y, o.radius)) return { kind: 'obstacle', id: o.id };
-    } else if (o.shape === 'polygon' && o.points && o.points.length >= 3) {
-      if (hitTestPolygon(wx, wy, o.points)) return { kind: 'obstacle', id: o.id };
+    } else if (o.shape === 'polygon') {
+      const pts = parsePoints(o.points);
+      if (pts && pts.length >= 3 && hitTestPolygon(wx, wy, pts)) return { kind: 'obstacle', id: o.id };
     } else {
       if (hitTestRect(wx, wy, o.x, o.y, o.width || 40, o.height || 40)) return { kind: 'obstacle', id: o.id };
     }
@@ -77,8 +85,9 @@ export function hitTestAll(
 
   // Halls (가장 크니까 마지막)
   for (const h of data.halls) {
-    if (h.shape === 'polygon' && h.points && h.points.length >= 3) {
-      if (hitTestPolygon(wx, wy, h.points)) return { kind: 'hall', id: h.id };
+    if (h.shape === 'polygon') {
+      const pts = parsePoints(h.points);
+      if (pts && pts.length >= 3 && hitTestPolygon(wx, wy, pts)) return { kind: 'hall', id: h.id };
     } else if (h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null) {
       if (hitTestRect(wx, wy, h.area_x, h.area_y, h.area_width, h.area_height)) return { kind: 'hall', id: h.id };
     }
