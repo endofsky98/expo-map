@@ -226,8 +226,8 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
   return (
     <div
       ref={containerRef}
-      className="flex-1 bg-white relative overflow-hidden"
-      style={{ touchAction: 'none', minWidth: 0, minHeight: 0 }}
+      className="w-full h-full bg-white relative overflow-hidden"
+      style={{ touchAction: 'none' }}
     />
   );
 });

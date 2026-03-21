@@ -3,8 +3,7 @@
  * 데이터 fetch + 상태 관리 + 레이어 조립 + 패널 분기.
  */
 import React, { useState, useEffect, useCallback } from 'react';
-import { useRouter } from 'next/router';
-import { isLoggedIn } from '@/lib/auth';
+import AdminLayout from '@/components/AdminLayout';
 import EditorCanvas, { LayerContext } from '@/components/editor/EditorCanvas';
 import EditorToolbar from '@/components/editor/EditorToolbar';
 import type {
@@ -40,14 +39,6 @@ import {
 } from '@/lib/editorApi';
 
 export default function EditorPage() {
-  const router = useRouter();
-  const [authChecked, setAuthChecked] = useState(false);
-
-  useEffect(() => {
-    if (!isLoggedIn()) router.replace('/admin/login');
-    else setAuthChecked(true);
-  }, [router]);
-
   // ===== Floor/Hall selection =====
   const [floors, setFloors] = useState<{ id: number; name: string }[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
@@ -276,56 +267,56 @@ export default function EditorPage() {
     return null;
   }
 
-  if (!authChecked) return <div className="h-screen bg-gray-900 flex items-center justify-center"><div className="h-8 w-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" /></div>;
-
   return (
-    <div className="h-screen flex flex-col bg-gray-900">
-      {/* Top bar: floor selector */}
-      <div className="flex items-center gap-4 px-4 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
-        <span className="text-white text-sm font-medium">📋 에디터</span>
-        <select
-          value={selectedFloorId ?? ''}
-          onChange={e => setSelectedFloorId(Number(e.target.value))}
-          className="bg-gray-700 text-white text-sm rounded px-3 py-1 border border-gray-600"
-        >
-          {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
-        <div className="text-gray-400 text-xs">
-          모드: <span className="text-indigo-400 font-medium">{mode}</span>
-          {connectFromId && <span className="ml-2 text-yellow-400">연결 중: 노드 #{connectFromId}</span>}
+    <AdminLayout title="에디터">
+      <div className="h-[calc(100vh-64px)] flex flex-col">
+        {/* Top bar: floor selector */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+          <select
+            value={selectedFloorId ?? ''}
+            onChange={e => setSelectedFloorId(Number(e.target.value))}
+            className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+          >
+            {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <span className="text-[10px] text-gray-400">
+            모드: <span className="text-indigo-600 dark:text-indigo-400 font-medium">{mode}</span>
+          </span>
+          {connectFromId && <span className="text-[10px] text-yellow-600 dark:text-yellow-400">연결 중: #{connectFromId}</span>}
         </div>
-        <a href="/admin" className="ml-auto text-gray-400 hover:text-white text-xs">← 관리자</a>
-      </div>
 
-      <div className="flex flex-1 min-h-0">
-        {/* Left toolbar */}
-        <EditorToolbar
-          mode={mode} onModeChange={setMode}
-          pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
-          amenityType={amenityType} onAmenityTypeChange={setAmenityType}
-        />
+        <div className="flex flex-1 min-h-0">
+          {/* Left toolbar */}
+          <EditorToolbar
+            mode={mode} onModeChange={setMode}
+            pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
+            amenityType={amenityType} onAmenityTypeChange={setAmenityType}
+          />
 
-        {/* Canvas */}
-        <EditorCanvas
-          imageUrl={imageUrl} imageWidth={imageWidth} imageHeight={imageHeight}
-          mode={mode} pathNodeType={pathNodeType} amenityType={amenityType}
-          halls={halls} booths={booths} pathNodes={pathNodes} pathEdges={pathEdges}
-          obstacles={obstacles} amenities={amenities}
-          selectedObject={selectedObject} connectFromId={connectFromId}
-          onObjectSelect={setSelectedObject}
-          onShapeComplete={handleShapeComplete}
-          onNodeConnect={handleNodeConnect}
-          onObjectMove={handleObjectMove}
-          onObjectDelete={handleObjectDelete}
-          setConnectFromId={setConnectFromId}
-          renderLayers={renderLayers}
-        />
+          {/* Canvas */}
+          <div className="flex-1 min-w-0">
+            <EditorCanvas
+              imageUrl={imageUrl} imageWidth={imageWidth} imageHeight={imageHeight}
+              mode={mode} pathNodeType={pathNodeType} amenityType={amenityType}
+              halls={halls} booths={booths} pathNodes={pathNodes} pathEdges={pathEdges}
+              obstacles={obstacles} amenities={amenities}
+              selectedObject={selectedObject} connectFromId={connectFromId}
+              onObjectSelect={setSelectedObject}
+              onShapeComplete={handleShapeComplete}
+              onNodeConnect={handleNodeConnect}
+              onObjectMove={handleObjectMove}
+              onObjectDelete={handleObjectDelete}
+              setConnectFromId={setConnectFromId}
+              renderLayers={renderLayers}
+            />
+          </div>
 
-        {/* Right panel */}
-        <div className="w-72 bg-gray-800 border-l border-gray-700 overflow-y-auto shrink-0">
-          {renderPanel()}
+          {/* Right panel — 모바일에서는 하단으로 */}
+          <div className="hidden md:block w-64 border-l border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] overflow-y-auto">
+            {renderPanel()}
+          </div>
         </div>
       </div>
-    </div>
+    </AdminLayout>
   );
 }
