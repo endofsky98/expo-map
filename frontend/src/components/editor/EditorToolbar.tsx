@@ -12,6 +12,10 @@ interface ToolbarProps {
   onPathNodeTypeChange: (t: PathNodeType) => void;
   amenityType: AmenityType;
   onAmenityTypeChange: (t: AmenityType) => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
 }
 
 const BUTTONS: { mode: EditorMode; label: string; group: string }[] = [
@@ -47,7 +51,8 @@ const GROUP_LABELS: Record<string, string> = {
 };
 
 export default function EditorToolbar(props: ToolbarProps) {
-  const { mode, onModeChange, pathNodeType, onPathNodeTypeChange, amenityType, onAmenityTypeChange } = props;
+  const { mode, onModeChange, pathNodeType, onPathNodeTypeChange, amenityType, onAmenityTypeChange,
+    onUndo, onRedo, canUndo = false, canRedo = false } = props;
   const [expanded, setExpanded] = useState<string | null>(null);
   const groups = [...new Set(BUTTONS.map(b => b.group))];
 
@@ -58,6 +63,30 @@ export default function EditorToolbar(props: ToolbarProps) {
     <div className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1a1a1a] shrink-0">
       {/* Main row: group buttons */}
       <div className="flex items-center gap-0.5 px-2 py-1 overflow-x-auto">
+        {/* Undo / Redo */}
+        <button
+          onClick={onUndo}
+          disabled={!canUndo}
+          title="실행취소 (Cmd+Z)"
+          className={`shrink-0 px-2 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+            canUndo
+              ? 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          }`}
+        >↩</button>
+        <button
+          onClick={onRedo}
+          disabled={!canRedo}
+          title="다시실행 (Cmd+Shift+Z)"
+          className={`shrink-0 px-2 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
+            canRedo
+              ? 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800'
+              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+          }`}
+        >↪</button>
+
+        <div className="w-px h-5 bg-gray-200 dark:bg-gray-700 shrink-0 mx-0.5" />
+
         {/* 선택 / 삭제 — 항상 표시 */}
         {BUTTONS.filter(b => b.group === 'general').map(b => (
           <button key={b.mode} onClick={() => { onModeChange(b.mode); setExpanded(null); }}
