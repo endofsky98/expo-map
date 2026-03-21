@@ -213,7 +213,8 @@ export function selectRepresentative(
     if (h) hallIdSet.add(h.id);
   }
 
-  // 2개 이상 서로 다른 홀/구역에 걸쳐 있으면 → 홀/구역 이름으로 대표
+  // 2개 이상 서로 다른 홀/구역에 걸쳐 있을 때만 → 홀/구역 이름으로 대표
+  // 단, 홀/구역 영역이 클러스터 bbox보다 작을 때만 (충분히 작아서 합쳐진 경우)
   if (hallIdSet.size >= 2) {
     // 부스가 가장 많이 속한 홀/구역 선택
     const countMap = new Map<number, number>();
@@ -226,8 +227,23 @@ export function selectRepresentative(
     }
     const bestHall = halls.find(h => h.id === bestHallId);
     if (bestHall) {
-      const repBooth = booths.find(b => boothHallMap.get(b.id)?.id === bestHallId) || booths[0];
-      return { name: hallName(bestHall), booth: repBooth };
+      // 홀/구역 영역이 충분히 작은지 확인 — 클러스터에 합쳐질 만큼 작아야 함
+      const hw = bestHall.area_width ?? 0;
+      const hh = bestHall.area_height ?? 0;
+      const hallDiag = Math.hypot(hw, hh);
+      // 클러스터 bbox 대각선
+      const clusterBboxes = booths.map(b => ({ x: b.x, y: b.y, x2: b.x + b.width, y2: b.y + b.height }));
+      const cbx0 = Math.min(...clusterBboxes.map(c => c.x));
+      const cby0 = Math.min(...clusterBboxes.map(c => c.y));
+      const cbx1 = Math.max(...clusterBboxes.map(c => c.x2));
+      const cby1 = Math.max(...clusterBboxes.map(c => c.y2));
+      const clusterDiag = Math.hypot(cbx1 - cbx0, cby1 - cby0);
+
+      // 홀 대각선이 클러스터 대각선의 80% 이하면 "충분히 작다"고 판단
+      if (hallDiag > 0 && hallDiag <= clusterDiag * 0.8) {
+        const repBooth = booths.find(b => boothHallMap.get(b.id)?.id === bestHallId) || booths[0];
+        return { name: hallName(bestHall), booth: repBooth };
+      }
     }
   }
 
