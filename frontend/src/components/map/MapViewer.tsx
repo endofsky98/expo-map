@@ -1690,8 +1690,9 @@ export default function MapViewer({
         const { width: cw, height: ch } = canvasDimsRef.current;
         const sc = scale ?? transformRef.current.scale;
         transformRef.current.scale = sc;
-        transformRef.current.x = cw / 2 - wx * sc;
-        transformRef.current.y = ch / 2 - wy * sc;
+        const cosR = Math.cos(transformRef.current.rotation), sinR = Math.sin(transformRef.current.rotation);
+        transformRef.current.x = cw / 2 - sc * (wx * cosR - wy * sinR);
+        transformRef.current.y = ch / 2 - sc * (wx * sinR + wy * cosR);
         clampPosition(transformRef.current);
         syncContainerPosition(mc, transformRef.current);
         mc.scale.set(sc);
@@ -1707,24 +1708,23 @@ export default function MapViewer({
         if (navAnimRaf) cancelAnimationFrame(navAnimRaf);
         const t = transformRef.current;
         const { width: cw, height: ch } = canvasDimsRef.current;
-        const sc = t.scale;
-        const startX = t.x, startY = t.y, startRot = t.rotation;
-        const targetX = cw / 2 - wx * sc;
-        const targetY = ch / 2 - wy * sc;
+        const startRot = t.rotation;
         // 최단 회전 방향
         let dRot = rotation - startRot;
         while (dRot > Math.PI) dRot -= 2 * Math.PI;
         while (dRot < -Math.PI) dRot += 2 * Math.PI;
-        const targetRot = startRot + dRot;
         const startTime = performance.now();
         const step = (now: number) => {
           const elapsed = now - startTime;
           const progress = Math.min(1, elapsed / durationMs);
-          // ease-out cubic
           const ease = 1 - Math.pow(1 - progress, 3);
-          t.x = startX + (targetX - startX) * ease;
-          t.y = startY + (targetY - startY) * ease;
+          // 회전 보간
           t.rotation = startRot + dRot * ease;
+          // 매 프레임 현재 rotation 기준으로 (wx,wy)가 화면 중심에 오도록 tx,ty 계산
+          const sc = t.scale;
+          const cosR = Math.cos(t.rotation), sinR = Math.sin(t.rotation);
+          t.x = cw / 2 - sc * (wx * cosR - wy * sinR);
+          t.y = ch / 2 - sc * (wx * sinR + wy * cosR);
           clampPosition(t);
           syncContainerPosition(mc, t);
           renderTilesFnRef.current();

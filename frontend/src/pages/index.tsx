@@ -359,15 +359,21 @@ export default function HomePage() {
     return Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
   }
 
-  // 네비게이션 시작
+  // 네비게이션 시작 — 줌/틸트 세팅은 여기서만
   function startNavigation() {
     if (!clientRoute) return;
     setNavActive(true);
     setNavCurDist(0);
     const pos = clientRoute.path[0];
     const rot = dirAtDist(0);
-    const animNav = (window as any).__mapViewerAnimateNav;
-    if (animNav) animNav(pos.x, pos.y, rot, 600);
+    // 줌 2배, 틸트 없음 (회전이 있으므로 틸트는 혼란)
+    const panTo = (window as any).__mapViewerPanToWorld;
+    if (panTo) panTo(pos.x, pos.y, 2);
+    // 약간의 딜레이 후 회전 애니메이션 시작
+    setTimeout(() => {
+      const animNav = (window as any).__mapViewerAnimateNav;
+      if (animNav) animNav(pos.x, pos.y, rot, 600);
+    }, 100);
   }
 
   // 다음 (100px 전진)
@@ -409,28 +415,32 @@ export default function HomePage() {
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
-    const setTilt = (window as any).__mapViewerSetTilt;
-    if (setTilt) setTilt(0);
+    // 회전 초기화 (0도로 부드럽게)
+    const pos = posAtDist(navCurDist) || { x: 0, y: 0 };
+    const animNav = (window as any).__mapViewerAnimateNav;
+    if (animNav) animNav(pos.x, pos.y, 0, 400);
   }
 
   // 도착 — 경로 삭제 질문
   function navArrivedDeleteRoute() {
+    const pos = posAtDist(navCurDist) || { x: 0, y: 0 };
+    const animNav = (window as any).__mapViewerAnimateNav;
+    if (animNav) animNav(pos.x, pos.y, 0, 400);
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
     setNavStart(null);
     setNavEnd(null);
     setClientRoute(null);
-    const setTilt = (window as any).__mapViewerSetTilt;
-    if (setTilt) setTilt(0);
   }
 
   function navArrivedKeepRoute() {
+    const pos = posAtDist(navCurDist) || { x: 0, y: 0 };
+    const animNav = (window as any).__mapViewerAnimateNav;
+    if (animNav) animNav(pos.x, pos.y, 0, 400);
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
-    const setTilt = (window as any).__mapViewerSetTilt;
-    if (setTilt) setTilt(0);
   }
 
   function handleFontUp() {
