@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import type { EditorBooth, SelectedObject, DrawStyle } from '../editorTypes';
+import type { EditorBooth, SelectedObject, DrawStyle, Point } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
 import { drawRect, drawPolygon, drawCircle, drawEllipse, createLabel } from '../ShapeDrawer';
 import { drawResizeHandles } from '../resizeHandles';
@@ -54,9 +54,16 @@ export function renderBoothLayer(props: BoothLayerProps) {
       selected,
     };
 
+    // points가 JSON 문자열이면 파싱
+    const pts: Point[] | null = (() => {
+      if (!b.points) return null;
+      if (Array.isArray(b.points)) return b.points;
+      try { return JSON.parse(b.points as unknown as string); } catch { return null; }
+    })();
+
     switch (b.shape) {
       case 'polygon':
-        if (b.points && b.points.length >= 3) drawPolygon(g, b.points, style, scale);
+        if (pts && pts.length >= 3) drawPolygon(g, pts, style, scale);
         break;
       case 'circle':
         if (b.radius) drawCircle(g, b.x, b.y, b.radius, style, scale);

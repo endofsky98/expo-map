@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import type { EditorObstacle, SelectedObject, DrawStyle } from '../editorTypes';
+import type { EditorObstacle, SelectedObject, DrawStyle, Point } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
 import { drawRect, drawPolygon, drawCircle } from '../ShapeDrawer';
 import { drawResizeHandles } from '../resizeHandles';
@@ -29,8 +29,9 @@ export function renderObstacleLayer(props: ObstacleLayerProps) {
 
     switch (obs.shape) {
       case 'polygon':
-        if (obs.points && obs.points.length >= 3) {
-          drawPolygon(g, obs.points, style, scale);
+        const pts: Point[] | null = (() => { if (!obs.points) return null; if (Array.isArray(obs.points)) return obs.points; try { return JSON.parse(obs.points as unknown as string); } catch { return null; } })();
+        if (pts && pts.length >= 3) {
+          drawPolygon(g, pts, style, scale);
         }
         break;
       case 'circle':

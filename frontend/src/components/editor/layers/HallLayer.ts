@@ -1,5 +1,5 @@
 import * as PIXI from 'pixi.js';
-import type { EditorHall, SelectedObject, DrawStyle } from '../editorTypes';
+import type { EditorHall, SelectedObject, DrawStyle, Point } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
 import { drawRect, drawPolygon } from '../ShapeDrawer';
 import { drawResizeHandles } from '../resizeHandles';
@@ -35,8 +35,9 @@ export function renderHallLayer(props: HallLayerProps) {
 
     switch (shape) {
       case 'polygon':
-        if (hall.points && hall.points.length >= 3) {
-          drawPolygon(g, hall.points, style, scale);
+        const pts: Point[] | null = (() => { if (!hall.points) return null; if (Array.isArray(hall.points)) return hall.points; try { return JSON.parse(hall.points as unknown as string); } catch { return null; } })();
+        if (pts && pts.length >= 3) {
+          drawPolygon(g, pts, style, scale);
         }
         break;
       default: // rectangle
