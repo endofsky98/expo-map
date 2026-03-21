@@ -268,10 +268,10 @@ export default function EditorPage() {
   }
 
   return (
-    <AdminLayout title="에디터">
+    <AdminLayout title="">
       <div className="h-[calc(100vh-64px)] flex flex-col">
-        {/* Top bar: floor selector */}
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-700">
+        {/* Top bar: floor selector + mobile toolbar */}
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-700 shrink-0">
           <select
             value={selectedFloorId ?? ''}
             onChange={e => setSelectedFloorId(Number(e.target.value))}
@@ -280,21 +280,21 @@ export default function EditorPage() {
             {floors.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
           <span className="text-[10px] text-gray-400">
-            모드: <span className="text-indigo-600 dark:text-indigo-400 font-medium">{mode}</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-medium">{mode}</span>
           </span>
-          {connectFromId && <span className="text-[10px] text-yellow-600 dark:text-yellow-400">연결 중: #{connectFromId}</span>}
+          {connectFromId && <span className="text-[10px] text-yellow-600 dark:text-yellow-400">연결: #{connectFromId}</span>}
         </div>
 
-        <div className="flex flex-1 min-h-0">
-          {/* Left toolbar */}
-          <EditorToolbar
-            mode={mode} onModeChange={setMode}
-            pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
-            amenityType={amenityType} onAmenityTypeChange={setAmenityType}
-          />
+        {/* Mobile: horizontal toolbar at top */}
+        <EditorToolbar
+          mode={mode} onModeChange={setMode}
+          pathNodeType={pathNodeType} onPathNodeTypeChange={setPathNodeType}
+          amenityType={amenityType} onAmenityTypeChange={setAmenityType}
+        />
 
-          {/* Canvas — 모바일: 하단 툴바 공간 확보 */}
-          <div className="flex-1 min-w-0 pb-[72px] md:pb-0">
+        <div className="flex flex-1 min-h-0">
+          {/* Canvas */}
+          <div className="flex-1 min-w-0">
             <EditorCanvas
               imageUrl={imageUrl} imageWidth={imageWidth} imageHeight={imageHeight}
               mode={mode} pathNodeType={pathNodeType} amenityType={amenityType}
@@ -317,9 +317,9 @@ export default function EditorPage() {
           </div>
         </div>
 
-        {/* Mobile: bottom panel (above toolbar) when object selected */}
+        {/* Mobile: bottom panel when object selected */}
         {selectedObject && (
-          <div className="md:hidden fixed bottom-[72px] left-0 right-0 z-40 max-h-[40vh] overflow-y-auto bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-700 shadow-lg rounded-t-xl px-3 py-2">
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 max-h-[40vh] overflow-y-auto bg-white dark:bg-[#1a1a1a] border-t border-gray-200 dark:border-gray-700 shadow-lg rounded-t-xl px-3 py-2">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-gray-600 dark:text-gray-300">속성 편집</span>
               <button onClick={() => setSelectedObject(null)} className="text-gray-400 text-xs px-2 py-1">✕</button>

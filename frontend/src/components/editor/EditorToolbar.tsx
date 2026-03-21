@@ -122,40 +122,22 @@ export default function EditorToolbar(props: ToolbarProps) {
         </div>
       </div>
 
-      {/* ===== Mobile: bottom horizontal bar ===== */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur border-t border-gray-700">
-        {/* Sub-options row (above main bar) */}
-        {expandedGroup && (
-          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-700 overflow-x-auto">
-            {BUTTONS.filter(b => b.group === expandedGroup).map(b => (
-              <button key={b.mode} onClick={() => { onModeChange(b.mode); setExpandedGroup(null); }}
-                className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs whitespace-nowrap shrink-0 ${
-                  mode === b.mode ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-300'
-                }`}>
-                <span>{b.icon}</span>
-                <span>{b.label}</span>
-              </button>
-            ))}
-            <SubOptions {...props} />
-            <button onClick={() => setExpandedGroup(null)}
-              className="ml-auto px-2 py-1 text-gray-400 text-xs shrink-0">✕</button>
-          </div>
-        )}
-
+      {/* ===== Mobile: top horizontal bar ===== */}
+      <div className="md:hidden bg-gray-900 border-b border-gray-700 shrink-0">
         {/* Main group buttons */}
-        <div className="flex items-center gap-1 px-2 py-2 overflow-x-auto">
+        <div className="flex items-center gap-0.5 px-1.5 py-1 overflow-x-auto">
           {/* Quick access: select & delete */}
           {BUTTONS.filter(b => b.group === 'general').map(b => (
             <button key={b.mode} onClick={() => { onModeChange(b.mode); setExpandedGroup(null); }}
-              className={`flex flex-col items-center px-2.5 py-1 rounded text-[10px] shrink-0 ${
+              className={`flex flex-col items-center px-2 py-0.5 rounded text-[9px] shrink-0 ${
                 mode === b.mode ? 'bg-indigo-600 text-white' : 'text-gray-400'
               }`}>
-              <span className="text-lg">{b.icon}</span>
+              <span className="text-base">{b.icon}</span>
               <span>{b.label}</span>
             </button>
           ))}
 
-          <div className="w-px h-8 bg-gray-700 shrink-0" />
+          <div className="w-px h-6 bg-gray-700 shrink-0 mx-0.5" />
 
           {/* Group buttons */}
           {groups.filter(g => g !== 'general').map(g => {
@@ -167,15 +149,33 @@ export default function EditorToolbar(props: ToolbarProps) {
                 if (expandedGroup === g) { setExpandedGroup(null); }
                 else { setExpandedGroup(g); if (!activeInGroup) onModeChange(groupBtns[0].mode); }
               }}
-                className={`flex flex-col items-center px-2.5 py-1 rounded text-[10px] shrink-0 ${
+                className={`flex flex-col items-center px-2 py-0.5 rounded text-[9px] shrink-0 ${
                   activeInGroup ? 'bg-indigo-600/80 text-white' : 'text-gray-400'
                 } ${expandedGroup === g ? 'ring-1 ring-indigo-400' : ''}`}>
-                <span className="text-lg">{primaryBtn.icon}</span>
+                <span className="text-base">{primaryBtn.icon}</span>
                 <span>{GROUP_LABELS[g]}</span>
               </button>
             );
           })}
         </div>
+
+        {/* Sub-options row */}
+        {expandedGroup && (
+          <div className="flex items-center gap-1 px-2 py-1 border-t border-gray-700 overflow-x-auto">
+            {BUTTONS.filter(b => b.group === expandedGroup).map(b => (
+              <button key={b.mode} onClick={() => { onModeChange(b.mode); setExpandedGroup(null); }}
+                className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] whitespace-nowrap shrink-0 ${
+                  mode === b.mode ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-300'
+                }`}>
+                <span>{b.icon}</span>
+                <span>{b.label}</span>
+              </button>
+            ))}
+            <SubOptions {...props} />
+            <button onClick={() => setExpandedGroup(null)}
+              className="ml-auto px-2 py-0.5 text-gray-400 text-xs shrink-0">✕</button>
+          </div>
+        )}
       </div>
     </>
   );

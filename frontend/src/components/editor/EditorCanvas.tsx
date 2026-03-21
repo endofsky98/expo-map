@@ -94,6 +94,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       (canvasRef.current as HTMLElement).style.display = 'block';
       (canvasRef.current as HTMLElement).style.width = '100%';
       (canvasRef.current as HTMLElement).style.height = '100%';
+      (canvasRef.current as HTMLElement).style.touchAction = 'none';
       div.appendChild(canvasRef.current as HTMLElement);
 
       const mc = new PIXI.Container();
