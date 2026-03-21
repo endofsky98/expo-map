@@ -949,15 +949,32 @@ export default function MapViewer({
         }
       }
 
-      // 홀/구역별 클러스터 수
+      // 홀/구역별 클러스터 수 + 개별 부스 수
       const hallClusterCount = new Map<number, number>();
+      const hallIndividualCount = new Map<number, number>();
       for (const hc of hallClusterMap) {
         hallClusterCount.set(hc.hallId, (hallClusterCount.get(hc.hallId) || 0) + 1);
       }
+      // 개별 부스(클러스터 아닌)도 같은 홀 안에 있는지 체크
+      for (const c of clusters) {
+        if (c.isCluster && c.count > 1) continue;
+        const boothId = c.boothIds[0];
+        const b = boothMapRef.current.get(boothId);
+        if (!b) continue;
+        const { cx, cy } = getBoothCenter(b);
+        for (const h of hallsList) {
+          if (insideHall(cx, cy, h)) {
+            hallIndividualCount.set(h.id, (hallIndividualCount.get(h.id) || 0) + 1);
+            break;
+          }
+        }
+      }
 
-      // 클러스터가 딱 1개인 홀/구역 → 이름 표시
+      // 클러스터가 딱 1개이고 개별 부스가 0개인 홀/구역 → 이름 표시
       for (const hc of hallClusterMap) {
-        if (hallClusterCount.get(hc.hallId) === 1) {
+        const clusterCnt = hallClusterCount.get(hc.hallId) || 0;
+        const individualCnt = hallIndividualCount.get(hc.hallId) || 0;
+        if (clusterCnt === 1 && individualCnt === 0) {
           const h = hallsList.find(hh => hh.id === hc.hallId);
           if (h) clusterNameMap.set(hc.repBoothId, hallName(h));
         }
