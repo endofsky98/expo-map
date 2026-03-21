@@ -36,6 +36,8 @@ class HallCreate(BaseModel):
     area_y: Optional[float] = None
     area_width: Optional[float] = None
     area_height: Optional[float] = None
+    shape: str = "rectangle"
+    points: Optional[str] = None
 
 class HallUpdate(BaseModel):
     floor_id: Optional[int] = None
@@ -45,6 +47,8 @@ class HallUpdate(BaseModel):
     area_y: Optional[float] = None
     area_width: Optional[float] = None
     area_height: Optional[float] = None
+    shape: Optional[str] = None
+    points: Optional[str] = None
 
 class HallResponse(BaseModel):
     id: int
@@ -55,6 +59,8 @@ class HallResponse(BaseModel):
     area_y: Optional[float] = None
     area_width: Optional[float] = None
     area_height: Optional[float] = None
+    shape: str = "rectangle"
+    points: Optional[str] = None
     created_at: Optional[datetime] = None
     floor: Optional[FloorResponse] = None
 
@@ -124,6 +130,12 @@ class BoothCreate(BaseModel):
     color: Optional[str] = None
     is_active: bool = True
     corridor_node_id: Optional[int] = None
+    shape: str = "rectangle"
+    points: Optional[str] = None
+    radius: Optional[float] = None
+    radius_x: Optional[float] = None
+    radius_y: Optional[float] = None
+    rotation: float = 0
 
 class BoothUpdate(BaseModel):
     booth_number: Optional[str] = None
@@ -138,6 +150,12 @@ class BoothUpdate(BaseModel):
     color: Optional[str] = None
     is_active: Optional[bool] = None
     corridor_node_id: Optional[int] = None
+    shape: Optional[str] = None
+    points: Optional[str] = None
+    radius: Optional[float] = None
+    radius_x: Optional[float] = None
+    radius_y: Optional[float] = None
+    rotation: Optional[float] = None
 
 class BoothResponse(BaseModel):
     id: int
@@ -153,6 +171,12 @@ class BoothResponse(BaseModel):
     color: Optional[str] = None
     is_active: bool
     corridor_node_id: Optional[int] = None
+    shape: str = "rectangle"
+    points: Optional[str] = None
+    radius: Optional[float] = None
+    radius_x: Optional[float] = None
+    radius_y: Optional[float] = None
+    rotation: float = 0
     created_at: Optional[datetime] = None
     company: Optional[CompanyResponse] = None
     category: Optional[CategoryResponse] = None
@@ -294,6 +318,8 @@ class ObstacleCreate(BaseModel):
     width: Optional[float] = 40
     height: Optional[float] = 40
     radius: Optional[float] = None
+    points: Optional[str] = None
+    name: Optional[str] = None
 
 class ObstacleUpdate(BaseModel):
     floor_id: Optional[int] = None
@@ -303,6 +329,8 @@ class ObstacleUpdate(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     radius: Optional[float] = None
+    points: Optional[str] = None
+    name: Optional[str] = None
 
 class ObstacleResponse(BaseModel):
     id: int
@@ -313,6 +341,8 @@ class ObstacleResponse(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     radius: Optional[float] = None
+    points: Optional[str] = None
+    name: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -391,3 +421,96 @@ class SettingResponse(BaseModel):
 
 class SettingUpdate(BaseModel):
     value: str
+
+
+# ---------- PathNode ----------
+
+class PathNodeCreate(BaseModel):
+    type: str = "waypoint"
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    linked_node_id: Optional[int] = None
+    name: Optional[str] = None
+    metadata_json: Optional[str] = None
+
+class PathNodeUpdate(BaseModel):
+    type: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    linked_node_id: Optional[int] = None
+    name: Optional[str] = None
+    metadata_json: Optional[str] = None
+
+class PathNodeResponse(BaseModel):
+    id: int
+    type: str
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    linked_node_id: Optional[int] = None
+    name: Optional[str] = None
+    metadata_json: Optional[str] = None
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- PathEdge ----------
+
+class PathEdgeCreate(BaseModel):
+    from_node_id: int
+    to_node_id: int
+    distance: Optional[float] = None  # auto-calculated if not provided
+    is_open: bool = True
+
+class PathEdgeResponse(BaseModel):
+    id: int
+    from_node_id: int
+    to_node_id: int
+    distance: float
+    is_open: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+# ---------- Amenity ----------
+
+class AmenityCreate(BaseModel):
+    type: str
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    name: Optional[str] = None
+    is_active: bool = True
+
+class AmenityUpdate(BaseModel):
+    type: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class AmenityResponse(BaseModel):
+    id: int
+    type: str
+    x: float
+    y: float
+    floor_id: Optional[int] = None
+    hall_id: Optional[int] = None
+    name: Optional[str] = None
+    is_active: bool
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

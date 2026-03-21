@@ -19,6 +19,8 @@ class Floor(Base):
     corridor_nodes = relationship("CorridorNode", back_populates="floor")
     map_images = relationship("MapImage", back_populates="floor")
     obstacles = relationship("Obstacle", back_populates="floor", cascade="all, delete-orphan")
+    path_nodes = relationship("PathNode", back_populates="floor")
+    amenities = relationship("Amenity", back_populates="floor")
 
 
 class Hall(Base):
@@ -32,6 +34,8 @@ class Hall(Base):
     area_y = Column(Float, nullable=True)
     area_width = Column(Float, nullable=True)
     area_height = Column(Float, nullable=True)
+    shape = Column(String(20), default="rectangle")
+    points = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floor = relationship("Floor", back_populates="halls")
@@ -39,6 +43,8 @@ class Hall(Base):
     facilities = relationship("Facility", back_populates="hall")
     corridor_nodes = relationship("CorridorNode", back_populates="hall")
     map_images = relationship("MapImage", back_populates="hall")
+    path_nodes = relationship("PathNode", back_populates="hall")
+    amenities = relationship("Amenity", back_populates="hall")
 
 
 class Category(Base):
@@ -83,6 +89,12 @@ class Booth(Base):
     color = Column(String(7), nullable=True)
     is_active = Column(Boolean, default=True)
     corridor_node_id = Column(Integer, nullable=True)
+    shape = Column(String(20), default="rectangle")
+    points = Column(Text, nullable=True)
+    radius = Column(Float, nullable=True)
+    radius_x = Column(Float, nullable=True)
+    radius_y = Column(Float, nullable=True)
+    rotation = Column(Float, default=0)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     company = relationship("Company", back_populates="booths")
@@ -167,12 +179,14 @@ class Obstacle(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     floor_id = Column(Integer, ForeignKey("floors.id"), nullable=False)
-    shape = Column(String(20), nullable=False, default="rectangle")  # rectangle, circle
+    shape = Column(String(20), nullable=False, default="rectangle")  # rectangle, circle, polygon
     x = Column(Float, nullable=False, default=0)
     y = Column(Float, nullable=False, default=0)
     width = Column(Float, nullable=True, default=40)
     height = Column(Float, nullable=True, default=40)
     radius = Column(Float, nullable=True)
+    points = Column(Text, nullable=True)
+    name = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floor = relationship("Floor", back_populates="obstacles")
@@ -195,6 +209,55 @@ class Admin(Base):
     username = Column(String(100), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class PathNode(Base):
+    __tablename__ = "path_nodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String(50), nullable=False, default="waypoint")
+    x = Column(Float, nullable=False)
+    y = Column(Float, nullable=False)
+    floor_id = Column(Integer, ForeignKey("floors.id"), nullable=True)
+    hall_id = Column(Integer, ForeignKey("halls.id"), nullable=True)
+    linked_node_id = Column(Integer, nullable=True)
+    name = Column(Text, nullable=True)
+    metadata_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    floor = relationship("Floor", back_populates="path_nodes")
+    hall = relationship("Hall", back_populates="path_nodes")
+
+
+class PathEdge(Base):
+    __tablename__ = "path_edges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    from_node_id = Column(Integer, ForeignKey("path_nodes.id", ondelete="CASCADE"), nullable=False)
+    to_node_id = Column(Integer, ForeignKey("path_nodes.id", ondelete="CASCADE"), nullable=False)
+    distance = Column(Float, nullable=False)
+    is_open = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    from_node = relationship("PathNode", foreign_keys=[from_node_id])
+    to_node = relationship("PathNode", foreign_keys=[to_node_id])
+
+
+class Amenity(Base):
+    __tablename__ = "amenities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String(50), nullable=False)
+    x = Column(Float, nullable=False)
+    y = Column(Float, nullable=False)
+    floor_id = Column(Integer, ForeignKey("floors.id"), nullable=True)
+    hall_id = Column(Integer, ForeignKey("halls.id"), nullable=True)
+    name = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    floor = relationship("Floor", back_populates="amenities")
+    hall = relationship("Hall", back_populates="amenities")
 
 
 class Setting(Base):

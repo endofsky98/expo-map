@@ -5,16 +5,18 @@ import os
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text, inspect as sa_inspect
 from sqlalchemy.orm import Session
 
 from database import Base, engine, get_db
 from models import (
     Floor, Hall, Category, Company, Booth, Language, Admin,
     Facility, CorridorNode, CorridorEdge, Obstacle, Setting,
+    PathNode, PathEdge, Amenity,
 )
 from routers import booths, images, categories, companies
 from routers import auth, floors, halls, facilities, corridors, route, obstacles, settings, tiles
+from routers import path_nodes, path_edges, amenities
 from routers.auth import hash_password
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -49,6 +51,9 @@ app.include_router(route.router)
 app.include_router(obstacles.router)
 app.include_router(settings.router)
 app.include_router(tiles.router)
+app.include_router(path_nodes.router)
+app.include_router(path_edges.router)
+app.include_router(amenities.router)
 
 
 def _create_seed_data(db: Session) -> dict | None:
@@ -337,6 +342,36 @@ def _ensure_default_settings(db: Session):
     db.commit()
 
 
+def migrate_columns():
+    """Add new columns to existing tables if they don't exist (SQLite ALTER TABLE)."""
+    inspector = sa_inspect(engine)
+
+    def add_if_missing(table, col, defn):
+        existing_tables = inspector.get_table_names()
+        if table not in existing_tables:
+            return
+        cols = [c["name"] for c in inspector.get_columns(table)]
+        if col not in cols:
+            with engine.connect() as conn:
+                conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {defn}"))
+                conn.commit()
+            print(f"[migrate] Added column {table}.{col}")
+
+    # booths
+    add_if_missing("booths", "shape", "VARCHAR(20) DEFAULT 'rectangle'")
+    add_if_missing("booths", "points", "TEXT")
+    add_if_missing("booths", "radius", "FLOAT")
+    add_if_missing("booths", "radius_x", "FLOAT")
+    add_if_missing("booths", "radius_y", "FLOAT")
+    add_if_missing("booths", "rotation", "FLOAT DEFAULT 0")
+    # halls
+    add_if_missing("halls", "shape", "VARCHAR(20) DEFAULT 'rectangle'")
+    add_if_missing("halls", "points", "TEXT")
+    # obstacles
+    add_if_missing("obstacles", "points", "TEXT")
+    add_if_missing("obstacles", "name", "TEXT")
+
+
 def _migrate_v8(db: Session):
     """v8 migration: add zoom_size column to floors table."""
     from sqlalchemy import text
@@ -377,6 +412,7 @@ def on_startup():
         Base.metadata.drop_all(bind=engine)
 
     Base.metadata.create_all(bind=engine)
+    migrate_columns()
     os.makedirs(os.path.join(UPLOAD_DIR, "images"), exist_ok=True)
     os.makedirs(os.path.join(UPLOAD_DIR, "tiles"), exist_ok=True)
 

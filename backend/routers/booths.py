@@ -29,6 +29,12 @@ def _parse_booth(booth: Booth) -> dict:
         "color": booth.color,
         "is_active": booth.is_active,
         "corridor_node_id": booth.corridor_node_id,
+        "shape": booth.shape if booth.shape is not None else "rectangle",
+        "points": booth.points,
+        "radius": booth.radius,
+        "radius_x": booth.radius_x,
+        "radius_y": booth.radius_y,
+        "rotation": booth.rotation if booth.rotation is not None else 0,
         "created_at": booth.created_at,
         "company": None,
         "category": None,
@@ -162,6 +168,12 @@ def create_booth(data: BoothCreate, db: Session = Depends(get_db)):
         color=data.color,
         is_active=data.is_active,
         corridor_node_id=data.corridor_node_id,
+        shape=data.shape,
+        points=data.points,
+        radius=data.radius,
+        radius_x=data.radius_x,
+        radius_y=data.radius_y,
+        rotation=data.rotation,
     )
     db.add(booth)
     db.commit()

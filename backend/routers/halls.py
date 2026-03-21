@@ -17,6 +17,12 @@ def _parse_hall(hall: Hall) -> dict:
         "floor_id": hall.floor_id,
         "name": json.loads(hall.name) if isinstance(hall.name, str) else hall.name,
         "order": hall.order,
+        "area_x": hall.area_x,
+        "area_y": hall.area_y,
+        "area_width": hall.area_width,
+        "area_height": hall.area_height,
+        "shape": hall.shape if hall.shape is not None else "rectangle",
+        "points": hall.points,
         "created_at": hall.created_at,
         "floor": None,
     }
@@ -53,6 +59,12 @@ def create_hall(data: HallCreate, db: Session = Depends(get_db)):
         floor_id=data.floor_id,
         name=json.dumps(data.name, ensure_ascii=False),
         order=data.order,
+        area_x=data.area_x,
+        area_y=data.area_y,
+        area_width=data.area_width,
+        area_height=data.area_height,
+        shape=data.shape,
+        points=data.points,
     )
     db.add(hall)
     db.commit()
@@ -72,6 +84,18 @@ def update_hall(hall_id: int, data: HallUpdate, db: Session = Depends(get_db)):
         hall.name = json.dumps(data.name, ensure_ascii=False)
     if data.order is not None:
         hall.order = data.order
+    if data.area_x is not None:
+        hall.area_x = data.area_x
+    if data.area_y is not None:
+        hall.area_y = data.area_y
+    if data.area_width is not None:
+        hall.area_width = data.area_width
+    if data.area_height is not None:
+        hall.area_height = data.area_height
+    if data.shape is not None:
+        hall.shape = data.shape
+    if data.points is not None:
+        hall.points = data.points
     db.commit()
     db.refresh(hall)
     hall = db.query(Hall).options(joinedload(Hall.floor)).filter(Hall.id == hall.id).first()
