@@ -80,6 +80,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     const w = div.clientWidth;
     const h = div.clientHeight;
     const dpr = window.devicePixelRatio || 1;
+    console.log('[EditorCanvas] PIXI init. Canvas:', w, 'x', h, 'DPR:', dpr);
 
     const app = new PIXI.Application({
       width: w, height: h,
@@ -90,6 +91,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     });
     appRef.current = app;
     canvasRef.current = app.view as HTMLCanvasElement;
+    console.log('[EditorCanvas] Canvas element:', canvasRef.current?.width, 'x', canvasRef.current?.height);
     (canvasRef.current as HTMLElement).style.cursor = 'grab';
     div.appendChild(canvasRef.current as HTMLElement);
 
@@ -137,8 +139,9 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     // Load image with error handling
     console.log('[EditorCanvas] Loading image:', props.imageUrl, 'size:', props.imageWidth, 'x', props.imageHeight);
     const img = new Image();
-    // No crossOrigin — same-origin or CORS not configured on backend
+    img.crossOrigin = 'anonymous';  // CORS 활성화 — status 0 에러 방지
     img.onload = () => {
+      console.log('[EditorCanvas] Image loaded successfully');
       const tex = PIXI.Texture.from(img);
       const sprite = new PIXI.Sprite(tex);
       // Use actual loaded dimensions for accurate rendering
@@ -148,6 +151,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       sprite.height = h;
       bgSpriteRef.current = sprite;
       mc.addChildAt(sprite, 0);
+      console.log('[EditorCanvas] Sprite added to canvas, size:', w, 'x', h);
 
       // Fit to canvas
       const div = containerRef.current!;
@@ -158,6 +162,7 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       t.y = (div.clientHeight - h * fitScale) / 2;
       mc.scale.set(fitScale);
       mc.position.set(t.x, t.y);
+      console.log('[EditorCanvas] Transform applied. Scale:', fitScale, 'pos:', t.x, t.y);
     };
     img.onerror = (e) => console.error('[EditorCanvas] FAILED to load map image:', props.imageUrl, e);
     img.src = props.imageUrl;
