@@ -850,15 +850,15 @@ export default function MapViewer({
     const BAR_LEN = 0.15;      // 각 바 길이 (전체 경로의 15%)
     const SPEED = 0.006;       // 느린 속도
 
-    // 경로 위 특정 거리의 (x,y) 좌표 구하기
-    function pointAtDist(path: { x: number; y: number }[], d: number, totalLen: number): { x: number; y: number } {
-      const dd = ((d % totalLen) + totalLen) % totalLen;
+    // 경로 위 특정 거리의 (x,y) 좌표 구하기 (clamp — 경로 밖이면 null)
+    function pointAtDist(path: { x: number; y: number }[], d: number, totalLen: number): { x: number; y: number } | null {
+      if (d < 0 || d > totalLen) return null;
       let traveled = 0;
       for (let i = 1; i < path.length; i++) {
         const dx = path[i].x - path[i-1].x, dy = path[i].y - path[i-1].y;
         const segLen = Math.hypot(dx, dy);
-        if (traveled + segLen >= dd) {
-          const t = (dd - traveled) / segLen;
+        if (traveled + segLen >= d) {
+          const t = segLen > 0 ? (d - traveled) / segLen : 0;
           return { x: path[i-1].x + dx * t, y: path[i-1].y + dy * t };
         }
         traveled += segLen;
@@ -871,7 +871,8 @@ export default function MapViewer({
       const anim = routeAnimRef.current;
       if (!animGfx || !anim) { if (animGfx) animGfx.clear(); return; }
 
-      anim.phase = (anim.phase + dt * SPEED) % 1;
+      // phase: 0→1+BAR_LEN (바가 완전히 빠져나갈 때까지)
+      anim.phase = (anim.phase + dt * SPEED) % (1 + BAR_LEN);
       animGfx.clear();
 
       const { path, totalLen } = anim;
@@ -879,17 +880,17 @@ export default function MapViewer({
       const spacing = totalLen / NUM_BARS;
 
       for (let b = 0; b < NUM_BARS; b++) {
-        const barStart = (anim.phase * totalLen + b * spacing) % totalLen;
+        // 각 바의 시작점 (출발=0 → 도착=totalLen, wrap 없음)
+        const barHead = anim.phase * totalLen + b * spacing;
 
-        // 그라디언트 느낌: 여러 짧은 선으로 alpha 변화
         const steps = 12;
         const stepLen = barPixels / steps;
         for (let s = 0; s < steps; s++) {
-          const d0 = barStart + s * stepLen;
-          const d1 = barStart + (s + 1) * stepLen;
+          const d0 = barHead - barPixels + s * stepLen;      // 꼬리→머리
+          const d1 = barHead - barPixels + (s + 1) * stepLen;
           const p0 = pointAtDist(path, d0, totalLen);
           const p1 = pointAtDist(path, d1, totalLen);
-          // 앞쪽이 밝고 뒤쪽이 투명 (진행 방향 = d 증가)
+          if (!p0 || !p1) continue;  // 경로 밖이면 스킵
           const alpha = 0.3 + 0.6 * (s / steps);
           animGfx.lineStyle(20, 0xfca5a5, alpha);
           animGfx.moveTo(p0.x, p0.y);
