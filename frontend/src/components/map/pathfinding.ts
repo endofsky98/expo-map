@@ -88,14 +88,20 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     nodes.set(`n${n.id}`, { id: `n${n.id}`, x: n.x, y: n.y, floorId: n.floor_id });
   }
 
-  // 원본 엣지를 선분으로 변환
+  // 원본 엣지를 선분으로 변환 (같은 층만 — 크로스 엣지는 그래프 직접 연결로 별도 처리)
   type Seg = { fromId: string; toId: string; from: Point; to: Point; edgeId: number };
   const segments: Seg[] = [];
+  const crossFloorEdges: { fromId: string; toId: string; cost: number }[] = [];
   for (const e of rawEdges) {
     if (!e.is_open) continue;
     const fn = nodes.get(`n${e.from_node_id}`);
     const tn = nodes.get(`n${e.to_node_id}`);
     if (!fn || !tn) continue;
+    // 다른 층 엣지는 segments(50px 스냅/교차점 대상)에서 제외, 그래프 직접 연결만
+    if (fn.floorId != null && tn.floorId != null && fn.floorId !== tn.floorId) {
+      crossFloorEdges.push({ fromId: fn.id, toId: tn.id, cost: dist(fn, tn) });
+      continue;
+    }
     segments.push({ fromId: fn.id, toId: tn.id, from: fn, to: tn, edgeId: e.id });
   }
 
@@ -124,10 +130,7 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     const node = nodes.get(nId)!;
     for (const seg of segments) {
       if (seg.fromId === nId || seg.toId === nId) continue;
-      // 양쪽 노드 중 하나라도 같은 층이면 OK (크로스 엣지도 연결 유지)
-      const ff = nodes.get(seg.fromId)?.floorId;
-      const tf = nodes.get(seg.toId)?.floorId;
-      if (node.floorId != null && ff != null && tf != null && node.floorId !== ff && node.floorId !== tf) continue;
+      // segments에는 같은 층 엣지만 있으므로 추가 필터 불필요
       const nearest = nearestOnSegment(node, seg.from, seg.to);
       const d = dist(node, nearest);
       if (d > 0.1 && d <= SNAP_RADIUS) {
@@ -169,7 +172,15 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     adj.get(e.to)!.push({ to: e.from, cost: e.cost });
   }
 
-  // 5. linked_node_id 크로스 엣지 (층간 연결 — 비용 50px 고정)
+  // 5. 크로스 엣지 (다른 층 일반 엣지) — segments 제외, 그래프에만 직접 연결
+  for (const ce of crossFloorEdges) {
+    if (!adj.has(ce.fromId)) adj.set(ce.fromId, []);
+    if (!adj.has(ce.toId)) adj.set(ce.toId, []);
+    adj.get(ce.fromId)!.push({ to: ce.toId, cost: ce.cost });
+    adj.get(ce.toId)!.push({ to: ce.fromId, cost: ce.cost });
+  }
+
+  // 6. linked_node_id 크로스 엣지 (층간 연결 — 비용 50px 고정)
   const CROSS_FLOOR_COST = 50;
   for (const n of rawNodes) {
     if (n.linked_node_id != null && nodes.has(`n${n.linked_node_id}`)) {
@@ -211,14 +222,9 @@ export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point;
     if (d < bestDist) { bestDist = d; bestNodeId = id; bestPoint = node; }
   }
 
-  // 엣지 위의 점에 스냅 (양쪽 노드 중 하나라도 같은 층이면 OK)
+  // 엣지 위의 점에 스냅 (segments는 같은 층만 포함)
   let bestSeg: typeof segments[0] | null = null;
   for (const seg of segments) {
-    if (floorId != null) {
-      const ff = graph.nodes.get(seg.fromId)?.floorId;
-      const tf = graph.nodes.get(seg.toId)?.floorId;
-      if (ff != null && tf != null && ff !== floorId && tf !== floorId) continue;
-    }
     const nearest = nearestOnSegment(p, seg.from, seg.to);
     const d = dist(p, nearest);
     if (d < bestDist) {
@@ -262,12 +268,7 @@ export function findDestCandidates(
   const segBest = new Map<string, { point: Point; dist: number; seg: typeof segments[0] }>();
 
   for (const seg of segments) {
-    // 양쪽 노드 중 하나라도 같은 층이면 OK
-    if (floorId != null) {
-      const ff = graph.nodes.get(seg.fromId)?.floorId;
-      const tf = graph.nodes.get(seg.toId)?.floorId;
-      if (ff != null && tf != null && ff !== floorId && tf !== floorId) continue;
-    }
+    // segments는 같은 층만 포함
     const nearest = nearestOnSegment(center, seg.from, seg.to);
     const d = dist(center, nearest);
     if (hasObstruction(center, nearest, allBooths, obstacles, booth.id)) continue;
