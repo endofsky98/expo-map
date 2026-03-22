@@ -144,9 +144,9 @@ export function clusterBooths(
 
   const indexBooths = allBooths || booths;
   const index = getOrCreateIndex(indexBooths);
-  // fontSize 비례: 큰 글자 → zoom 낮춤(더 클러스터링), 작은 글자 → zoom 높임(덜 클러스터링)
-  const fontRatio = 16 / Math.max(fontSize, 8); // 기준 16px
-  const zoom = Math.round(scaleToZoom(scale) * fontRatio);
+  // fontSize 차이의 2배만큼 zoom 조정: 큰 글자 → zoom 낮춤(더 클러스터링)
+  const fontDiff = fontSize - 16; // 기준 16px
+  const zoom = Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, scaleToZoom(scale) - fontDiff * 2));
 
   // 보이는 영역의 bbox (world → lng/lat)
   let minWx = Infinity, minWy = Infinity, maxWx = -Infinity, maxWy = -Infinity;
