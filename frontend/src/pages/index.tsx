@@ -717,7 +717,22 @@ export default function HomePage() {
             <div className="flex-1" />
             <PathfindingUI
               booths={allBooths}
-              onRouteFound={(route) => { setRouteResult(route); setRouteError(null); }}
+              onRouteFound={(route) => {
+                if (!route) {
+                  // 클리어
+                  setNavStart(null); setNavEnd(null); setClientRoute(null);
+                  return;
+                }
+                // fromId, toId 부스 기반으로 navStart/navEnd 설정 → computeRoute 자동 트리거
+                const fromBooth = allBooths.find(b => b.id === (route as any)._fromBoothId);
+                const toBooth = allBooths.find(b => b.id === (route as any)._toBoothId);
+                if (fromBooth && toBooth) {
+                  const fc = { x: fromBooth.x + fromBooth.width / 2, y: fromBooth.y + fromBooth.height / 2 };
+                  const tc = { x: toBooth.x + toBooth.width / 2, y: toBooth.y + toBooth.height / 2 };
+                  setNavStart({ x: fc.x, y: fc.y, floorId: fromBooth.floor_id, boothId: fromBooth.id });
+                  setNavEnd({ x: tc.x, y: tc.y, floorId: toBooth.floor_id, boothId: toBooth.id });
+                }
+              }}
               onFloorSwitch={(floorId) => { setSelectedFloorId(floorId); }}
             />
             <LanguageSelector />
