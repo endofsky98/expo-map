@@ -868,15 +868,18 @@ export default function MapViewer({
       }
     }
 
-    // 애니메이션 데이터 준비
+    // 애니메이션 데이터 준비 (실선 구간만)
+    const solidStartIdx = startExt >= 0 ? startExt : 0;
+    const solidEndIdx = endExt < path.length ? endExt : path.length - 1;
+    const solidPath = path.slice(solidStartIdx, solidEndIdx + 1);
     const segLens: number[] = [0];
     let total = 0;
-    for (let i = 1; i < path.length; i++) {
-      const d = Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
+    for (let i = 1; i < solidPath.length; i++) {
+      const d = Math.hypot(solidPath[i].x - solidPath[i-1].x, solidPath[i].y - solidPath[i-1].y);
       total += d;
       segLens.push(total);
     }
-    routeAnimRef.current = { path, totalLen: total, segLens, phase: 0 };
+    routeAnimRef.current = { path: solidPath, totalLen: total, segLens, phase: 0 };
 
     // 애니메이션 그래픽 생성
     if (!routeAnimGfxRef.current && gfx.parent) {
