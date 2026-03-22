@@ -485,14 +485,14 @@ export default function MapViewer({
     clusterContainerRef.current = clusterContainer;
     clusterGfxRef.current = clusterGfx;
 
-    // 경로 레이어
-    const routeGfx = new PIXI.Graphics();
-    mainContainer.addChild(routeGfx);
-    routeGfxRef.current = routeGfx;
-
     // boothLayer removed — booths are now HTML DOM markers
     mainContainer.addChild(facilityLayerRef.current);
     mainContainer.addChild(overlayLayerRef.current);
+
+    // 경로 레이어 — overlay 위에 올려야 보임
+    const routeGfx = new PIXI.Graphics();
+    mainContainer.addChild(routeGfx);
+    routeGfxRef.current = routeGfx;
     mainContainerRef.current = mainContainer;
 
     // ===== Pointer events — extracted to useMapPointerEvents.ts =====
@@ -725,10 +725,10 @@ export default function MapViewer({
       if (gfx) gfx.destroy();
       gfx = new PIXI.Graphics();
       boothFloorGfxRef.current = gfx;
-      // mainContainer에 추가 — obstacles 뒤, route 앞
-      const routeGfx = routeGfxRef.current;
-      const routeIdx = routeGfx ? mc.children.indexOf(routeGfx) : -1;
-      if (routeIdx >= 0) mc.addChildAt(gfx, routeIdx);
+      // mainContainer에 추가 — facilityLayer 바로 앞 (route 아래)
+      const facilityLayer = facilityLayerRef.current;
+      const facIdx = facilityLayer ? mc.children.indexOf(facilityLayer) : -1;
+      if (facIdx >= 0) mc.addChildAt(gfx, facIdx);
       else mc.addChild(gfx);
     }
     gfx.clear();
