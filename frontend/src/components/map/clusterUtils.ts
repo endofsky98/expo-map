@@ -79,13 +79,15 @@ export function scaleToZoom(scale: number): number {
 let scInstance: Supercluster<{ boothId: number }> | null = null;
 let loadedBoothIds: string = '';
 
-function getOrCreateIndex(booths: Booth[]): Supercluster<{ boothId: number }> {
-  // 부스 목록이 바뀌면 재생성
+let lastRadius = SC_RADIUS;
+function getOrCreateIndex(booths: Booth[], radius: number = SC_RADIUS): Supercluster<{ boothId: number }> {
+  // 부스 목록 또는 반경이 바뀌면 재생성
   const key = booths.map(b => b.id).sort((a, b) => a - b).join(',');
-  if (scInstance && loadedBoothIds === key) return scInstance;
+  if (scInstance && loadedBoothIds === key && lastRadius === radius) return scInstance;
+  lastRadius = radius;
 
   scInstance = new Supercluster<{ boothId: number }>({
-    radius: SC_RADIUS,
+    radius,
     maxZoom: SC_MAX_ZOOM,
     minZoom: SC_MIN_ZOOM,
   });
@@ -143,10 +145,11 @@ export function clusterBooths(
   }
 
   const indexBooths = allBooths || booths;
-  const index = getOrCreateIndex(indexBooths);
-  // fontSize 차이의 2배만큼 zoom 조정: 큰 글자 → zoom 낮춤(더 클러스터링)
+  // 글자 크기 차이의 2배만큼 클러스터 반경 확장 (zoom은 글자 크기 무관)
   const fontDiff = fontSize - 16; // 기준 16px
-  const zoom = Math.max(SC_MIN_ZOOM, Math.min(SC_MAX_ZOOM, scaleToZoom(scale) - fontDiff * 2));
+  const adjustedRadius = SC_RADIUS + fontDiff * 2;
+  const index = getOrCreateIndex(indexBooths, adjustedRadius);
+  const zoom = scaleToZoom(scale);
 
   // 보이는 영역의 bbox (world → lng/lat)
   let minWx = Infinity, minWy = Infinity, maxWx = -Infinity, maxWy = -Infinity;
