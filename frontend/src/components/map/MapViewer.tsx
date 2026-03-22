@@ -993,30 +993,49 @@ export default function MapViewer({
   function getClusterHallName(boothIds: number[]): string | null {
     if (boothIds.length === 0) return null;
     const { width: cvW, height: cvH } = canvasDimsRef.current;
-    // 모든 부스의 hall_id 수집
-    let commonHallId: number | null = null;
+    const halls = hallsRef.current;
+    if (halls.length === 0) return null;
+
+    // 부스 중심 좌표로 포함된 홀/구역 판단 (가장 작은 영역 우선 = 구역 > 홀)
+    function findBoothHall(booth: Booth): Hall | null {
+      const { cx, cy } = getBoothCenter(booth);
+      let best: Hall | null = null;
+      let bestArea = Infinity;
+      for (const h of halls) {
+        if (h.area_x == null || h.area_y == null || h.area_width == null || h.area_height == null) continue;
+        if (cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height) {
+          const area = h.area_width * h.area_height;
+          if (area < bestArea) { best = h; bestArea = area; }
+        }
+      }
+      return best;
+    }
+
+    // 모든 부스가 같은 홀/구역에 속하는지 확인
+    let commonHall: Hall | null = null;
     for (const bid of boothIds) {
       const booth = boothMapRef.current.get(bid);
-      if (!booth || booth.hall_id == null) return null;
-      if (commonHallId === null) commonHallId = booth.hall_id;
-      else if (booth.hall_id !== commonHallId) return null; // 다른 홀 → 불가
+      if (!booth) return null;
+      const hall = findBoothHall(booth);
+      if (!hall) return null;
+      if (commonHall === null) commonHall = hall;
+      else if (hall.id !== commonHall.id) return null;
     }
-    if (commonHallId === null) return null;
-    const hall = hallsRef.current.find(h => h.id === commonHallId);
-    if (!hall || hall.area_x == null || hall.area_y == null || hall.area_width == null || hall.area_height == null) return null;
-    // 홀 네 꼭짓점 화면 좌표
-    const tl = worldToScreen(hall.area_x, hall.area_y);
-    const tr = worldToScreen(hall.area_x + hall.area_width, hall.area_y);
-    const bl = worldToScreen(hall.area_x, hall.area_y + hall.area_height);
-    const br = worldToScreen(hall.area_x + hall.area_width, hall.area_y + hall.area_height);
+    if (!commonHall || commonHall.area_x == null || commonHall.area_y == null || commonHall.area_width == null || commonHall.area_height == null) return null;
+
+    // 홀 전체가 화면에 보이는지 확인
+    const tl = worldToScreen(commonHall.area_x, commonHall.area_y);
+    const tr = worldToScreen(commonHall.area_x + commonHall.area_width, commonHall.area_y);
+    const bl = worldToScreen(commonHall.area_x, commonHall.area_y + commonHall.area_height);
+    const br = worldToScreen(commonHall.area_x + commonHall.area_width, commonHall.area_y + commonHall.area_height);
     const allX = [tl.sx, tr.sx, bl.sx, br.sx];
     const allY = [tl.sy, tr.sy, bl.sy, br.sy];
     const minSx = Math.min(...allX), maxSx = Math.max(...allX);
     const minSy = Math.min(...allY), maxSy = Math.max(...allY);
     const margin = -20;
     if (minSx < margin || maxSx > cvW - margin || minSy < margin || maxSy > cvH - margin) return null;
-    // 전체 보임 → 홀/구역 이름 반환
-    const name = hall.display_name || (typeof hall.name === 'string' ? hall.name : (hall.name ? Object.values(hall.name)[0] : null));
+
+    const name = commonHall.display_name || (typeof commonHall.name === 'string' ? commonHall.name : (commonHall.name ? Object.values(commonHall.name)[0] : null));
     return name || null;
   }
 
