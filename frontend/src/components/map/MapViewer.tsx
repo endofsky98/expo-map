@@ -42,7 +42,7 @@ export default function MapViewer({
   initialTransform,
   onTransformChange,
 }: MapViewerProps) {
-  const { ln } = useI18n();
+  const { ln, t, locale } = useI18n();
   const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pixiApp = useRef<PIXI.Application | null>(null);
@@ -162,9 +162,9 @@ export default function MapViewer({
       const prev = i > 0 ? routePath[i - 1] : null;
       const next = i < routePath.length - 1 ? routePath[i + 1] : null;
       if (i === 0) {
-        markers.push({ x: p.x, y: p.y, type: 'start', label: 'S' });
+        markers.push({ x: p.x, y: p.y, type: 'start', label: locale === 'ko' ? '출발' : 'Start' });
       } else if (i === routePath.length - 1) {
-        markers.push({ x: p.x, y: p.y, type: 'end', label: 'D' });
+        markers.push({ x: p.x, y: p.y, type: 'end', label: locale === 'ko' ? '도착' : 'Dest' });
       } else if (prev && prev.floor_id !== currentFloorId) {
         markers.push({ x: p.x, y: p.y, type: 'transition', label: '▼' });
       } else if (next && next.floor_id !== currentFloorId) {
@@ -172,7 +172,7 @@ export default function MapViewer({
       }
     }
     return markers;
-  }, [routePath, currentFloorId]);
+  }, [routePath, currentFloorId, locale]);
 
   const routeFacilityMarkers: Facility[] = [];
 

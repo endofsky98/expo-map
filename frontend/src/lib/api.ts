@@ -191,11 +191,12 @@ export async function fetchImages(floorId?: number, hallId?: number): Promise<Ma
   return request<MapImage[]>(`/api/images${qs ? '?' + qs : ''}`);
 }
 
-export async function fetchCurrentImage(floorId?: number, hallId?: number): Promise<MapImage | null> {
+export async function fetchCurrentImage(floorId?: number, hallId?: number, locale?: string): Promise<MapImage | null> {
   try {
     const params = new URLSearchParams();
     if (floorId) params.set('floor_id', String(floorId));
     if (hallId) params.set('hall_id', String(hallId));
+    if (locale) params.set('locale', locale);
     const qs = params.toString();
     return await request<MapImage>(`/api/images/current${qs ? '?' + qs : ''}`);
   } catch {
@@ -203,12 +204,13 @@ export async function fetchCurrentImage(floorId?: number, hallId?: number): Prom
   }
 }
 
-export async function uploadImage(file: File, floorId?: number, hallId?: number, zoomStepPixels?: number): Promise<MapImage> {
+export async function uploadImage(file: File, floorId?: number, hallId?: number, zoomStepPixels?: number, locale?: string): Promise<MapImage> {
   const formData = new FormData();
   formData.append('file', file);
   if (floorId) formData.append('floor_id', String(floorId));
   if (hallId) formData.append('hall_id', String(hallId));
   if (zoomStepPixels) formData.append('zoom_step_pixels', String(zoomStepPixels));
+  if (locale) formData.append('locale', locale);
   return request('/api/images/upload', { method: 'POST', body: formData });
 }
 
@@ -220,8 +222,11 @@ export async function setCurrentImage(id: number): Promise<MapImage> {
   return request<MapImage>(`/api/images/${id}/set-current`, { method: 'PUT' });
 }
 
-export async function updateImageFloor(id: number, floorId: number | null): Promise<MapImage> {
-  const params = floorId != null ? `?floor_id=${floorId}` : '';
+export async function updateImageFloor(id: number, floorId: number | null, locale?: string | null): Promise<MapImage> {
+  const qs = new URLSearchParams();
+  if (floorId != null) qs.set('floor_id', String(floorId));
+  if (locale) qs.set('locale', locale);
+  const params = qs.toString() ? `?${qs.toString()}` : '';
   return request<MapImage>(`/api/images/${id}/update-floor${params}`, { method: 'PUT' });
 }
 

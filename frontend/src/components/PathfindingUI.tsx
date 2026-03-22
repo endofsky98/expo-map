@@ -206,7 +206,7 @@ export default function PathfindingUI({
               <div className="p-4 space-y-4">
                 {/* 출발지 */}
                 <div>
-                  <label className="flex items-center gap-1 text-xs font-semibold text-green-600 dark:text-green-400 mb-1.5"><MapPin className="h-3.5 w-3.5" /> 출발</label>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-green-600 dark:text-green-400 mb-1.5"><MapPin className="h-3.5 w-3.5" /> {t('route.from')}</label>
                   {navStart && !fromBoothId ? (
                     <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700/40">
                       <MapPin className="h-4 w-4 text-green-500 shrink-0" />
@@ -236,16 +236,16 @@ export default function PathfindingUI({
 
                 {/* 도착지 */}
                 <div>
-                  <label className="flex items-center gap-1 text-xs font-semibold text-red-500 dark:text-red-400 mb-1.5"><MapPin className="h-3.5 w-3.5" /> 도착</label>
+                  <label className="flex items-center gap-1 text-xs font-semibold text-red-500 dark:text-red-400 mb-1.5"><MapPin className="h-3.5 w-3.5" /> {t('route.to')}</label>
                   {/* 부스 / 편의시설 탭 */}
                   <div className="flex gap-1 mb-2 p-1 bg-gray-100 dark:bg-[#252525] rounded-lg">
                     <button onClick={() => setToType('booth')} className={tabCls(toType === 'booth')}>
                       <Building2 className="h-4 w-4" />
-                      부스
+                      {t('route.booth')}
                     </button>
                     <button onClick={() => setToType('facility')} className={tabCls(toType === 'facility')}>
                       <Landmark className="h-4 w-4" />
-                      편의시설
+                      {t('route.facility')}
                     </button>
                   </div>
 
@@ -306,13 +306,13 @@ export default function PathfindingUI({
                     onClick={() => setIsOpen(false)}
                     className="flex-1 px-4 py-2.5 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors shadow-sm"
                   >
-                    닫기
+                    {t('route.close')}
                   </button>
                   <button
                     onClick={handleClear}
                     className="px-4 py-2.5 text-sm font-medium text-gray-500 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
-                    초기화
+                    {t('route.reset')}
                   </button>
                 </div>
               </div>

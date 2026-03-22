@@ -66,7 +66,7 @@ function parseBoothParam(value: string | string[] | undefined): number | null {
 }
 
 export default function HomePage() {
-  const { t, ln } = useI18n();
+  const { t, ln, locale } = useI18n();
   const router = useRouter();
   const [allBooths, setAllBooths] = useState<Booth[]>([]);
   const [booths, setBooths] = useState<Booth[]>([]);
@@ -177,7 +177,7 @@ export default function HomePage() {
     async function loadFloorData() {
       const [filteredBooths, img, facs, amenities, obs, hs, pn, pe] = await Promise.all([
         fetchBooths(selectedFloorId!).catch(() => []),
-        fetchCurrentImage(selectedFloorId!).catch(() => null),
+        fetchCurrentImage(selectedFloorId!, undefined, locale).catch(() => null),
         fetchFacilities(selectedFloorId!).catch(() => []),
         fetchAmenities().catch(() => []),
         fetchObstacles(selectedFloorId!).catch(() => []),
@@ -199,7 +199,7 @@ export default function HomePage() {
       setPathEdges(pe);
     }
     loadFloorData();
-  }, [selectedFloorId]);
+  }, [selectedFloorId, locale]);
 
   // URL params for pathfinding — 클라이언트 A* 기반
   useEffect(() => {
@@ -311,21 +311,43 @@ export default function HomePage() {
   }, []);
 
   // 가까운 부스/시설 이름 찾기
+  const FACILITY_LABELS_I18N: Record<string, Record<string, string>> = {
+    restroom: { ko: '화장실', en: 'Restroom' },
+    restroom_male: { ko: '남자화장실', en: "Men's Room" },
+    restroom_female: { ko: '여자화장실', en: "Women's Room" },
+    emergency_exit: { ko: '비상구', en: 'Emergency Exit' },
+    stairs: { ko: '계단', en: 'Stairs' },
+    elevator: { ko: '엘리베이터', en: 'Elevator' },
+    escalator: { ko: '에스컬레이터', en: 'Escalator' },
+    nursing_room: { ko: '수유실', en: 'Nursing Room' },
+    info_desk: { ko: '안내데스크', en: 'Info Desk' },
+    first_aid: { ko: '응급처치', en: 'First Aid' },
+    locker: { ko: '보관함', en: 'Locker' },
+    atm: { ko: 'ATM', en: 'ATM' },
+    cafe: { ko: '카페', en: 'Café' },
+    charging: { ko: '충전소', en: 'Charging' },
+    wifi: { ko: 'Wi-Fi', en: 'Wi-Fi' },
+    smoking: { ko: '흡연실', en: 'Smoking Area' },
+  };
+
   function nearestName(wx: number, wy: number): string {
     let bestDist = Infinity;
-    let bestName = '선택 지점';
+    let bestName = t('nav.selectPoint');
     for (const b of allBooths) {
       const cx = b.x + b.width / 2, cy = b.y + b.height / 2;
       const d = Math.hypot(wx - cx, wy - cy);
       if (d < bestDist) {
         bestDist = d;
-        const cn = b.company?.name;
-        bestName = cn ? (typeof cn === 'string' ? cn : (cn as any).ko || (cn as any).en || b.booth_number) : b.booth_number;
+        bestName = ln(b.display_name) || ln(b.company?.name) || b.booth_number;
       }
     }
     for (const f of facilities) {
       const d = Math.hypot(wx - f.x, wy - f.y);
-      if (d < bestDist) { bestDist = d; bestName = (typeof f.name === 'string' ? f.name : (f.name as any)?.ko || (f.name as any)?.en) || f.type; }
+      if (d < bestDist) {
+        bestDist = d;
+        const fl = FACILITY_LABELS_I18N[f.type];
+        bestName = fl ? (fl[locale] || fl.ko || f.type) : (ln(f.name) || f.type);
+      }
     }
     return bestName;
   }
@@ -594,7 +616,7 @@ export default function HomePage() {
         if (nextSeg) {
           // floor_id → 표시 층 이름 (floor_id=1→1층, floor_id=2→3층)
           const fn = floors?.find(f => f.id === nextSeg.floorId)?.name;
-          const floorLabel = typeof fn === 'string' ? fn : (fn ? Object.values(fn)[0] : `${nextSeg.floorId}층`);
+          const floorLabel = ln(fn) || `Floor ${nextSeg.floorId}`;
           setNavFloorTransition({ targetFloorId: nextSeg.floorId, label: floorLabel, direction: 'forward' });
         }
       } else {

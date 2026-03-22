@@ -120,6 +120,7 @@ class MapImage(Base):
     width = Column(Integer, nullable=False)
     height = Column(Integer, nullable=False)
     is_current = Column(Boolean, default=False)
+    locale = Column(String(10), nullable=True)  # null=공통, 'ko', 'en' etc.
     floor_id = Column(Integer, ForeignKey("floors.id"), nullable=True)
     hall_id = Column(Integer, ForeignKey("halls.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

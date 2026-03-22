@@ -81,6 +81,7 @@ export interface MapImage {
   width: number;
   height: number;
   is_current: boolean;
+  locale?: string | null;
   tile_info?: string | null;
   floor_id?: number;
   hall_id?: number;

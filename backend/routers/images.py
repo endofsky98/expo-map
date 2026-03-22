@@ -82,14 +82,23 @@ def _prepare_rgb(img: Image.Image) -> Image.Image:
 def get_current_image(
     floor_id: Optional[int] = None,
     hall_id: Optional[int] = None,
+    locale: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
-    query = db.query(MapImage).filter(MapImage.is_current == True)
+    base = db.query(MapImage).filter(MapImage.is_current == True)
     if floor_id is not None:
-        query = query.filter(MapImage.floor_id == floor_id)
+        base = base.filter(MapImage.floor_id == floor_id)
     if hall_id is not None:
-        query = query.filter(MapImage.hall_id == hall_id)
-    img = query.first()
+        base = base.filter(MapImage.hall_id == hall_id)
+
+    # locale 매칭 이미지 우선, 없으면 locale=null(공통) 이미지
+    if locale:
+        img = base.filter(MapImage.locale == locale).first()
+        if not img:
+            img = base.filter(MapImage.locale == None).first()
+    else:
+        img = base.filter(MapImage.locale == None).first() or base.first()
+
     if not img:
         raise HTTPException(status_code=404, detail="No current map image set")
     return img
@@ -114,6 +123,7 @@ def upload_image(
     file: UploadFile = File(...),
     floor_id: Optional[int] = Form(None),
     hall_id: Optional[int] = Form(None),
+    locale: Optional[str] = Form(None),
     zoom_step_pixels: int = Form(256),
     db: Session = Depends(get_db),
 ):
@@ -158,6 +168,7 @@ def upload_image(
         width=original_width,
         height=original_height,
         is_current=False,
+        locale=locale if locale else None,
         floor_id=floor_id,
         hall_id=hall_id,
     )
@@ -286,12 +297,13 @@ def set_current_image(image_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{image_id}/update-floor", response_model=MapImageResponse, dependencies=[Depends(get_current_admin)])
-def update_image_floor(image_id: int, floor_id: Optional[int] = None, hall_id: Optional[int] = None, db: Session = Depends(get_db)):
+def update_image_floor(image_id: int, floor_id: Optional[int] = None, hall_id: Optional[int] = None, locale: Optional[str] = None, db: Session = Depends(get_db)):
     img = db.query(MapImage).filter(MapImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
     img.floor_id = floor_id
     img.hall_id = hall_id
+    img.locale = locale if locale else None
     db.commit()
     db.refresh(img)
     return img

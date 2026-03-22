@@ -210,6 +210,7 @@ class MapImageResponse(BaseModel):
     width: int
     height: int
     is_current: bool
+    locale: Optional[str] = None
     floor_id: Optional[int] = None
     hall_id: Optional[int] = None
     created_at: Optional[datetime] = None

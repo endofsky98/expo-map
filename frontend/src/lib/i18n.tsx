@@ -36,8 +36,8 @@ const translations: Record<Locale, Record<string, string>> = {
     'facility.filter': 'Facility Filter',
     'facility.showAll': 'Show All',
     'route.title': 'Find Route',
-    'route.from': 'From',
-    'route.to': 'To',
+    'route.from': 'Start',
+    'route.to': 'Dest',
     'route.find': 'Find Route',
     'route.clear': 'Clear',
     'route.notFound': 'No route found between the selected booths. The path may be blocked or disconnected.',
@@ -159,6 +159,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'route.clearRoute': 'Clear Route',
     'nav.selectPoint': 'Selected Point',
     'nav.selectBooth': 'Select booth...',
+    'route.booth': 'Booth',
+    'route.facility': 'Facilities',
+    'route.close': 'Close',
+    'route.reset': 'Reset',
   },
   ko: {
     'app.title': '엑스포 맵',
@@ -316,6 +320,10 @@ const translations: Record<Locale, Record<string, string>> = {
     'route.clearRoute': '경로 지우기',
     'nav.selectPoint': '선택 지점',
     'nav.selectBooth': '부스 선택...',
+    'route.booth': '부스',
+    'route.facility': '편의시설',
+    'route.close': '닫기',
+    'route.reset': '초기화',
   },
 };
 

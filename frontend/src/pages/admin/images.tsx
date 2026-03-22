@@ -24,6 +24,7 @@ export default function ImagesPage() {
   const [dragActive, setDragActive] = useState(false);
   const [uploadFloorId, setUploadFloorId] = useState<number | ''>('');
   const [uploadZoomStep, setUploadZoomStep] = useState(512);
+  const [uploadLocale, setUploadLocale] = useState<string>('');
   const [prefetchRange, setPrefetchRange] = useState(2);
   const [prefetchSaving, setPrefetchSaving] = useState(false);
   const [zoomSizes, setZoomSizes] = useState<Record<number, number>>({});
@@ -96,7 +97,7 @@ export default function ImagesPage() {
     setUploading(true);
     setMessage('');
     try {
-      await uploadImage(file, uploadFloorId || undefined, undefined, uploadZoomStep);
+      await uploadImage(file, uploadFloorId || undefined, undefined, uploadZoomStep, uploadLocale || undefined);
       setMessage('Image uploaded successfully');
       await loadImages();
     } catch (err) {
@@ -133,9 +134,9 @@ export default function ImagesPage() {
     }
   }
 
-  async function handleUpdateFloor(id: number, floorId: number | null) {
+  async function handleUpdateFloor(id: number, floorId: number | null, locale?: string | null) {
     try {
-      await updateImageFloor(id, floorId);
+      await updateImageFloor(id, floorId, locale);
       setMessage('Floor updated');
       await loadImages();
     } catch (err) {
@@ -208,6 +209,11 @@ export default function ImagesPage() {
           <select value={uploadFloorId} onChange={(e) => setUploadFloorId(e.target.value ? Number(e.target.value) : '')} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none">
             <option value="">{t('filter.all')} {t('admin.floor')}</option>
             {floors.map((f) => <option key={f.id} value={f.id}>{typeof f.name === 'string' ? f.name : (f.name as Record<string,string>).ko || (f.name as Record<string,string>).en}</option>)}
+          </select>
+          <select value={uploadLocale} onChange={(e) => setUploadLocale(e.target.value)} className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none">
+            <option value="">Language: All</option>
+            <option value="ko">한국어 (ko)</option>
+            <option value="en">English (en)</option>
           </select>
           <div className="flex items-center gap-1.5">
             <label className="text-xs text-gray-500 dark:text-gray-400">{t('admin.zoomStep')}:</label>
@@ -389,11 +395,11 @@ export default function ImagesPage() {
                     <p className="text-xs text-gray-400 mt-0.5">
                       {img.width}x{img.height} &middot; zoom step: {img.zoom_step_pixels || 512}px
                     </p>
-                    {/* 층 지정 */}
+                    {/* 층 + 언어 지정 */}
                     <div className="flex items-center gap-2 mt-2">
                       <select
                         value={img.floor_id ?? ''}
-                        onChange={(e) => handleUpdateFloor(img.id, e.target.value ? Number(e.target.value) : null)}
+                        onChange={(e) => handleUpdateFloor(img.id, e.target.value ? Number(e.target.value) : null, img.locale)}
                         className="flex-1 px-2 py-1.5 rounded-lg border border-gray-200 text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
                       >
                         <option value="">{t('filter.all')} {t('admin.floor')}</option>
@@ -402,6 +408,15 @@ export default function ImagesPage() {
                             {typeof f.name === 'string' ? f.name : (f.name as Record<string,string>).ko || (f.name as Record<string,string>).en}
                           </option>
                         ))}
+                      </select>
+                      <select
+                        value={img.locale ?? ''}
+                        onChange={(e) => handleUpdateFloor(img.id, img.floor_id ?? null, e.target.value || undefined)}
+                        className="w-24 px-2 py-1.5 rounded-lg border border-gray-200 text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
+                      >
+                        <option value="">All</option>
+                        <option value="ko">ko</option>
+                        <option value="en">en</option>
                       </select>
                     </div>
                     <div className="flex items-center gap-2 mt-2">
