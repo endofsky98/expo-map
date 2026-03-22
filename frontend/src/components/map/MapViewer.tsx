@@ -988,36 +988,53 @@ export default function MapViewer({
       }
     }
 
-    // 경로가 있으면 코너(꺾이는 점) 근처 부스를 개별 표시 (클러스터에서 제외)
+    // 경로 코너(꺾이는 점) 추출 — 클러스터 대표 선택에 사용
     const rp = routePathRef.current;
-    const nearRouteIds = new Set<number>();
+    let routeCorners: { x: number; y: number }[] | null = null;
     if (rp && rp.length >= 2) {
-      // 코너 추출: 시작점, 끝점 + 방향이 바뀌는 점
-      const corners: { x: number; y: number }[] = [rp[0]]; // 시작점
-      const ANGLE_THRESH = 15 * Math.PI / 180; // 15도 이상 꺾이면 코너
+      routeCorners = [rp[0]]; // 시작점
+      const ANGLE_THRESH = 15 * Math.PI / 180;
       for (let i = 1; i < rp.length - 1; i++) {
         const dx1 = rp[i].x - rp[i - 1].x, dy1 = rp[i].y - rp[i - 1].y;
         const dx2 = rp[i + 1].x - rp[i].x, dy2 = rp[i + 1].y - rp[i].y;
         const a1 = Math.atan2(dy1, dx1), a2 = Math.atan2(dy2, dx2);
         let diff = Math.abs(a2 - a1);
         if (diff > Math.PI) diff = 2 * Math.PI - diff;
-        if (diff >= ANGLE_THRESH) corners.push(rp[i]);
+        if (diff >= ANGLE_THRESH) routeCorners.push(rp[i]);
       }
-      corners.push(rp[rp.length - 1]); // 끝점
+      routeCorners.push(rp[rp.length - 1]); // 끝점
+    }
 
-      const CORNER_PROX = 350; // 코너에서 350px 이내 부스
-      for (const booth of visibleBooths) {
-        const { cx, cy } = getBoothCenter(booth);
-        for (const corner of corners) {
-          const d = Math.sqrt((cx - corner.x) ** 2 + (cy - corner.y) ** 2);
-          if (d <= CORNER_PROX) { nearRouteIds.add(booth.id); break; }
+    // 부스 → 경로/코너 최소 거리 계산
+    function boothRouteScore(boothId: number): number {
+      if (!rp || rp.length < 2) return Infinity;
+      const booth = boothMapRef.current.get(boothId);
+      if (!booth) return Infinity;
+      const { cx, cy } = getBoothCenter(booth);
+      let minDist = Infinity;
+      // 코너 거리
+      if (routeCorners) {
+        for (const c of routeCorners) {
+          const d = Math.sqrt((cx - c.x) ** 2 + (cy - c.y) ** 2);
+          if (d < minDist) minDist = d;
         }
       }
+      // 경로 선분 거리 (직선 구간도 고려)
+      for (let i = 0; i < rp.length - 1; i++) {
+        const ax = rp[i].x, ay = rp[i].y;
+        const bx = rp[i + 1].x, by = rp[i + 1].y;
+        const dx = bx - ax, dy = by - ay;
+        const len2 = dx * dx + dy * dy;
+        let t = len2 > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const d = Math.sqrt((cx - (ax + t * dx)) ** 2 + (cy - (ay + t * dy)) ** 2);
+        if (d < minDist) minDist = d;
+      }
+      return minDist;
     }
-    const farBooths = nearRouteIds.size > 0 ? visibleBooths.filter(b => !nearRouteIds.has(b.id)) : visibleBooths;
 
-    // Supercluster 기반 줌 레벨별 클러스터링 (경로 먼 부스만)
-    const clusters = clusterBooths(farBooths, worldToScreen, 0, sc, boothsRef.current);
+    // Supercluster 기반 줌 레벨별 클러스터링 (전체 visible 부스)
+    const clusters = clusterBooths(visibleBooths, worldToScreen, 0, sc, boothsRef.current);
 
     // Draw PIXI shading: 홀/구역 음영 + 클러스터 음영
     if (clusterGfx) {
@@ -1054,7 +1071,7 @@ export default function MapViewer({
     }
 
     // Determine which booth IDs to show as pins + cluster badge info
-    const newIds = new Set<number>(nearRouteIds); // 경로 근처 부스는 항상 개별 표시
+    const newIds = new Set<number>();
     // clusterKey → { boothId, count }
     const clusterReps = new Map<string, { boothId: number; count: number; name?: string }>();
 
@@ -1063,15 +1080,29 @@ export default function MapViewer({
         // Individual marker
         newIds.add(c.boothIds[0]);
       } else {
-        // Cluster: pick representative
-        const rep = selectRepresentative(c.boothIds, boothsRef.current, hallsRef.current);
-        if (rep.booth) {
-          newIds.add(rep.booth.id);
-          clusterReps.set(c.id, { boothId: rep.booth.id, count: c.count, name: rep.name });
-        } else if (c.boothIds.length > 0) {
-          // Fallback: use first booth id
-          newIds.add(c.boothIds[0]);
-          clusterReps.set(c.id, { boothId: c.boothIds[0], count: c.count });
+        // Cluster: pick representative — 경로가 있으면 경로에 가장 가까운 부스
+        if (routeCorners) {
+          // 경로/코너에 가장 가까운 부스를 대표로
+          let bestId = c.boothIds[0];
+          let bestScore = Infinity;
+          for (const bid of c.boothIds) {
+            const score = boothRouteScore(bid);
+            if (score < bestScore) { bestScore = score; bestId = bid; }
+          }
+          const bestBooth = boothMapRef.current.get(bestId);
+          const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
+          newIds.add(bestId);
+          clusterReps.set(c.id, { boothId: bestId, count: c.count, name });
+        } else {
+          // 경로 없으면 기존 로직
+          const rep = selectRepresentative(c.boothIds, boothsRef.current, hallsRef.current);
+          if (rep.booth) {
+            newIds.add(rep.booth.id);
+            clusterReps.set(c.id, { boothId: rep.booth.id, count: c.count, name: rep.name });
+          } else if (c.boothIds.length > 0) {
+            newIds.add(c.boothIds[0]);
+            clusterReps.set(c.id, { boothId: c.boothIds[0], count: c.count });
+          }
         }
       }
     }
