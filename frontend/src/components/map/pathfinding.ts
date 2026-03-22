@@ -213,6 +213,53 @@ function snapToFloorGraph(p: Point, graph: PathGraph, prefix: string): string {
   return bestNodeId;
 }
 
+// 출발점 멀티 후보 스냅 — 가장 가까운 N개 세그먼트에 스냅노드 생성
+function snapToFloorGraphMulti(p: Point, graph: PathGraph, prefix: string, count: number = 4): string[] {
+  type Candidate = { point: Point; dist: number; seg: GraphSegment | null; nodeId?: string };
+  const candidates: Candidate[] = [];
+
+  // 노드 후보
+  for (const [id, node] of graph.nodes) {
+    candidates.push({ point: node, dist: dist(p, node), seg: null, nodeId: id });
+  }
+  // 세그먼트 후보 (중복 세그먼트 방지)
+  const segBest = new Map<string, Candidate>();
+  for (const seg of graph.segments) {
+    const nearest = nearestOnSegment(p, seg.from, seg.to);
+    const d = dist(p, nearest);
+    const key = [seg.fromId, seg.toId].sort().join('-');
+    const existing = segBest.get(key);
+    if (!existing || d < existing.dist) {
+      segBest.set(key, { point: nearest, dist: d, seg });
+    }
+  }
+  candidates.push(...segBest.values());
+
+  candidates.sort((a, b) => a.dist - b.dist);
+  const selected = candidates.slice(0, count);
+  const ids: string[] = [];
+
+  for (let i = 0; i < selected.length; i++) {
+    const c = selected[i];
+    if (c.nodeId) {
+      ids.push(c.nodeId);
+    } else if (c.seg) {
+      const vId = `${prefix}_${i}`;
+      const floorId = graph.nodes.values().next().value?.floorId;
+      graph.nodes.set(vId, { id: vId, x: c.point.x, y: c.point.y, floorId });
+      const dFrom = dist(c.point, c.seg.from);
+      const dTo = dist(c.point, c.seg.to);
+      graph.adj.set(vId, [{ to: c.seg.fromId, cost: dFrom }, { to: c.seg.toId, cost: dTo }]);
+      if (!graph.adj.has(c.seg.fromId)) graph.adj.set(c.seg.fromId, []);
+      if (!graph.adj.has(c.seg.toId)) graph.adj.set(c.seg.toId, []);
+      graph.adj.get(c.seg.fromId)!.push({ to: vId, cost: dFrom });
+      graph.adj.get(c.seg.toId)!.push({ to: vId, cost: dTo });
+      ids.push(vId);
+    }
+  }
+  return ids;
+}
+
 // ===== 도착 후보 (단일층 그래프에서) =====
 function findDestInFloorGraph(
   booth: Booth,
@@ -331,17 +378,28 @@ export interface PathResult {
 }
 
 // ===== 단일층 내부 경로 (A* + 최단 선택) =====
-function findSameFloorPath(
-  startNodeId: string,
+function findSameFloorPathMulti(
+  startNodeIds: string[],
   destNodeIds: string[],
   graph: PathGraph,
-): { path: string[]; dist: number; goalId: string } | null {
-  let best: { path: string[]; dist: number; goalId: string } | null = null;
-  for (const goalId of destNodeIds) {
-    const p = astar(graph, startNodeId, goalId);
-    if (p) {
-      const d = pathDistance(graph, p);
-      if (!best || d < best.dist) best = { path: p, dist: d, goalId };
+  startPoint: Point,
+  destCenter: Point,
+): { path: string[]; dist: number; startId: string; goalId: string } | null {
+  let best: { path: string[]; dist: number; totalDist: number; startId: string; goalId: string } | null = null;
+  for (const startId of startNodeIds) {
+    const startNode = graph.nodes.get(startId);
+    const startSnapDist = startNode ? dist(startPoint, startNode) : 0;
+    for (const goalId of destNodeIds) {
+      const p = astar(graph, startId, goalId);
+      if (p) {
+        const routeDist = pathDistance(graph, p);
+        const goalNode = graph.nodes.get(goalId);
+        const endSnapDist = goalNode ? dist(goalNode, destCenter) : 0;
+        const totalDist = startSnapDist + routeDist + endSnapDist;
+        if (!best || totalDist < best.totalDist) {
+          best = { path: p, dist: routeDist, totalDist, startId, goalId };
+        }
+      }
     }
   }
   return best;
@@ -391,11 +449,12 @@ export function findPath(
   // ===== 같은 층 =====
   if (srcFloor === dstFloor) {
     const graph = buildFloorGraph(rawNodes, rawEdges, srcFloor);
-    const startId = snapToFloorGraph(startPoint, graph, 'snap_start');
-    if (!startId) return null;
+    const startIds = snapToFloorGraphMulti(startPoint, graph, 'snap_start', 4);
+    if (startIds.length === 0) return null;
     const destIds = findDestInFloorGraph(destBooth, graph, allBooths, obstacles);
     if (destIds.length === 0) return null;
-    const result = findSameFloorPath(startId, destIds, graph);
+    const { cx: destCx, cy: destCy } = getBoothCenter(destBooth);
+    const result = findSameFloorPathMulti(startIds, destIds, graph, startPoint, { x: destCx, y: destCy });
     if (!result) return null;
 
     const points = result.path.map(id => {
@@ -418,6 +477,7 @@ export function findPath(
   const dstGraph = buildFloorGraph(rawNodes, rawEdges, dstFloor);
   const destIds = findDestInFloorGraph(destBooth, dstGraph, allBooths, obstacles);
   if (destIds.length === 0) return null;
+  const { cx: destCx, cy: destCy } = getBoothCenter(destBooth);
 
   // 층간 연결 맵: floorId → [{ nodeId (해당 층), linkedNodeId (다른 층), linkedFloorId }]
   const floorLinks = new Map<number, { nodeId: string; linkedNodeId: string; linkedFloorId: number }[]>();
@@ -489,7 +549,8 @@ export function findPath(
     if (state.floorId === dstFloor) {
       // 도착층 도달 — 도착지까지 경로 계산
       if (!curGraph.nodes.has(state.nodeId)) continue;
-      const result = findSameFloorPath(state.nodeId, destIds, curGraph);
+      const stateNode = curGraph.nodes.get(state.nodeId);
+      const result = findSameFloorPathMulti([state.nodeId], destIds, curGraph, stateNode ? { x: stateNode.x, y: stateNode.y } : { x: 0, y: 0 }, { x: destCx, y: destCy });
       if (!result) continue;
       const total = state.totalDist + result.dist;
       if (!bestRoute || total < bestRoute.totalDist) {
