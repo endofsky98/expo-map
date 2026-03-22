@@ -1617,11 +1617,11 @@ export default function MapViewer({
         nameEl.style.whiteSpace = (clusterName || booth.display_name) ? 'pre-line' : 'nowrap';
         nameEl.style.lineHeight = '0.8';
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
-        // 표기이름/회사명 있으면 부스번호 표시, 없으면 숨기기
+        // 홀/구역 이름이면 부스번호 숨김, 그 외 표기이름/회사명 있으면 표시
         if (numEl) {
           numEl.textContent = booth.booth_number;
           numEl.style.fontSize = `${Math.round(markerFontSizeRef.current * 0.75)}px`;
-          numEl.style.display = displayName ? '' : 'none';
+          numEl.style.display = clusterName ? 'none' : (displayName ? '' : 'none');
         } else if (displayName && labelEl) {
           // numEl 없으면 생성
           const ns = document.createElement('div');
