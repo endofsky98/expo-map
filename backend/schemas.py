@@ -328,7 +328,7 @@ class ObstacleCreate(BaseModel):
     width: Optional[float] = 40
     height: Optional[float] = 40
     radius: Optional[float] = None
-    points: Optional[str] = None
+    points: Any = None  # list or JSON string
     name: Optional[str] = None
 
 class ObstacleUpdate(BaseModel):
@@ -339,7 +339,7 @@ class ObstacleUpdate(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     radius: Optional[float] = None
-    points: Optional[str] = None
+    points: Any = None  # list or JSON string
     name: Optional[str] = None
 
 class ObstacleResponse(BaseModel):
@@ -351,7 +351,7 @@ class ObstacleResponse(BaseModel):
     width: Optional[float] = None
     height: Optional[float] = None
     radius: Optional[float] = None
-    points: Optional[str] = None
+    points: Any = None
     name: Optional[str] = None
     created_at: Optional[datetime] = None
 

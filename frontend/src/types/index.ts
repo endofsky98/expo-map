@@ -91,12 +91,14 @@ export interface MapImage {
 export interface Obstacle {
   id: number;
   floor_id: number;
-  shape: 'rectangle' | 'circle';
+  shape: 'rectangle' | 'circle' | 'polygon';
   x: number;
   y: number;
   width?: number;
   height?: number;
   radius?: number;
+  points?: { x: number; y: number }[] | string | null;
+  name?: string | null;
   created_at?: string;
 }
 
