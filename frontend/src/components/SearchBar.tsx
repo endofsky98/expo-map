@@ -70,14 +70,18 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
 
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         setIsOpen(false);
         inputRef.current?.blur();
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside, { passive: true });
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, []);
 
   function handleSelect(booth: Booth) {
