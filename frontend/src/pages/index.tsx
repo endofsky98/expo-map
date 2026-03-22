@@ -408,11 +408,11 @@ export default function HomePage() {
       // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
         const last = result.path[result.path.length - 1];
-        const dx = _navEnd.x - last.x, dy = navEnd.y - last.y;
+        const dx = _navEnd.x - last.x, dy = _navEnd.y - last.y;
         const extra = Math.sqrt(dx * dx + dy * dy);
         if (extra > 2) {
           result.endExtIdx = result.path.length - 1;
-          result.path.push({ x: navEnd.x, y: _navEnd.y });
+          result.path.push({ x: _navEnd.x, y: _navEnd.y });
           result.distance += extra;
         }
       }
