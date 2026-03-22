@@ -409,7 +409,7 @@ export default function HomePage() {
         const fakeBooth = { id: -1, booth_number: '', x: _navEnd.x - 1, y: _navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
         result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
       }
-      console.log('[route] result:', result ? { pathLen: result.path.length, dist: result.distance, floors: result.floors } : null);
+      console.log('[route] result:', result ? { pathLen: result.path.length, dist: result.distance, floors: result.floors, segs: result.floorSegments?.map(s => ({ f: s.floorId, pts: s.path.length, d: s.distance })) } : null);
       // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
         const last = result.path[result.path.length - 1];
@@ -635,6 +635,7 @@ export default function HomePage() {
     // floorSegments 없으면 (구버전 호환) 그대로
     return clientRoute;
   }, [clientRoute, selectedFloorId]);
+  console.log('[floor] selectedFloorId:', selectedFloorId, 'currentFloorRoute:', currentFloorRoute ? { pathLen: currentFloorRoute.path.length, dist: currentFloorRoute.distance } : null);
 
   const showMap = !loading && (booths.length > 0 || currentImage !== null);
   const fromBooth = allBooths.find((b) => b.id === pathFrom);
@@ -757,8 +758,8 @@ export default function HomePage() {
               clientRoute={currentFloorRoute}
               navMode={navMode}
               onLongPress={handleLongPress}
-              navStartPoint={navStart}
-              navEndPoint={navEnd}
+              navStartPoint={navStart?.floorId === selectedFloorId ? navStart : null}
+              navEndPoint={navEnd?.floorId === selectedFloorId ? navEnd : null}
               navCurrentPos={navCurrentPos}
             />
             </MapErrorBoundary>
