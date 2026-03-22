@@ -109,8 +109,8 @@ export default function HomePage() {
   const [navMode, setNavMode] = useState<'none' | 'waiting_start'>('none');
   const [clientRoute, setClientRoute] = useState<PathResult | null>(null);
   // 새 길찾기: 출발/도착 지점 (world 좌표 또는 부스)
-  const [navStart, setNavStart] = useState<{ boothId?: number; x: number; y: number } | null>(null);
-  const [navEnd, setNavEnd] = useState<{ boothId?: number; x: number; y: number } | null>(null);
+  const [navStart, setNavStart] = useState<{ boothId?: number; x: number; y: number; floorId?: number } | null>(null);
+  const [navEnd, setNavEnd] = useState<{ boothId?: number; x: number; y: number; floorId?: number } | null>(null);
   const [longPressChoice, setLongPressChoice] = useState<{ x: number; y: number; screenX: number; screenY: number } | null>(null);
   // 네비게이션 모드
   const [navActive, setNavActive] = useState(false);
@@ -336,7 +336,7 @@ export default function HomePage() {
   function setAsStart(boothId: number) {
     const b = allBooths.find(bb => bb.id === boothId);
     const c = b ? getBoothCenter(b) : { cx: 0, cy: 0 };
-    setNavStart({ boothId, x: c.cx, y: c.cy });
+    setNavStart({ boothId, x: c.cx, y: c.cy, floorId: selectedFloorId ?? undefined });
     setBoothPopup(null);
     setLongPressChoice(null);
   }
@@ -344,7 +344,7 @@ export default function HomePage() {
   function setAsDestination(boothId: number) {
     const b = allBooths.find(bb => bb.id === boothId);
     const c = b ? getBoothCenter(b) : { cx: 0, cy: 0 };
-    setNavEnd({ boothId, x: c.cx, y: c.cy });
+    setNavEnd({ boothId, x: c.cx, y: c.cy, floorId: selectedFloorId ?? undefined });
     setBoothPopup(null);
     setLongPressChoice(null);
   }
@@ -357,53 +357,78 @@ export default function HomePage() {
 
   function handleLongPressStart() {
     if (!longPressChoice) return;
-    setNavStart({ x: longPressChoice.x, y: longPressChoice.y });
+    setNavStart({ x: longPressChoice.x, y: longPressChoice.y, floorId: selectedFloorId ?? undefined });
     setLongPressChoice(null);
   }
 
   function handleLongPressEnd() {
     if (!longPressChoice) return;
-    setNavEnd({ x: longPressChoice.x, y: longPressChoice.y });
+    setNavEnd({ x: longPressChoice.x, y: longPressChoice.y, floorId: selectedFloorId ?? undefined });
     setLongPressChoice(null);
   }
 
   // 출발+도착 둘 다 설정되면 자동 경로 계산
   useEffect(() => {
     if (!navStart || !navEnd) { setClientRoute(null); return; }
-    // 도착이 부스면 findPath 사용, 아니면 좌표 기반
-    const destBooth = navEnd.boothId ? allBooths.find(b => b.id === navEnd.boothId) : null;
-    let result: ReturnType<typeof findPath>;
-    if (destBooth) {
-      result = findPath({ x: navStart.x, y: navStart.y }, destBooth, pathNodes, pathEdges, allBooths, obstacles);
-    } else {
-      const fakeBooth = { id: -1, booth_number: '', x: navEnd.x - 1, y: navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
-      result = findPath({ x: navStart.x, y: navStart.y }, fakeBooth, pathNodes, pathEdges, allBooths, obstacles);
-    }
-    // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
-    if (result && result.path.length > 0) {
-      const last = result.path[result.path.length - 1];
-      const dx = navEnd.x - last.x, dy = navEnd.y - last.y;
-      const extra = Math.sqrt(dx * dx + dy * dy);
-      if (extra > 2) {
-        result.endExtIdx = result.path.length - 1; // 여기부터 끝까지 점선
-        result.path.push({ x: navEnd.x, y: navEnd.y });
-        result.distance += extra;
+
+    const isMultiFloor = navStart.floorId != null && navEnd.floorId != null && navStart.floorId !== navEnd.floorId;
+
+    async function computeRoute() {
+      let useNodes = pathNodes;
+      let useEdges = pathEdges;
+      let useBooths = allBooths;
+      let useObstacles = obstacles;
+
+      if (isMultiFloor) {
+        // 모든 층의 노드/엣지/부스/장애물을 합침
+        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+        const [allNodes, allEdges, allBths, allObs] = await Promise.all([
+          fetch(`${API_BASE}/api/path-nodes`).then(r => r.json()).catch(() => []),
+          fetch(`${API_BASE}/api/path-edges`).then(r => r.json()).catch(() => []),
+          fetch(`${API_BASE}/api/booths`).then(r => r.json()).catch(() => []),
+          fetch(`${API_BASE}/api/obstacles`).then(r => r.json()).catch(() => []),
+        ]);
+        useNodes = allNodes;
+        useEdges = allEdges;
+        useBooths = allBths;
+        useObstacles = allObs;
       }
-    }
-    // 경로 시작에서 실제 출발 마커 위치까지 선 연장 (점선 구간)
-    if (result && result.path.length > 0) {
-      const first = result.path[0];
-      const dx = navStart.x - first.x, dy = navStart.y - first.y;
-      const extra = Math.sqrt(dx * dx + dy * dy);
-      if (extra > 2) {
-        result.path.unshift({ x: navStart.x, y: navStart.y });
-        result.distance += extra;
-        result.startExtIdx = 1; // path[0]~path[1]이 점선
-        // endExtIdx가 있으면 1 증가 (unshift로 인덱스 밀림)
-        if (result.endExtIdx != null) result.endExtIdx += 1;
+
+      const destBooth = navEnd.boothId ? useBooths.find((b: any) => b.id === navEnd.boothId) : null;
+      let result: ReturnType<typeof findPath>;
+      if (destBooth) {
+        result = findPath({ x: navStart.x, y: navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles);
+      } else {
+        const fakeBooth = { id: -1, booth_number: '', x: navEnd.x - 1, y: navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
+        result = findPath({ x: navStart.x, y: navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles);
       }
+      // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
+      if (result && result.path.length > 0) {
+        const last = result.path[result.path.length - 1];
+        const dx = navEnd.x - last.x, dy = navEnd.y - last.y;
+        const extra = Math.sqrt(dx * dx + dy * dy);
+        if (extra > 2) {
+          result.endExtIdx = result.path.length - 1;
+          result.path.push({ x: navEnd.x, y: navEnd.y });
+          result.distance += extra;
+        }
+      }
+      // 경로 시작에서 실제 출발 마커 위치까지 선 연장 (점선 구간)
+      if (result && result.path.length > 0) {
+        const first = result.path[0];
+        const dx = navStart.x - first.x, dy = navStart.y - first.y;
+        const extra = Math.sqrt(dx * dx + dy * dy);
+        if (extra > 2) {
+          result.path.unshift({ x: navStart.x, y: navStart.y });
+          result.distance += extra;
+          result.startExtIdx = 1;
+          if (result.endExtIdx != null) result.endExtIdx += 1;
+        }
+      }
+      setClientRoute(result);
     }
-    setClientRoute(result);
+
+    computeRoute();
   }, [navStart, navEnd]);
 
   // 경로 위 거리 d에서의 좌표
@@ -572,6 +597,15 @@ export default function HomePage() {
     if (fn) fn();
   }
 
+  // 멀티층 경로: 현재 층 세그먼트만 추출
+  const currentFloorRoute = useMemo(() => {
+    if (!clientRoute) return null;
+    if (!clientRoute.floorSegments || clientRoute.floorSegments.length <= 1) return clientRoute; // 단일층
+    const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
+    if (!seg || seg.path.length < 2) return null;
+    return { path: seg.path, distance: seg.distance } as typeof clientRoute;
+  }, [clientRoute, selectedFloorId]);
+
   const showMap = !loading && (booths.length > 0 || currentImage !== null);
   const fromBooth = allBooths.find((b) => b.id === pathFrom);
   const toBooth = allBooths.find((b) => b.id === pathTo);
@@ -690,7 +724,7 @@ export default function HomePage() {
               onBoothClick={handleBoothClick}
               onMapClick={handleMapClick}
               onZoomChange={setZoom}
-              clientRoute={clientRoute}
+              clientRoute={currentFloorRoute}
               navMode={navMode}
               onLongPress={handleLongPress}
               navStartPoint={navStart}

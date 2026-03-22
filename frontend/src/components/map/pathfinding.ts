@@ -7,9 +7,9 @@ import { Booth, Obstacle } from '@/types';
 import { getBoothCenter } from './clusterUtils';
 
 // ===== 타입 =====
-interface RawNode { id: number; x: number; y: number; floor_id: number; type: string }
+interface RawNode { id: number; x: number; y: number; floor_id: number; type: string; linked_node_id?: number | null }
 interface RawEdge { id: number; from_node_id: number; to_node_id: number; is_open: boolean }
-interface GraphNode { id: string; x: number; y: number }
+interface GraphNode { id: string; x: number; y: number; floorId?: number }
 interface GraphEdge { from: string; to: string; cost: number }
 interface Point { x: number; y: number }
 
@@ -85,7 +85,7 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
 
   // 1. 원본 노드 등록
   for (const n of rawNodes) {
-    nodes.set(`n${n.id}`, { id: `n${n.id}`, x: n.x, y: n.y });
+    nodes.set(`n${n.id}`, { id: `n${n.id}`, x: n.x, y: n.y, floorId: n.floor_id });
   }
 
   // 원본 엣지를 선분으로 변환
@@ -161,6 +161,20 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     if (!adj.has(e.to)) adj.set(e.to, []);
     adj.get(e.from)!.push({ to: e.to, cost: e.cost });
     adj.get(e.to)!.push({ to: e.from, cost: e.cost });
+  }
+
+  // 5. linked_node_id 크로스 엣지 (층간 연결 — 비용 50px 고정)
+  const CROSS_FLOOR_COST = 50;
+  for (const n of rawNodes) {
+    if (n.linked_node_id != null && nodes.has(`n${n.linked_node_id}`)) {
+      const fromId = `n${n.id}`;
+      const toId = `n${n.linked_node_id}`;
+      if (!adj.has(fromId)) adj.set(fromId, []);
+      // 중복 방지
+      if (!adj.get(fromId)!.some(e => e.to === toId)) {
+        adj.get(fromId)!.push({ to: toId, cost: CROSS_FLOOR_COST });
+      }
+    }
   }
 
   return { nodes, adj, segments: graphSegments };
@@ -315,6 +329,12 @@ function reconstructPath(cameFrom: Map<string, string>, current: string): string
 }
 
 // ===== 전체 경로 찾기 =====
+export interface FloorSegment {
+  floorId: number;
+  path: Point[];
+  distance: number;
+}
+
 export interface PathResult {
   path: Point[];
   distance: number;
@@ -322,6 +342,10 @@ export interface PathResult {
   startExtIdx?: number;
   /** 도착 연장 구간: path[endExtIdx]~path[끝] (점선) */
   endExtIdx?: number;
+  /** 멀티층 경로: 층별 세그먼트 */
+  floorSegments?: FloorSegment[];
+  /** 경유한 층 ID 목록 */
+  floors?: number[];
 }
 
 export function findPath(
@@ -369,11 +393,39 @@ export function findPath(
 
   if (!bestPath) return null;
 
-  // 경로를 Point 배열로 변환
-  const points: Point[] = bestPath.map(id => {
+  // 경로를 Point 배열로 변환 + 층 정보 추출
+  const points: Point[] = [];
+  const nodeFloors: (number | undefined)[] = [];
+  for (const id of bestPath) {
     const n = graph.nodes.get(id)!;
-    return { x: n.x, y: n.y };
-  });
+    points.push({ x: n.x, y: n.y });
+    nodeFloors.push(n.floorId);
+  }
 
-  return { path: points, distance: bestDist };
+  // 층별 세그먼트 분리
+  const floorSegments: FloorSegment[] = [];
+  let curFloor = nodeFloors[0];
+  let curPoints: Point[] = [points[0]];
+  let curDist = 0;
+  for (let i = 1; i < points.length; i++) {
+    const fl = nodeFloors[i];
+    const segDist = dist(points[i - 1], points[i]);
+    if (fl !== curFloor && fl != null && curFloor != null) {
+      // 층 전환 — 현재 세그먼트 마감
+      floorSegments.push({ floorId: curFloor, path: curPoints, distance: curDist });
+      curFloor = fl;
+      curPoints = [points[i]];
+      curDist = 0;
+    } else {
+      curPoints.push(points[i]);
+      curDist += segDist;
+    }
+  }
+  if (curFloor != null && curPoints.length > 0) {
+    floorSegments.push({ floorId: curFloor, path: curPoints, distance: curDist });
+  }
+
+  const floors = [...new Set(floorSegments.map(s => s.floorId))];
+
+  return { path: points, distance: bestDist, floorSegments, floors };
 }
