@@ -325,16 +325,18 @@ export default function HomePage() {
   // 부스 클릭 → 출발/도착 선택
   function setAsStart(boothId: number) {
     const b = allBooths.find(bb => bb.id === boothId);
-    const c = b ? getBoothCenter(b) : { cx: 0, cy: 0 };
-    setNavStart({ boothId, x: c.cx, y: c.cy, floorId: selectedFloorId ?? undefined });
+    if (!b) return;
+    const c = getBoothCenter(b);
+    setNavStart({ boothId, x: c.cx, y: c.cy, floorId: b.floor_id ?? selectedFloorId ?? undefined });
     setBoothPopup(null);
     setLongPressChoice(null);
   }
 
   function setAsDestination(boothId: number) {
     const b = allBooths.find(bb => bb.id === boothId);
-    const c = b ? getBoothCenter(b) : { cx: 0, cy: 0 };
-    setNavEnd({ boothId, x: c.cx, y: c.cy, floorId: selectedFloorId ?? undefined });
+    if (!b) return;
+    const c = getBoothCenter(b);
+    setNavEnd({ boothId, x: c.cx, y: c.cy, floorId: b.floor_id ?? selectedFloorId ?? undefined });
     setBoothPopup(null);
     setLongPressChoice(null);
   }
@@ -434,7 +436,7 @@ export default function HomePage() {
           // 화면 80% 기준으로 줌 계산
           const cw = window.innerWidth * 0.8;
           const ch = window.innerHeight * 0.8;
-          const scale = Math.min(cw / routeW, ch / routeH, 2.0); // 최대 2.0
+          const scale = Math.max(0.1, Math.min(cw / routeW, ch / routeH, 2.0)); // 최소 0.1, 최대 2.0
           const panTo = (window as any).__mapViewerPanToWorld;
           if (panTo) setTimeout(() => panTo(cx, cy, scale), 300);
         }
