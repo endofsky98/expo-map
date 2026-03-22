@@ -243,6 +243,10 @@ export async function fetchFacilities(floorId?: number, hallId?: number, type?: 
   return request<Facility[]>(`/api/facilities${qs ? '?' + qs : ''}`);
 }
 
+export async function fetchAmenities(): Promise<Facility[]> {
+  return request<Facility[]>('/api/amenities');
+}
+
 export async function createFacility(data: Partial<Facility>): Promise<Facility> {
   return request<Facility>('/api/facilities', { method: 'POST', body: JSON.stringify(data) });
 }

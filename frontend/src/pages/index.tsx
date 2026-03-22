@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { ZoomIn, ZoomOut, Settings, Map as MapIcon, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
 import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchSetting } from '@/lib/api';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchAmenities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchSetting } from '@/lib/api';
 import { findPath, type PathResult } from '@/components/map/pathfinding';
 import { getBoothCenter } from '@/components/map/clusterUtils';
 import { useI18n } from '@/lib/i18n';
@@ -73,6 +73,7 @@ export default function HomePage() {
   const [currentImage, setCurrentImage] = useState<MapImage | null>(null);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [allFacilitiesAndAmenities, setAllFacilitiesAndAmenities] = useState<Facility[]>([]);
   const [obstacles, setObstacles] = useState<Obstacle[]>([]);
   const [halls, setHalls] = useState<Hall[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
@@ -169,10 +170,11 @@ export default function HomePage() {
     setObstacles([]);
 
     async function loadFloorData() {
-      const [filteredBooths, img, facs, obs, hs, pn, pe] = await Promise.all([
+      const [filteredBooths, img, facs, amenities, obs, hs, pn, pe] = await Promise.all([
         fetchBooths(selectedFloorId!).catch(() => []),
         fetchCurrentImage(selectedFloorId!).catch(() => null),
         fetchFacilities(selectedFloorId!).catch(() => []),
+        fetchAmenities().catch(() => []),
         fetchObstacles(selectedFloorId!).catch(() => []),
         fetchHalls(selectedFloorId!).catch(() => []),
         fetchPathNodes(selectedFloorId!).catch(() => []),
@@ -180,7 +182,12 @@ export default function HomePage() {
       ]);
       setBooths(filteredBooths);
       setCurrentImage(img);
-      setFacilities(facs);
+      // facilities + amenities 합침 (현재 층)
+      const currentFloorAmenities = amenities.filter((a: Facility) => a.floor_id === selectedFloorId);
+      const mergedFacilities = [...facs, ...currentFloorAmenities];
+      setFacilities(mergedFacilities);
+      // 전체 층 amenities + facilities (PathfindingUI용)
+      setAllFacilitiesAndAmenities([...facs, ...amenities]);
       setObstacles(obs);
       setHalls(hs);
       setPathNodes(pn);
@@ -710,7 +717,7 @@ export default function HomePage() {
             <div className="flex-1" />
             <PathfindingUI
               booths={allBooths}
-              facilities={facilities}
+              facilities={allFacilitiesAndAmenities}
               navStart={navStart}
               navEnd={navEnd}
               onSetStart={(p) => { setNavStart(p); if (!p) setClientRoute(null); }}
