@@ -118,12 +118,16 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     }
   }
 
-  // 3. 50px 근접: 노드→엣지 연결 (원본 노드만 대상 — 가상 노드 제외)
+  // 3. 50px 근접: 노드→엣지 연결 (원본 노드만 대상 — 같은 층만)
   const originalNodeIds = [...nodes.keys()];
   for (const nId of originalNodeIds) {
     const node = nodes.get(nId)!;
     for (const seg of segments) {
       if (seg.fromId === nId || seg.toId === nId) continue;
+      // 양쪽 노드 중 하나라도 같은 층이면 OK (크로스 엣지도 연결 유지)
+      const ff = nodes.get(seg.fromId)?.floorId;
+      const tf = nodes.get(seg.toId)?.floorId;
+      if (node.floorId != null && ff != null && tf != null && node.floorId !== ff && node.floorId !== tf) continue;
       const nearest = nearestOnSegment(node, seg.from, seg.to);
       const d = dist(node, nearest);
       if (d > 0.1 && d <= SNAP_RADIUS) {
@@ -200,15 +204,21 @@ export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point;
   let bestNodeId = '';
   let bestPoint: Point = p;
 
-  // 기존 노드에 스냅
+  // 기존 노드에 스냅 (같은 층 노드만)
   for (const [id, node] of graph.nodes) {
+    if (floorId != null && node.floorId != null && node.floorId !== floorId) continue;
     const d = dist(p, node);
     if (d < bestDist) { bestDist = d; bestNodeId = id; bestPoint = node; }
   }
 
-  // 엣지 위의 점에 스냅
+  // 엣지 위의 점에 스냅 (양쪽 노드 중 하나라도 같은 층이면 OK)
   let bestSeg: typeof segments[0] | null = null;
   for (const seg of segments) {
+    if (floorId != null) {
+      const ff = graph.nodes.get(seg.fromId)?.floorId;
+      const tf = graph.nodes.get(seg.toId)?.floorId;
+      if (ff != null && tf != null && ff !== floorId && tf !== floorId) continue;
+    }
     const nearest = nearestOnSegment(p, seg.from, seg.to);
     const d = dist(p, nearest);
     if (d < bestDist) {
@@ -252,6 +262,12 @@ export function findDestCandidates(
   const segBest = new Map<string, { point: Point; dist: number; seg: typeof segments[0] }>();
 
   for (const seg of segments) {
+    // 양쪽 노드 중 하나라도 같은 층이면 OK
+    if (floorId != null) {
+      const ff = graph.nodes.get(seg.fromId)?.floorId;
+      const tf = graph.nodes.get(seg.toId)?.floorId;
+      if (ff != null && tf != null && ff !== floorId && tf !== floorId) continue;
+    }
     const nearest = nearestOnSegment(center, seg.from, seg.to);
     const d = dist(center, nearest);
     if (hasObstruction(center, nearest, allBooths, obstacles, booth.id)) continue;
@@ -399,12 +415,6 @@ export function findPath(
   }
 
   if (!bestPath) return null;
-
-  // 디버그: 경로의 노드와 층 정보
-  console.log('[pathfind] bestPath:', bestPath.map(id => {
-    const n = graph.nodes.get(id);
-    return `${id}(f${n?.floorId})`;
-  }).join(' → '));
 
   // 경로를 Point 배열로 변환 + 층 정보 추출
   const points: Point[] = [];
