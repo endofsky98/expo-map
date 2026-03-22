@@ -14,6 +14,7 @@ function getHallName(name: EditorHall['name']): string {
 
 export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
   const [name, setName] = useState(getHallName(hall.name));
+  const [displayName, setDisplayName] = useState(hall.display_name ?? '');
   const [order, setOrder] = useState(hall.order);
   const [areaX, setAreaX] = useState(hall.area_x ?? 0);
   const [areaY, setAreaY] = useState(hall.area_y ?? 0);
@@ -22,6 +23,7 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
 
   useEffect(() => {
     setName(getHallName(hall.name));
+    setDisplayName(hall.display_name ?? '');
     setOrder(hall.order);
     setAreaX(hall.area_x ?? 0);
     setAreaY(hall.area_y ?? 0);
@@ -32,6 +34,7 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
   const handleSave = () => {
     const data: any = {
       name: { ko: name, en: name },
+      display_name: displayName || undefined,
       order,
       area_x: areaX,
       area_y: areaY,
@@ -61,6 +64,18 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
           value={name}
           onChange={e => setName(e.target.value)}
           placeholder="Hall name"
+        />
+      </div>
+
+      {/* Display Name */}
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-slate-400 uppercase tracking-wide">표기이름 <span className="text-slate-500">(비어있으면 구역명 표시)</span></label>
+        <textarea
+          className="bg-slate-700 rounded px-2 py-1 text-slate-100 outline-none focus:ring-1 focus:ring-violet-500 resize-none"
+          rows={2}
+          value={displayName}
+          onChange={e => setDisplayName(e.target.value)}
+          placeholder="줄바꿈 가능"
         />
       </div>
 

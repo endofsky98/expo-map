@@ -39,6 +39,7 @@ class HallCreate(BaseModel):
     shape: str = "rectangle"
     points: Optional[str] = None
     type: str = "hall"  # 'hall' or 'zone'
+    display_name: Optional[str] = None
 
 class HallUpdate(BaseModel):
     floor_id: Optional[int] = None
@@ -51,6 +52,7 @@ class HallUpdate(BaseModel):
     shape: Optional[str] = None
     points: Optional[str] = None
     type: Optional[str] = None
+    display_name: Optional[str] = None
 
 class HallResponse(BaseModel):
     id: int
@@ -64,6 +66,7 @@ class HallResponse(BaseModel):
     shape: str = "rectangle"
     points: Optional[str] = None
     type: str = "hall"
+    display_name: Optional[str] = None
     created_at: Optional[datetime] = None
     floor: Optional[FloorResponse] = None
 
@@ -139,6 +142,7 @@ class BoothCreate(BaseModel):
     radius_x: Optional[float] = None
     radius_y: Optional[float] = None
     rotation: float = 0
+    display_name: Optional[str] = None
 
 class BoothUpdate(BaseModel):
     booth_number: Optional[str] = None
@@ -159,6 +163,7 @@ class BoothUpdate(BaseModel):
     radius_x: Optional[float] = None
     radius_y: Optional[float] = None
     rotation: Optional[float] = None
+    display_name: Optional[str] = None
 
 class BoothResponse(BaseModel):
     id: int
@@ -180,6 +185,7 @@ class BoothResponse(BaseModel):
     radius_x: Optional[float] = None
     radius_y: Optional[float] = None
     rotation: float = 0
+    display_name: Optional[str] = None
     created_at: Optional[datetime] = None
     company: Optional[CompanyResponse] = None
     category: Optional[CategoryResponse] = None

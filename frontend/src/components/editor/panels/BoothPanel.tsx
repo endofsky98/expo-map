@@ -20,6 +20,7 @@ function ln(name: string | Record<string, string> | undefined | null): string {
 function initForm(booth: EditorBooth) {
   return {
     booth_number: booth.booth_number ?? '',
+    display_name: booth.display_name ?? '',
     x: booth.x ?? 0, y: booth.y ?? 0,
     width: booth.width ?? 0, height: booth.height ?? 0,
     radius: booth.radius ?? 0,
@@ -47,6 +48,7 @@ export function BoothPanel({ booth, categories, companies, onSave, onDelete }: B
   function handleSave() {
     const data: Partial<EditorBooth> = {
       booth_number: form.booth_number,
+      display_name: form.display_name || undefined,
       x: form.x, y: form.y,
       category_id: form.category_id ?? undefined,
       is_active: form.is_active,
@@ -77,6 +79,12 @@ export function BoothPanel({ booth, categories, companies, onSave, onDelete }: B
       {/* 부스 번호 */}
       <div><label className={label}>부스 번호</label>
         <input className={input} value={form.booth_number} onChange={e => set('booth_number', e.target.value)} /></div>
+
+      {/* 표기이름 */}
+      <div><label className={label}>표기이름 <span className="text-gray-400">(비어있으면 부스명 표시)</span></label>
+        <textarea className={input + ' resize-none'} rows={2} value={form.display_name}
+          onChange={e => set('display_name', e.target.value)}
+          placeholder="줄바꿈 가능" /></div>
 
       {/* 위치 */}
       <div className="grid grid-cols-2 gap-1.5">

@@ -37,6 +37,7 @@ class Hall(Base):
     shape = Column(String(20), default="rectangle")
     points = Column(Text, nullable=True)
     type = Column(String(20), default="hall")  # 'hall' or 'zone'
+    display_name = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     floor = relationship("Floor", back_populates="halls")
@@ -96,6 +97,7 @@ class Booth(Base):
     radius_x = Column(Float, nullable=True)
     radius_y = Column(Float, nullable=True)
     rotation = Column(Float, default=0)
+    display_name = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     company = relationship("Company", back_populates="booths")

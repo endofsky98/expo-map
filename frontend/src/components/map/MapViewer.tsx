@@ -1021,75 +1021,8 @@ export default function MapViewer({
     }
     clusterRepCenterRef.current = repCenters;
 
-    // 홀/구역별 클러스터 수 세기 → 1개인 홀/구역만 이름 표시
-    const clusterNameMap = new Map<number, string>();
-    const hallsList = hallsRef.current;
-    if (hallsList.length > 0) {
-      const lnFn = lnRef.current;
-      const hallName = (h: Hall) => (typeof h.name === 'string' ? h.name : lnFn(h.name)) || `Hall ${h.id}`;
-      const insideHall = (bx: number, by: number, h: Hall) =>
-        h.area_x != null && h.area_y != null && h.area_width != null && h.area_height != null &&
-        bx >= h.area_x && bx <= h.area_x + h.area_width && by >= h.area_y && by <= h.area_y + h.area_height;
-
-      // 각 클러스터(count>1)가 어떤 홀/구역에 속하는지 판정
-      type HallClusterInfo = { hallId: number; clusterId: string; repBoothId: number };
-      const hallClusterMap: HallClusterInfo[] = [];
-      for (const c of clusters) {
-        if (!c.isCluster || c.count <= 1) continue;
-        const rep = clusterReps.get(c.id);
-        if (!rep) continue;
-        // 클러스터 내 모든 부스의 중심
-        const cBooths = c.boothIds.map(id => boothMapRef.current.get(id)).filter((b): b is Booth => !!b);
-        // 이 클러스터가 완전히 속하는 홀/구역 찾기 (작은 영역 우선 → 구역 우선)
-        const sortedHalls = [...hallsList].sort((a, b) => {
-          const aArea = (a.area_width ?? 0) * (a.area_height ?? 0);
-          const bArea = (b.area_width ?? 0) * (b.area_height ?? 0);
-          return aArea - bArea; // 작은 영역 먼저
-        });
-        for (const h of sortedHalls) {
-          const allInside = cBooths.length > 0 && cBooths.every(b => {
-            const { cx, cy } = getBoothCenter(b);
-            return insideHall(cx, cy, h);
-          });
-          if (allInside) {
-            hallClusterMap.push({ hallId: h.id, clusterId: c.id, repBoothId: rep.boothId });
-            break;
-          }
-        }
-      }
-
-      // 홀/구역별 클러스터 수 + 개별 부스 수
-      const hallClusterCount = new Map<number, number>();
-      const hallIndividualCount = new Map<number, number>();
-      for (const hc of hallClusterMap) {
-        hallClusterCount.set(hc.hallId, (hallClusterCount.get(hc.hallId) || 0) + 1);
-      }
-      // 개별 부스(클러스터 아닌)도 같은 홀 안에 있는지 체크
-      for (const c of clusters) {
-        if (c.isCluster && c.count > 1) continue;
-        const boothId = c.boothIds[0];
-        const b = boothMapRef.current.get(boothId);
-        if (!b) continue;
-        const { cx, cy } = getBoothCenter(b);
-        for (const h of hallsList) {
-          if (insideHall(cx, cy, h)) {
-            hallIndividualCount.set(h.id, (hallIndividualCount.get(h.id) || 0) + 1);
-            break;
-          }
-        }
-      }
-
-      // 클러스터가 딱 1개이고 개별 부스가 0개인 홀/구역 → 이름 표시
-      for (const hc of hallClusterMap) {
-        const clusterCnt = hallClusterCount.get(hc.hallId) || 0;
-        const individualCnt = hallIndividualCount.get(hc.hallId) || 0;
-        if (clusterCnt === 1 && individualCnt === 0) {
-          const h = hallsList.find(hh => hh.id === hc.hallId);
-          if (h) clusterNameMap.set(hc.repBoothId, hallName(h));
-        }
-      }
-    }
-    clusterNameMapRef.current = clusterNameMap;
+    // 홀 이름은 그룹화 시 표시하지 않음
+    clusterNameMapRef.current = new Map();
 
     const oldIds = stableIdsRef.current;
 
@@ -1302,14 +1235,14 @@ export default function MapViewer({
       const numEl = el.querySelector('[data-num]') as HTMLElement;
       const labelEl = el.querySelector('[data-label]') as HTMLElement;
       if (nameEl) {
-        const clusterName = clusterNameMapRef.current.get(booth.id);
-        const companyName = clusterName || lnFn(booth.company?.name) || '';
-        nameEl.textContent = companyName || booth.booth_number;
+        const displayName = booth.display_name || lnFn(booth.company?.name) || '';
+        nameEl.textContent = displayName || booth.booth_number;
+        if (booth.display_name) nameEl.style.whiteSpace = 'pre-line';
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
         // 회사명이 있으면 부스번호 표시, 없으면 숨기기
         if (numEl) {
           numEl.textContent = booth.booth_number;
-          numEl.style.fontSize = `${Math.round(markerFontSizeRef.current / 2)}px`;
+          numEl.style.fontSize = `${markerFontSizeRef.current}px`;
           numEl.style.display = companyName ? '' : 'none';
         } else if (companyName && labelEl) {
           // numEl 없으면 생성
@@ -1428,28 +1361,27 @@ export default function MapViewer({
         const numSpan = document.createElement('div');
         numSpan.setAttribute('data-num', '');
         numSpan.textContent = booth.booth_number;
-        numSpan.style.fontSize = `${Math.round(markerFontSizeRef.current / 2)}px`;
+        numSpan.style.fontSize = `${markerFontSizeRef.current}px`;
         numSpan.style.fontWeight = '500';
         numSpan.style.color = '#6b7280';
         numSpan.style.whiteSpace = 'nowrap';
         numSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
 
-        // 회사명 (아래, 큰 글씨)
+        // 표기이름 > 회사명 > 부스번호
         const nameSpan = document.createElement('div');
         nameSpan.setAttribute('data-name', '');
-        const clusterName = clusterNameMapRef.current.get(booth.id);
-        const initCompanyName = clusterName || lnRef.current(booth.company?.name) || '';
-        nameSpan.textContent = initCompanyName || booth.booth_number;
+        const initDisplayName = booth.display_name || lnRef.current(booth.company?.name) || '';
+        nameSpan.textContent = initDisplayName || booth.booth_number;
         nameSpan.style.fontSize = `${markerFontSizeRef.current}px`;
         nameSpan.style.fontWeight = '700';
         nameSpan.style.fontFamily = 'Inter, sans-serif';
         nameSpan.style.color = '#1f2937';
-        nameSpan.style.whiteSpace = 'nowrap';
+        nameSpan.style.whiteSpace = booth.display_name ? 'pre-line' : 'nowrap';
         nameSpan.style.overflow = 'visible';
         nameSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
 
-        // 회사명 있으면 부스번호+회사명, 없으면 회사명 자리에 부스번호만
-        if (initCompanyName) {
+        // 표기이름/회사명 있으면 부스번호+이름, 없으면 부스번호만
+        if (initDisplayName) {
           label.appendChild(numSpan);
         }
         label.appendChild(nameSpan);
