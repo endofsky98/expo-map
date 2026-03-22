@@ -112,6 +112,7 @@ export default function HomePage() {
   // v7: Booth visibility toggle (debug/test feature)
   const [showBooths, setShowBooths] = useState(true);
   const [isBirdView, setIsBirdView] = useState(false);
+  const [globalFontScale, setGlobalFontScale] = useState(1); // 전체 텍스트 크기 배율
   // v7: Prefetch range from admin settings
   const [prefetchRange, setPrefetchRange] = useState(2);
 
@@ -718,10 +719,12 @@ export default function HomePage() {
   function handleFontUp() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerFontUp;
     if (fn) fn();
+    setGlobalFontScale(prev => Math.min(1.5, prev + 0.1));
   }
   function handleFontDown() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerFontDown;
     if (fn) fn();
+    setGlobalFontScale(prev => Math.max(0.7, prev - 0.1));
   }
   function handleZoomIn() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerZoomIn;
@@ -742,7 +745,7 @@ export default function HomePage() {
       <Head><title>{t('app.title')}</title></Head>
       {/* DEBUG overlay — 에러 표시 */}
 
-      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none' }}>
+      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none', fontSize: `${globalFontScale}rem` }}>
         {/* Top bar — transparent overlay */}
         <div className={`absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none transition-opacity duration-200 ${uiHidden ? 'opacity-0 pointer-events-none' : ''}`}>
           {/* Row 1: Logo + Floor selector + utilities — opaque background */}
