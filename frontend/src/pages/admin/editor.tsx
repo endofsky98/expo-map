@@ -37,7 +37,7 @@ import { createObstacle, updateObstacle, deleteObstacle } from '@/lib/api';
 import { fetchCategories, fetchCompanies, createCompany } from '@/lib/api';
 import {
   fetchPathNodes, createPathNode, updatePathNode, deletePathNode,
-  fetchPathEdges, createPathEdge, deletePathEdge,
+  fetchPathEdges, createPathEdge, updatePathEdge, deletePathEdge,
   fetchAmenities, createAmenity, updateAmenity, deleteAmenity,
 } from '@/lib/editorApi';
 
@@ -481,10 +481,38 @@ export default function EditorPage() {
     }
     if (selectedObject.kind === 'path_node' || selectedObject.kind === 'path_edge') {
       return <PathPanel selectedObject={selectedObject} pathNodes={pathNodes} pathEdges={pathEdges} floors={floors}
+        currentFloorId={selectedFloorId}
         onSaveNode={handleNodeSave}
+        onLinkNodes={async (nodeId, targetNodeId) => {
+          try {
+            await updatePathNode(nodeId, { linked_node_id: targetNodeId });
+            await updatePathNode(targetNodeId, { linked_node_id: nodeId });
+            setPathNodes(prev => prev.map(n => {
+              if (n.id === nodeId) return { ...n, linked_node_id: targetNodeId };
+              return n;
+            }));
+          } catch (e) { console.error('Link error:', e); alert('연결 실패: ' + (e as any)?.message); }
+        }}
+        onUnlinkNode={async (nodeId) => {
+          try {
+            const node = pathNodes.find(n => n.id === nodeId);
+            const targetId = node?.linked_node_id;
+            await updatePathNode(nodeId, { linked_node_id: null as any });
+            if (targetId) { try { await updatePathNode(targetId, { linked_node_id: null as any }); } catch {} }
+            setPathNodes(prev => prev.map(n => {
+              if (n.id === nodeId || n.id === targetId) return { ...n, linked_node_id: undefined };
+              return n;
+            }));
+          } catch (e) { console.error('Unlink error:', e); }
+        }}
         onDeleteNode={async (id) => { await deletePathNode(id); setPathNodes(prev => prev.filter(n => n.id !== id)); setSelectedObject(null); }}
         onDeleteEdge={async (id) => { await deletePathEdge(id); setPathEdges(prev => prev.filter(e => e.id !== id)); setSelectedObject(null); }}
-        onToggleEdge={async (_id, _isOpen) => { /* TODO */ }} />;
+        onToggleEdge={async (id, isOpen) => {
+          try {
+            await updatePathEdge(id, { is_open: isOpen });
+            setPathEdges(prev => prev.map(e => e.id === id ? { ...e, is_open: isOpen } : e));
+          } catch (e) { console.error('Toggle edge error:', e); }
+        }} />;
     }
     if (selectedObject.kind === 'obstacle') {
       const obs = obstacles.find(o => o.id === selectedObject.id);

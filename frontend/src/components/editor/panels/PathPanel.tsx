@@ -6,7 +6,10 @@ interface PathPanelProps {
   pathNodes: PathNode[];
   pathEdges: PathEdge[];
   floors: { id: number; name: string }[];
+  currentFloorId: number | null;
   onSaveNode: (id: number, data: Partial<PathNode>) => void;
+  onLinkNodes: (nodeId: number, targetNodeId: number) => void;
+  onUnlinkNode: (nodeId: number) => void;
   onDeleteNode: (id: number) => void;
   onDeleteEdge: (id: number) => void;
   onToggleEdge: (id: number, isOpen: boolean) => void;
@@ -32,13 +35,19 @@ interface NodeFormState {
 function NodeEditor({
   node,
   floors,
+  currentFloorId,
   onSaveNode,
+  onLinkNodes,
+  onUnlinkNode,
   onDeleteNode,
   pathNodes,
 }: {
   node: PathNode;
   floors: { id: number; name: string }[];
+  currentFloorId: number | null;
   onSaveNode: (id: number, data: Partial<PathNode>) => void;
+  onLinkNodes: (nodeId: number, targetNodeId: number) => void;
+  onUnlinkNode: (nodeId: number) => void;
   onDeleteNode: (id: number) => void;
   pathNodes: PathNode[];
 }) {
@@ -49,9 +58,14 @@ function NodeEditor({
     name: node.name ?? '',
     linkFloorId: '',
   });
+  const [targetFloorNodes, setTargetFloorNodes] = useState<PathNode[]>([]);
+  const [selectedTargetNodeId, setSelectedTargetNodeId] = useState<number | ''>('');
+  const [loadingTargetNodes, setLoadingTargetNodes] = useState(false);
 
   useEffect(() => {
     setForm({ type: node.type, x: node.x, y: node.y, name: node.name ?? '', linkFloorId: '' });
+    setTargetFloorNodes([]);
+    setSelectedTargetNodeId('');
   }, [node.id]);
 
   const isCrossFloor = CROSS_FLOOR_TYPES.includes(form.type);
@@ -68,10 +82,26 @@ function NodeEditor({
     });
   }
 
-  function handleLinkToFloor() {
-    if (form.linkFloorId === '') return;
-    // Emit a save with floor context — consumer handles actual linking logic
-    onSaveNode(node.id, { floor_id: form.linkFloorId as number });
+  // 대상 층 선택 시 해당 층의 같은 타입 노드 로드
+  async function handleFloorSelect(floorId: number | '') {
+    setForm(f => ({ ...f, linkFloorId: floorId }));
+    setSelectedTargetNodeId('');
+    if (floorId === '') { setTargetFloorNodes([]); return; }
+    setLoadingTargetNodes(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+      const res = await fetch(`${API_BASE}/api/path-nodes?floor_id=${floorId}`);
+      const nodes: PathNode[] = await res.json();
+      // 같은 타입만 필터 + 자기 자신 제외
+      const candidates = nodes.filter(n => n.type === form.type && n.id !== node.id);
+      setTargetFloorNodes(candidates);
+    } catch { setTargetFloorNodes([]); }
+    setLoadingTargetNodes(false);
+  }
+
+  function handleLink() {
+    if (selectedTargetNodeId === '') return;
+    onLinkNodes(node.id, selectedTargetNodeId as number);
   }
 
   return (
@@ -127,33 +157,57 @@ function NodeEditor({
       {/* Linked node info */}
       {linkedNode && (
         <div className="bg-gray-700 rounded px-3 py-2 text-sm">
-          <span className="text-gray-400">Linked to node </span>
+          <span className="text-gray-400">연결됨: 노드 </span>
           <span className="text-indigo-300 font-medium">#{linkedNode.id}</span>
           {linkedNode.name && <span className="text-gray-300"> ({linkedNode.name})</span>}
-          <span className="text-gray-400"> · floor {linkedNode.floor_id ?? '?'}</span>
+          <span className="text-gray-400"> · {floors.find(f => f.id === linkedNode.floor_id)?.name || `floor ${linkedNode.floor_id}`}</span>
+          <button
+            className="ml-2 text-xs text-red-400 hover:text-red-300 underline"
+            onClick={() => onUnlinkNode(node.id)}
+          >
+            연결 해제
+          </button>
         </div>
       )}
 
       {/* Cross-floor link */}
-      {isCrossFloor && (
+      {isCrossFloor && !linkedNode && (
         <div className="border border-gray-600 rounded p-3 flex flex-col gap-2">
-          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Cross-floor link</p>
+          <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">층간 연결</p>
           <select
             className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
             value={form.linkFloorId}
-            onChange={e => setForm(f => ({ ...f, linkFloorId: e.target.value ? parseInt(e.target.value) : '' }))}
+            onChange={e => handleFloorSelect(e.target.value ? parseInt(e.target.value) : '')}
           >
-            <option value="">Select floor…</option>
-            {floors.map(fl => (
+            <option value="">대상 층 선택…</option>
+            {floors.filter(fl => fl.id !== currentFloorId).map(fl => (
               <option key={fl.id} value={fl.id}>{fl.name}</option>
             ))}
           </select>
+          {loadingTargetNodes && <p className="text-xs text-gray-500">로딩중...</p>}
+          {targetFloorNodes.length > 0 && (
+            <select
+              className="w-full bg-gray-700 text-white text-sm rounded px-2 py-1.5 border border-gray-600"
+              value={selectedTargetNodeId}
+              onChange={e => setSelectedTargetNodeId(e.target.value ? parseInt(e.target.value) : '')}
+            >
+              <option value="">대상 노드 선택…</option>
+              {targetFloorNodes.map(n => (
+                <option key={n.id} value={n.id}>
+                  #{n.id} {n.type}{n.name ? ` (${n.name})` : ''} — ({Math.round(n.x)}, {Math.round(n.y)})
+                </option>
+              ))}
+            </select>
+          )}
+          {form.linkFloorId !== '' && !loadingTargetNodes && targetFloorNodes.length === 0 && (
+            <p className="text-xs text-yellow-400">해당 층에 같은 타입({form.type}) 노드가 없습니다</p>
+          )}
           <button
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded py-1.5 disabled:opacity-40"
-            disabled={form.linkFloorId === ''}
-            onClick={handleLinkToFloor}
+            disabled={selectedTargetNodeId === ''}
+            onClick={handleLink}
           >
-            Link to node on floor
+            연결하기
           </button>
         </div>
       )}
@@ -235,7 +289,10 @@ export function PathPanel({
   pathNodes,
   pathEdges,
   floors,
+  currentFloorId,
   onSaveNode,
+  onLinkNodes,
+  onUnlinkNode,
   onDeleteNode,
   onDeleteEdge,
   onToggleEdge,
@@ -251,7 +308,10 @@ export function PathPanel({
         <NodeEditor
           node={node}
           floors={floors}
+          currentFloorId={currentFloorId}
           onSaveNode={onSaveNode}
+          onLinkNodes={onLinkNodes}
+          onUnlinkNode={onUnlinkNode}
           onDeleteNode={onDeleteNode}
           pathNodes={pathNodes}
         />

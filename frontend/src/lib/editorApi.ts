@@ -50,6 +50,10 @@ export async function createPathEdge(data: { from_node_id: number; to_node_id: n
   return req<PathEdge>('/api/path-edges', { method: 'POST', body: JSON.stringify(data) });
 }
 
+export async function updatePathEdge(id: number, data: Partial<PathEdge>): Promise<PathEdge> {
+  return req<PathEdge>(`/api/path-edges/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
 export async function deletePathEdge(id: number): Promise<void> {
   await req(`/api/path-edges/${id}`, { method: 'DELETE' });
 }

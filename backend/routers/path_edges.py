@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import PathEdge, PathNode
-from schemas import PathEdgeCreate, PathEdgeResponse
+from schemas import PathEdgeCreate, PathEdgeUpdate, PathEdgeResponse
 from routers.auth import get_current_admin
 
 router = APIRouter(prefix="/api/path-edges", tags=["path-edges"])
@@ -54,6 +54,18 @@ def create_path_edge(data: PathEdgeCreate, db: Session = Depends(get_db)):
         is_open=data.is_open,
     )
     db.add(edge)
+    db.commit()
+    db.refresh(edge)
+    return edge
+
+
+@router.put("/{edge_id}", response_model=PathEdgeResponse, dependencies=[Depends(get_current_admin)])
+def update_path_edge(edge_id: int, data: PathEdgeUpdate, db: Session = Depends(get_db)):
+    edge = db.query(PathEdge).filter(PathEdge.id == edge_id).first()
+    if not edge:
+        raise HTTPException(status_code=404, detail="PathEdge not found")
+    for key, value in data.model_dump(exclude_unset=True).items():
+        setattr(edge, key, value)
     db.commit()
     db.refresh(edge)
     return edge

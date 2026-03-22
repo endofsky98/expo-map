@@ -478,6 +478,10 @@ class PathEdgeCreate(BaseModel):
     distance: Optional[float] = None  # auto-calculated if not provided
     is_open: bool = True
 
+class PathEdgeUpdate(BaseModel):
+    is_open: Optional[bool] = None
+    distance: Optional[float] = None
+
 class PathEdgeResponse(BaseModel):
     id: int
     from_node_id: int
