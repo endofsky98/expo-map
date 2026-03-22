@@ -384,20 +384,48 @@ function findSameFloorPathMulti(
   graph: PathGraph,
   startPoint: Point,
   destCenter: Point,
+  allBooths?: Booth[],
+  obstacles?: Obstacle[],
+  destBoothId?: number,
 ): { path: string[]; dist: number; startId: string; goalId: string } | null {
   let best: { path: string[]; dist: number; totalDist: number; startId: string; goalId: string } | null = null;
   for (const startId of startNodeIds) {
     const startNode = graph.nodes.get(startId);
-    const startSnapDist = startNode ? dist(startPoint, startNode) : 0;
+    if (!startNode) continue;
+    // 출발점→스냅 직선에 장애물이 있으면 스킵
+    if (allBooths && obstacles && hasObstruction(startPoint, startNode, allBooths, obstacles)) continue;
+    const startSnapDist = dist(startPoint, startNode);
     for (const goalId of destNodeIds) {
+      const goalNode = graph.nodes.get(goalId);
+      if (!goalNode) continue;
+      // 도착스냅→부스중심 직선에 장애물이 있으면 스킵 (도착 부스 자체는 제외)
+      if (allBooths && obstacles && hasObstruction(goalNode, destCenter, allBooths, obstacles, destBoothId)) continue;
       const p = astar(graph, startId, goalId);
       if (p) {
         const routeDist = pathDistance(graph, p);
-        const goalNode = graph.nodes.get(goalId);
-        const endSnapDist = goalNode ? dist(goalNode, destCenter) : 0;
+        const endSnapDist = dist(goalNode, destCenter);
         const totalDist = startSnapDist * 2 + routeDist + endSnapDist * 2;
         if (!best || totalDist < best.totalDist) {
           best = { path: p, dist: routeDist, totalDist, startId, goalId };
+        }
+      }
+    }
+  }
+  // 폴백: 장애물 체크로 전부 걸러졌으면 장애물 무시하고 재시도
+  if (!best) {
+    for (const startId of startNodeIds) {
+      const startNode = graph.nodes.get(startId);
+      const startSnapDist = startNode ? dist(startPoint, startNode) : 0;
+      for (const goalId of destNodeIds) {
+        const p = astar(graph, startId, goalId);
+        if (p) {
+          const routeDist = pathDistance(graph, p);
+          const goalNode = graph.nodes.get(goalId);
+          const endSnapDist = goalNode ? dist(goalNode, destCenter) : 0;
+          const totalDist = startSnapDist * 2 + routeDist + endSnapDist * 2;
+          if (!best || totalDist < best.totalDist) {
+            best = { path: p, dist: routeDist, totalDist, startId, goalId };
+          }
         }
       }
     }
@@ -454,7 +482,7 @@ export function findPath(
     const destIds = findDestInFloorGraph(destBooth, graph, allBooths, obstacles);
     if (destIds.length === 0) return null;
     const { cx: destCx, cy: destCy } = getBoothCenter(destBooth);
-    const result = findSameFloorPathMulti(startIds, destIds, graph, startPoint, { x: destCx, y: destCy });
+    const result = findSameFloorPathMulti(startIds, destIds, graph, startPoint, { x: destCx, y: destCy }, allBooths, obstacles, destBooth.id);
     if (!result) return null;
 
     const points = result.path.map(id => {
@@ -550,7 +578,7 @@ export function findPath(
       // 도착층 도달 — 도착지까지 경로 계산
       if (!curGraph.nodes.has(state.nodeId)) continue;
       const stateNode = curGraph.nodes.get(state.nodeId);
-      const result = findSameFloorPathMulti([state.nodeId], destIds, curGraph, stateNode ? { x: stateNode.x, y: stateNode.y } : { x: 0, y: 0 }, { x: destCx, y: destCy });
+      const result = findSameFloorPathMulti([state.nodeId], destIds, curGraph, stateNode ? { x: stateNode.x, y: stateNode.y } : { x: 0, y: 0 }, { x: destCx, y: destCy }, allBooths, obstacles, destBooth.id);
       if (!result) continue;
       const total = state.totalDist + result.dist;
       if (!bestRoute || total < bestRoute.totalDist) {
