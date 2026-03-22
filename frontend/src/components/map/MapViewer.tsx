@@ -1147,10 +1147,12 @@ export default function MapViewer({
         const useRouteRep = routeCorners && isClusterVisibleToRoute(c.id);
 
         if (useRouteRep) {
-          // 경로에서 보이는 클러스터: 코너 가까운 부스 우선 → 경로 가까운 부스
+          // 경로에서 보이는 클러스터: 코너 > 경로 > 현재위치 순 우선
+          const ncp = navCurrentPosRef.current;
           let bestId = filteredIds[0];
           let bestCornerDist = Infinity;
           let bestRouteDist = Infinity;
+          let bestNavDist = Infinity;
           for (const bid of filteredIds) {
             const booth = boothMapRef.current.get(bid);
             if (!booth) continue;
@@ -1164,10 +1166,17 @@ export default function MapViewer({
               }
             }
             const rDist = boothRouteScore(bid);
-            // 코너 거리 우선, 같으면 경로 거리
-            if (cornerDist < bestCornerDist - 50 || (Math.abs(cornerDist - bestCornerDist) <= 50 && rDist < bestRouteDist)) {
+            const navDist = ncp ? Math.sqrt((cx - ncp.x)**2 + (cy - ncp.y)**2) : Infinity;
+            // 코너 우선 → 경로 거리 → 현재위치 거리
+            const THRESH = 50;
+            const betterCorner = cornerDist < bestCornerDist - THRESH;
+            const sameCorner = Math.abs(cornerDist - bestCornerDist) <= THRESH;
+            const betterRoute = rDist < bestRouteDist - THRESH;
+            const sameRoute = Math.abs(rDist - bestRouteDist) <= THRESH;
+            if (betterCorner || (sameCorner && betterRoute) || (sameCorner && sameRoute && navDist < bestNavDist)) {
               bestCornerDist = cornerDist;
               bestRouteDist = rDist;
+              bestNavDist = navDist;
               bestId = bid;
             }
           }
@@ -1176,12 +1185,18 @@ export default function MapViewer({
           newIds.add(bestId);
           clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
         } else if (routeCorners) {
-          // 가려진 클러스터: 여전히 경로 기준이지만 우선도 낮음
+          // 가려진 클러스터: 경로 기준 → 현재위치 tiebreak
+          const ncp2 = navCurrentPosRef.current;
           let bestId = filteredIds[0];
           let bestScore = Infinity;
+          let bestNav = Infinity;
           for (const bid of filteredIds) {
             const score = boothRouteScore(bid);
-            if (score < bestScore) { bestScore = score; bestId = bid; }
+            const booth = boothMapRef.current.get(bid);
+            const navD = (ncp2 && booth) ? Math.sqrt((getBoothCenter(booth).cx - ncp2.x)**2 + (getBoothCenter(booth).cy - ncp2.y)**2) : Infinity;
+            if (score < bestScore - 50 || (Math.abs(score - bestScore) <= 50 && navD < bestNav)) {
+              bestScore = score; bestNav = navD; bestId = bid;
+            }
           }
           const bestBooth = boothMapRef.current.get(bestId);
           const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
