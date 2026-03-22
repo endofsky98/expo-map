@@ -16,7 +16,7 @@ export interface Hall {
   area_y?: number;
   area_width?: number;
   area_height?: number;
-  display_name?: string;
+  display_name?: string | Record<string, string>;
   created_at?: string;
   floor?: Floor;
 }
@@ -59,7 +59,7 @@ export interface Booth {
   shape?: string;
   points?: { x: number; y: number }[] | string;
   radius?: number;
-  display_name?: string;
+  display_name?: string | Record<string, string>;
   created_at?: string;
 }
 

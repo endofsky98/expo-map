@@ -66,7 +66,7 @@ function parseBoothParam(value: string | string[] | undefined): number | null {
 }
 
 export default function HomePage() {
-  const { t } = useI18n();
+  const { t, ln } = useI18n();
   const router = useRouter();
   const [allBooths, setAllBooths] = useState<Booth[]>([]);
   const [booths, setBooths] = useState<Booth[]>([]);
@@ -1036,8 +1036,8 @@ export default function HomePage() {
           {boothPopup && (
             <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-4 w-64">
               <button onClick={() => setBoothPopup(null)} className="absolute top-2 right-3 text-gray-400 hover:text-gray-600 text-sm">&times;</button>
-              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{boothPopup.booth_number}</p>
-              {boothPopup.company && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{typeof boothPopup.company.name === 'string' ? boothPopup.company.name : Object.values(boothPopup.company.name)[0]}</p>}
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{ln(boothPopup.display_name) || boothPopup.booth_number}</p>
+              {boothPopup.company && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{ln(boothPopup.company.name)}</p>}
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setAsStart(boothPopup.id)}
@@ -1072,7 +1072,7 @@ export default function HomePage() {
           <div className="absolute right-4 flex flex-col items-end gap-1.5 z-10 pointer-events-auto settings-fixed-size" style={{ bottom: '144px', right: '16px' }}>
             {/* Bird's-eye / 2D view toggle */}
             <div className="flex items-center gap-2">
-              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">뷰 모드</span>}
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.viewMode')}</span>}
               <button
                 onClick={() => {
                   const next = !isBirdView;
@@ -1096,7 +1096,7 @@ export default function HomePage() {
             {/* 뷰 리셋 — 설정 확장 시에만 */}
             {settingsExpanded && (
             <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '30ms' : '0ms' }}>
-              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">뷰 리셋</span>}
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.viewReset')}</span>}
               <button
                 onClick={() => {
                   const resetView = (window as unknown as Record<string, () => void>).__mapViewerResetView;
@@ -1104,7 +1104,7 @@ export default function HomePage() {
                   setIsBirdView(false);
                 }}
                 className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors"
-                title="뷰 리셋"
+                title={t('settings.viewReset')}
               >
                 <RotateCcw className="h-4 w-4 text-gray-100" />
               </button>
@@ -1112,14 +1112,14 @@ export default function HomePage() {
             )}
             {/* 확대 */}
             <div className="flex items-center gap-2">
-              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">확대</span>}
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.zoomIn')}</span>}
               <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors" title="Zoom in">
                 <ZoomIn className="h-4 w-4 text-gray-100" />
               </button>
             </div>
             {/* 축소 */}
             <div className="flex items-center gap-2">
-              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">축소</span>}
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.zoomOut')}</span>}
               <button onClick={handleZoomOut} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors" title="Zoom out">
                 <ZoomOut className="h-4 w-4 text-gray-100" />
               </button>
@@ -1128,21 +1128,21 @@ export default function HomePage() {
             <div className={`flex flex-col items-end gap-1.5 overflow-hidden transition-all duration-300 ease-out ${settingsExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
               {/* 글자 크게 */}
               <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '50ms' : '0ms' }}>
-                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">글자 크게</span>}
-                <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors text-sm font-bold text-gray-100" title="글자 크게">
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.fontLarger')}</span>}
+                <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors text-sm font-bold text-gray-100" title={t('settings.fontLarger')}>
                   A+
                 </button>
               </div>
               {/* 글자 작게 */}
               <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '100ms' : '0ms' }}>
-                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">글자 작게</span>}
-                <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors text-xs font-bold text-gray-100" title="글자 작게">
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.fontSmaller')}</span>}
+                <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors text-xs font-bold text-gray-100" title={t('settings.fontSmaller')}>
                   A−
                 </button>
               </div>
               {/* 부대시설 통합 토글 */}
               <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '150ms' : '0ms' }}>
-                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">부대시설</span>}
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.facilities')}</span>}
                 <button
                   onClick={() => {
                     setHiddenFacilityTypes(prev => {
@@ -1162,7 +1162,7 @@ export default function HomePage() {
               </div>
               {/* 부스 보이기 토글 */}
               <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '200ms' : '0ms' }}>
-                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{showBooths ? '부스 숨기기' : '부스 보이기'}</span>}
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{showBooths ? t('settings.hideBooths') : t('settings.showBooths')}</span>}
                 <button
                   onClick={() => setShowBooths(prev => !prev)}
                   className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-colors ${
@@ -1170,7 +1170,7 @@ export default function HomePage() {
                       ? 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
                       : 'bg-gray-600/80 border-gray-400/50'
                   }`}
-                  title={showBooths ? '부스 숨기기' : '부스 보이기'}
+                  title={showBooths ? t('settings.hideBooths') : t('settings.showBooths')}
                 >
                   {showBooths
                     ? <Eye className="h-4 w-4 text-gray-100" />
@@ -1182,7 +1182,7 @@ export default function HomePage() {
             {/* 설정 리셋 — 설정 확장 시에만 */}
             {settingsExpanded && (
             <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '250ms' : '0ms' }}>
-              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">설정 리셋</span>}
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{t('settings.settingsReset')}</span>}
               <button
                 onClick={() => {
                   handleFontReset();
@@ -1190,7 +1190,7 @@ export default function HomePage() {
                   setShowBooths(true);
                 }}
                 className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors"
-                title="설정 리셋"
+                title={t('settings.settingsReset')}
               >
                 <RefreshCw className="h-4 w-4 text-gray-100" />
               </button>

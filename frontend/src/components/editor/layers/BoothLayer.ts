@@ -92,7 +92,8 @@ export function renderBoothLayer(props: BoothLayerProps) {
       const companyName = b.company_name || ln((b as any).company?.name);
       const catName = ln((b as any).category?.name);
       // 뷰어와 동일: display_name > 업체명 > 부스번호
-      const boothDisplayName = b.display_name || companyName;
+      const dnRaw = b.display_name;
+      const boothDisplayName = (typeof dnRaw === 'string' ? dnRaw : (dnRaw ? (dnRaw.ko || dnRaw.en || Object.values(dnRaw)[0] || '') : '')) || companyName;
       const hasName = !!boothDisplayName;
 
       if (hasName) {

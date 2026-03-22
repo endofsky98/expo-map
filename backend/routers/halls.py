@@ -24,7 +24,7 @@ def _parse_hall(hall: Hall) -> dict:
         "shape": hall.shape if hall.shape is not None else "rectangle",
         "points": hall.points,
         "type": hall.type if hall.type is not None else "hall",
-        "display_name": hall.display_name,
+        "display_name": json.loads(hall.display_name) if hall.display_name and isinstance(hall.display_name, str) and hall.display_name.startswith('{') else hall.display_name,
         "created_at": hall.created_at,
         "floor": None,
     }
@@ -68,6 +68,7 @@ def create_hall(data: HallCreate, db: Session = Depends(get_db)):
         shape=data.shape,
         points=data.points,
         type=data.type,
+        display_name=json.dumps(data.display_name, ensure_ascii=False) if isinstance(data.display_name, dict) else data.display_name,
     )
     db.add(hall)
     db.commit()
@@ -101,6 +102,8 @@ def update_hall(hall_id: int, data: HallUpdate, db: Session = Depends(get_db)):
         hall.points = data.points
     if data.type is not None:
         hall.type = data.type
+    if data.display_name is not None:
+        hall.display_name = json.dumps(data.display_name, ensure_ascii=False) if isinstance(data.display_name, dict) else data.display_name
     db.commit()
     db.refresh(hall)
     hall = db.query(Hall).options(joinedload(Hall.floor)).filter(Hall.id == hall.id).first()

@@ -17,10 +17,18 @@ function ln(name: string | Record<string, string> | undefined | null): string {
   return name.ko || name.en || Object.values(name)[0] || '';
 }
 
+function parseDisplayName(dn: string | Record<string, string> | undefined | null): { ko: string; en: string } {
+  if (!dn) return { ko: '', en: '' };
+  if (typeof dn === 'string') return { ko: dn, en: '' };
+  return { ko: dn.ko || '', en: dn.en || '' };
+}
+
 function initForm(booth: EditorBooth) {
+  const dnParsed = parseDisplayName(booth.display_name);
   return {
     booth_number: booth.booth_number ?? '',
-    display_name: booth.display_name ?? '',
+    display_name_ko: dnParsed.ko,
+    display_name_en: dnParsed.en,
     x: booth.x ?? 0, y: booth.y ?? 0,
     width: booth.width ?? 0, height: booth.height ?? 0,
     radius: booth.radius ?? 0,
@@ -46,9 +54,12 @@ export function BoothPanel({ booth, categories, companies, onSave, onDelete }: B
   }
 
   function handleSave() {
+    const dnObj: Record<string, string> = {};
+    if (form.display_name_ko) dnObj.ko = form.display_name_ko;
+    if (form.display_name_en) dnObj.en = form.display_name_en;
     const data: Partial<EditorBooth> = {
       booth_number: form.booth_number,
-      display_name: form.display_name || null,
+      display_name: Object.keys(dnObj).length > 0 ? dnObj : null,
       x: form.x, y: form.y,
       category_id: form.category_id ?? undefined,
       is_active: form.is_active,
@@ -81,10 +92,14 @@ export function BoothPanel({ booth, categories, companies, onSave, onDelete }: B
         <input className={input} value={form.booth_number} onChange={e => set('booth_number', e.target.value)} /></div>
 
       {/* 표기이름 */}
-      <div><label className={label}>표기이름 <span className="text-gray-400">(비어있으면 부스명 표시)</span></label>
-        <textarea className={input + ' resize-none'} rows={2} value={form.display_name}
-          onChange={e => set('display_name', e.target.value)}
+      <div><label className={label}>표기이름 (한글) <span className="text-gray-400">(비어있으면 부스명 표시)</span></label>
+        <textarea className={input + ' resize-none'} rows={2} value={form.display_name_ko}
+          onChange={e => set('display_name_ko', e.target.value)}
           placeholder="줄바꿈 가능" /></div>
+      <div><label className={label}>표기이름 (영문)</label>
+        <textarea className={input + ' resize-none'} rows={2} value={form.display_name_en}
+          onChange={e => set('display_name_en', e.target.value)}
+          placeholder="Line break supported" /></div>
 
       {/* 위치 */}
       <div className="grid grid-cols-2 gap-1.5">

@@ -14,7 +14,17 @@ function getHallName(name: EditorHall['name']): string {
 
 export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
   const [name, setName] = useState(getHallName(hall.name));
-  const [displayName, setDisplayName] = useState(hall.display_name ?? '');
+  const [displayNameKo, setDisplayNameKo] = useState(() => {
+    const dn = hall.display_name;
+    if (!dn) return '';
+    if (typeof dn === 'string') return dn;
+    return dn.ko || '';
+  });
+  const [displayNameEn, setDisplayNameEn] = useState(() => {
+    const dn = hall.display_name;
+    if (!dn || typeof dn === 'string') return '';
+    return dn.en || '';
+  });
   const [order, setOrder] = useState(hall.order);
   const [areaX, setAreaX] = useState(hall.area_x ?? 0);
   const [areaY, setAreaY] = useState(hall.area_y ?? 0);
@@ -23,7 +33,9 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
 
   useEffect(() => {
     setName(getHallName(hall.name));
-    setDisplayName(hall.display_name ?? '');
+    const dn = hall.display_name;
+    setDisplayNameKo(!dn ? '' : typeof dn === 'string' ? dn : dn.ko || '');
+    setDisplayNameEn(!dn || typeof dn === 'string' ? '' : dn.en || '');
     setOrder(hall.order);
     setAreaX(hall.area_x ?? 0);
     setAreaY(hall.area_y ?? 0);
@@ -34,7 +46,7 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
   const handleSave = () => {
     const data: any = {
       name: { ko: name, en: name },
-      display_name: displayName || undefined,
+      display_name: (displayNameKo || displayNameEn) ? { ko: displayNameKo, en: displayNameEn } : undefined,
       order,
       area_x: areaX,
       area_y: areaY,
@@ -67,15 +79,26 @@ export function HallPanel({ hall, onSave, onDelete }: HallPanelProps) {
         />
       </div>
 
-      {/* Display Name */}
+      {/* Display Name (한글) */}
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-slate-400 uppercase tracking-wide">표기이름 <span className="text-slate-500">(비어있으면 구역명 표시)</span></label>
+        <label className="text-xs text-slate-400 uppercase tracking-wide">표기이름 (한글) <span className="text-slate-500">(비어있으면 구역명 표시)</span></label>
         <textarea
           className="bg-slate-700 rounded px-2 py-1 text-slate-100 outline-none focus:ring-1 focus:ring-violet-500 resize-none"
           rows={2}
-          value={displayName}
-          onChange={e => setDisplayName(e.target.value)}
+          value={displayNameKo}
+          onChange={e => setDisplayNameKo(e.target.value)}
           placeholder="줄바꿈 가능"
+        />
+      </div>
+      {/* Display Name (영문) */}
+      <div className="flex flex-col gap-1">
+        <label className="text-xs text-slate-400 uppercase tracking-wide">표기이름 (영문)</label>
+        <textarea
+          className="bg-slate-700 rounded px-2 py-1 text-slate-100 outline-none focus:ring-1 focus:ring-violet-500 resize-none"
+          rows={2}
+          value={displayNameEn}
+          onChange={e => setDisplayNameEn(e.target.value)}
+          placeholder="Line break supported"
         />
       </div>
 

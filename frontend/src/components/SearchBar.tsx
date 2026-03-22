@@ -41,6 +41,7 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
       const localResults = booths.filter(
         (b) =>
           b.booth_number.toLowerCase().includes(keyword) ||
+          searchInName(b.display_name, keyword) ||
           searchInName(b.company?.name, keyword) ||
           searchInName(b.category?.name, keyword)
       );
@@ -76,7 +77,7 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
   }, []);
 
   function handleSelect(booth: Booth) {
-    setQuery(ln(booth.company?.name) || booth.booth_number);
+    setQuery(ln(booth.display_name) || ln(booth.company?.name) || booth.booth_number);
     setIsOpen(false);
     onSelect(booth);
   }
@@ -125,7 +126,7 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
                 </span>
                 <div className="flex-1 min-w-0">
                   <span className="truncate block text-xs text-gray-700 dark:text-gray-200">
-                    {ln(booth.company?.name) || t('search.unassigned')}
+                    {ln(booth.display_name) || ln(booth.company?.name) || t('search.unassigned')}
                   </span>
                   {(booth.floor || booth.hall) && (
                     <span className="text-[10px] text-gray-400 dark:text-gray-500">

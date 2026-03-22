@@ -279,7 +279,7 @@ export default function PathfindingUI({
                 <div className="flex items-start gap-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
                   <span className="text-gray-400 text-xs shrink-0 mt-0.5">💡</span>
                   <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                    지도에서 원하는 위치를 <b>길게 터치</b>하면 바로 출발/도착을 지정할 수 있어요
+                    {t('route.longPressHint')}
                   </p>
                 </div>
 

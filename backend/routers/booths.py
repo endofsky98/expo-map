@@ -35,7 +35,7 @@ def _parse_booth(booth: Booth) -> dict:
         "radius_x": booth.radius_x,
         "radius_y": booth.radius_y,
         "rotation": booth.rotation if booth.rotation is not None else 0,
-        "display_name": booth.display_name,
+        "display_name": json.loads(booth.display_name) if booth.display_name and isinstance(booth.display_name, str) and booth.display_name.startswith('{') else booth.display_name,
         "created_at": booth.created_at,
         "company": None,
         "category": None,
@@ -175,6 +175,7 @@ def create_booth(data: BoothCreate, db: Session = Depends(get_db)):
         radius_x=data.radius_x,
         radius_y=data.radius_y,
         rotation=data.rotation,
+        display_name=json.dumps(data.display_name, ensure_ascii=False) if isinstance(data.display_name, dict) else data.display_name,
     )
     db.add(booth)
     db.commit()
@@ -190,6 +191,8 @@ def update_booth(booth_id: int, data: BoothUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="Booth not found")
     update_data = data.model_dump(exclude_unset=True)
     for key, value in update_data.items():
+        if key == 'display_name' and isinstance(value, dict):
+            value = json.dumps(value, ensure_ascii=False)
         setattr(booth, key, value)
     db.commit()
     db.refresh(booth)

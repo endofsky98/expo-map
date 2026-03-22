@@ -18,7 +18,7 @@ export interface EditorBooth {
   rotation?: number;
   company_id?: number;
   company_name?: string;  // 표시용
-  display_name?: string | null;  // 표기이름 (줄바꿈 가능)
+  display_name?: string | Record<string, string> | null;  // 표기이름 (줄바꿈 가능)
   category_id?: number;
   floor_id?: number;
   hall_id?: number;
@@ -88,7 +88,7 @@ export interface EditorHall {
   area_x?: number; area_y?: number;
   area_width?: number; area_height?: number;
   points?: Point[];
-  display_name?: string;
+  display_name?: string | Record<string, string>;
 }
 
 // ===== Editor Mode =====

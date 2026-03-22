@@ -1059,7 +1059,7 @@ export default function MapViewer({
     const margin = -20;
     if (minSx < margin || maxSx > cvW - margin || minSy < margin || maxSy > cvH - margin) return null;
 
-    const name = commonHall.display_name || (typeof commonHall.name === 'string' ? commonHall.name : (commonHall.name ? Object.values(commonHall.name)[0] : null));
+    const name = lnRef.current(commonHall.display_name) || lnRef.current(commonHall.name);
     return name || null;
   }
 
@@ -1406,7 +1406,7 @@ export default function MapViewer({
         if (h.area_x == null || h.area_y == null || h.area_width == null || h.area_height == null) continue;
         if (cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height) {
           const prev = hallClusterCount.get(h.id);
-          const hn = h.display_name || (typeof h.name === 'string' ? h.name : (h.name ? Object.values(h.name)[0] : ''));
+          const hn = lnRef.current(h.display_name) || lnRef.current(h.name);
           if (!prev) hallClusterCount.set(h.id, { count: 1, repBoothId: rep.boothId, hallName: hn });
           else hallClusterCount.set(h.id, { count: prev.count + 1, repBoothId: prev.repBoothId, hallName: hn });
           break; // 가장 먼저 매칭된 홀
@@ -1657,9 +1657,9 @@ export default function MapViewer({
       if (nameEl) {
         // 클러스터 대표면 홀/구역 이름 우선 사용
         const clusterName = clusterNameMapRef.current.get(booth.id);
-        const displayName = clusterName || booth.display_name || lnFn(booth.company?.name) || '';
+        const displayName = clusterName || lnFn(booth.display_name) || lnFn(booth.company?.name) || '';
         nameEl.textContent = displayName || booth.booth_number;
-        nameEl.style.whiteSpace = (clusterName || booth.display_name) ? 'pre-line' : 'nowrap';
+        nameEl.style.whiteSpace = (clusterName || lnFn(booth.display_name)) ? 'pre-line' : 'nowrap';
         nameEl.style.lineHeight = '1.1';
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
         // 홀/구역 이름이면 부스번호 숨김, 그 외 표기이름/회사명 있으면 표시
@@ -1802,13 +1802,13 @@ export default function MapViewer({
         // 표기이름 > 회사명 > 부스번호
         const nameSpan = document.createElement('div');
         nameSpan.setAttribute('data-name', '');
-        const initDisplayName = booth.display_name || lnRef.current(booth.company?.name) || '';
+        const initDisplayName = lnRef.current(booth.display_name) || lnRef.current(booth.company?.name) || '';
         nameSpan.textContent = initDisplayName || booth.booth_number;
         nameSpan.style.fontSize = `${markerFontSizeRef.current}px`;
         nameSpan.style.fontWeight = '700';
         nameSpan.style.fontFamily = 'Inter, sans-serif';
         nameSpan.style.color = '#1f2937';
-        nameSpan.style.whiteSpace = booth.display_name ? 'pre-line' : 'nowrap';
+        nameSpan.style.whiteSpace = lnRef.current(booth.display_name) ? 'pre-line' : 'nowrap';
         nameSpan.style.lineHeight = '1.1';
         nameSpan.style.overflow = 'visible';
         nameSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
