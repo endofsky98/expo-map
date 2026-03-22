@@ -2136,14 +2136,14 @@ export default function MapViewer({
           <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#22c55e" stroke="#fff" strokeWidth="2.5"/>
           <circle cx="14" cy="14" r="8" fill="#22c55e"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
         </svg>
-        <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>출발</span>
+        <span style={{ fontSize: '12px', color: '#22c55e', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>{t('route.from')}</span>
       </div>
       <div ref={navEndMarkerRef} className="absolute pointer-events-none" style={{ display: 'none', flexDirection: 'column', alignItems: 'center', zIndex: 4 }}>
         <svg width="14" height="18" viewBox="0 0 28 36" style={{ filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))' }}>
           <path d="M14 0C6.27 0 0 6.27 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.27 21.73 0 14 0z" fill="#ef4444" stroke="#fff" strokeWidth="2.5"/>
           <circle cx="14" cy="14" r="8" fill="#ef4444"/><circle cx="14" cy="14" r="8" fill="none" stroke="#fff" strokeWidth="2"/>
         </svg>
-        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>도착</span>
+        <span style={{ fontSize: '12px', color: '#ef4444', fontWeight: 700, whiteSpace: 'nowrap', textShadow: '0 0 3px #fff, 0 0 3px #fff' }}>{t('route.to')}</span>
       </div>
 
       {/* 현재 위치 마커 (네비게이션 모드) */}
