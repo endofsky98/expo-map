@@ -356,7 +356,21 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     if (pointers.size === 0) isDragging = false;
   };
 
-  const onContextMenu = (e: Event) => { e.preventDefault(); };
+  const onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    // 마우스 우클릭 → 출발/도착 팝업 (롱프레스와 동일)
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left;
+    const sy = e.clientY - rect.top;
+    const t = transformRef.current;
+    const cos = Math.cos(-t.rotation);
+    const sin = Math.sin(-t.rotation);
+    const dx = sx - t.x;
+    const dy = sy - t.y;
+    const wx = (dx * cos - dy * sin) / t.scale;
+    const wy = (dx * sin + dy * cos) / t.scale;
+    onLongPressRef.current?.(wx, wy, e.clientX, e.clientY);
+  };
 
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
