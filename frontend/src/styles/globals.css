@@ -66,6 +66,10 @@ body {
 /* 설정 버튼 영역 — 글자크기 조절 영향 받지 않도록 고정 */
 .settings-fixed-size {
   font-size: 16px !important;
+  line-height: 1.5 !important;
+}
+.settings-fixed-size * {
+  line-height: 1.5 !important;
 }
 .settings-fixed-size .w-10 {
   width: 40px !important;
@@ -108,4 +112,13 @@ body {
 }
 .settings-fixed-size .rounded-md {
   border-radius: 6px !important;
+}
+.settings-fixed-size .rounded-xl {
+  border-radius: 12px !important;
+}
+.settings-fixed-size .p-2 {
+  padding: 8px !important;
+}
+.settings-fixed-size .shadow-sm {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05) !important;
 }
