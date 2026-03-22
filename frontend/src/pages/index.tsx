@@ -742,9 +742,23 @@ export default function HomePage() {
                   if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 2.0);
                 }, 200);
               }}
+              onSetStart={(booth) => {
+                const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
+                setNavStart({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
+                if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
+                setTimeout(() => {
+                  const panTo = (window as any).__mapViewerPanToWorld;
+                  if (panTo) panTo(c.x, c.y, 2.0);
+                }, 200);
+              }}
               onSetEnd={(booth) => {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
+                if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
+                setTimeout(() => {
+                  const panTo = (window as any).__mapViewerPanToWorld;
+                  if (panTo) panTo(c.x, c.y, 2.0);
+                }, 200);
               }}
             />
           </div>

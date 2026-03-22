@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Eye, Play, MapPin } from 'lucide-react';
 import { Booth } from '@/types';
 import { useI18n } from '@/lib/i18n';
 import { searchBooths } from '@/lib/api';
@@ -8,6 +8,7 @@ interface SearchBarProps {
   booths: Booth[];
   onSelect: (booth: Booth) => void;
   onView?: (booth: Booth) => void;
+  onSetStart?: (booth: Booth) => void;
   onSetEnd?: (booth: Booth) => void;
 }
 
@@ -20,7 +21,7 @@ function searchInName(
   return Object.values(name).some((v) => v.toLowerCase().includes(query));
 }
 
-export default function SearchBar({ booths, onSelect, onView, onSetEnd }: SearchBarProps) {
+export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetEnd }: SearchBarProps) {
   const { t, ln } = useI18n();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -139,17 +140,28 @@ export default function SearchBar({ booths, onSelect, onView, onSetEnd }: Search
               {onView && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onView(booth); setIsOpen(false); }}
-                  className="shrink-0 px-2 py-1 text-[10px] font-medium rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+                  className="shrink-0 p-1.5 rounded bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 transition-colors"
+                  title="보기"
                 >
-                  보기
+                  <Eye className="h-3.5 w-3.5" />
+                </button>
+              )}
+              {onSetStart && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSetStart(booth); setIsOpen(false); }}
+                  className="shrink-0 p-1.5 rounded bg-green-50 text-green-600 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40 transition-colors"
+                  title="출발"
+                >
+                  <Play className="h-3.5 w-3.5" />
                 </button>
               )}
               {onSetEnd && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onSetEnd(booth); setIsOpen(false); }}
-                  className="shrink-0 px-2 py-1 text-[10px] font-medium rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
+                  className="shrink-0 p-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
+                  title="도착"
                 >
-                  도착
+                  <MapPin className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
