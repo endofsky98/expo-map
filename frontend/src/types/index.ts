@@ -140,13 +140,6 @@ export interface RoutePoint {
   hall_id?: number;
 }
 
-export interface RouteResult {
-  path: RoutePoint[];
-  total_distance: number;
-  floors_visited: number[];
-  facilities_used: Facility[];
-}
-
 export interface Setting {
   id: number;
   key: string;
@@ -158,7 +151,6 @@ declare global {
   interface Window {
     onBoothClick?: (boothId: number, boothData: Booth) => void;
     onMapClick?: (x: number, y: number, floorId: number) => void;
-    onRouteReady?: (route: RouteResult) => void;
     setCurrentPosition?: (x: number, y: number, floorId: number, hallId: number) => void;
   }
 }

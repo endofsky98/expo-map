@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import * as PIXI from 'pixi.js';
-import { Booth, Hall, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel, RouteResult } from '@/types';
+import { Booth, Hall, Category, MapImage, Facility, RoutePoint, Obstacle, ZoomLevel } from '@/types';
 import { useI18n } from '@/lib/i18n';
 import {
   MapViewerProps, TileInfo, CurrentPosition, FACILITY_STYLES,
@@ -26,7 +26,6 @@ export default function MapViewer({
   hiddenFacilityTypes,
   obstacles,
   routePath,
-  routeResult,
   currentFloorId,
   currentPosition,
   showBooths,
@@ -174,10 +173,7 @@ export default function MapViewer({
     return markers;
   }, [routePath, currentFloorId]);
 
-  const routeFacilityMarkers = useMemo(() => {
-    if (!routeResult?.facilities_used || !currentFloorId) return [];
-    return routeResult.facilities_used.filter((f) => f.floor_id === currentFloorId);
-  }, [routeResult, currentFloorId]);
+  const routeFacilityMarkers: Facility[] = [];
 
   const imgWidth = currentImage?.width || 800;
   const imgHeight = currentImage?.height || 600;

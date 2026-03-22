@@ -3,9 +3,9 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ZoomIn, ZoomOut, Settings, Map as MapIcon, AlertTriangle, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
-import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle, RouteResult } from '@/types';
-import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchRoute, fetchSetting } from '@/lib/api';
+import { ZoomIn, ZoomOut, Settings, Map as MapIcon, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
+import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle } from '@/types';
+import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchSetting } from '@/lib/api';
 import { findPath, type PathResult } from '@/components/map/pathfinding';
 import { getBoothCenter } from '@/components/map/clusterUtils';
 import { useI18n } from '@/lib/i18n';
@@ -79,8 +79,7 @@ export default function HomePage() {
   const [selectedBoothId, setSelectedBoothId] = useState<number | null>(null);
   const [activeCategories, setActiveCategories] = useState<Set<number>>(new Set());
   const [hiddenFacilityTypes, setHiddenFacilityTypes] = useState<Set<string>>(new Set());
-  const [routeResult, setRouteResult] = useState<RouteResult | null>(null);
-  const [routeError, setRouteError] = useState<string | null>(null);
+
   const [pathNodes, setPathNodes] = useState<any[]>([]);
   const [pathEdges, setPathEdges] = useState<any[]>([]);
   const [navMode, setNavMode] = useState<'none' | 'waiting_start'>('none');
@@ -190,29 +189,23 @@ export default function HomePage() {
     loadFloorData();
   }, [selectedFloorId]);
 
-  // URL params for pathfinding
+  // URL params for pathfinding — 클라이언트 A* 기반
   useEffect(() => {
     const fromId = parseBoothParam(router.query.from as string);
     const toId = parseBoothParam(router.query.to as string);
-    if (fromId && toId) {
-      setRouteError(null);
-      fetchRoute(fromId, toId)
-        .then((route) => {
-          setRouteResult(route);
-          if (typeof window !== 'undefined' && window.onRouteReady) {
-            window.onRouteReady(route);
-          }
-          if (route.path.length > 0) {
-            const start = route.path[0];
-            if (start.floor_id) setSelectedFloorId(start.floor_id);
-          }
-        })
-        .catch(() => {
-          setRouteError(t('route.notFound'));
-        });
+    if (fromId && toId && allBooths.length > 0) {
+      const fromBooth = allBooths.find(b => b.id === fromId);
+      const toBooth = allBooths.find(b => b.id === toId);
+      if (fromBooth && toBooth) {
+        const fc = { x: fromBooth.x + fromBooth.width / 2, y: fromBooth.y + fromBooth.height / 2 };
+        const tc = { x: toBooth.x + toBooth.width / 2, y: toBooth.y + toBooth.height / 2 };
+        setNavStart({ x: fc.x, y: fc.y, floorId: fromBooth.floor_id, boothId: fromBooth.id });
+        setNavEnd({ x: tc.x, y: tc.y, floorId: toBooth.floor_id, boothId: toBooth.id });
+        if (fromBooth.floor_id) setSelectedFloorId(fromBooth.floor_id);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.query.from, router.query.to]);
+  }, [router.query.from, router.query.to, allBooths]);
 
   // URL params for current position
   useEffect(() => {
@@ -813,8 +806,7 @@ export default function HomePage() {
               hiddenFacilityTypes={hiddenFacilityTypes}
               obstacles={obstacles}
               halls={halls}
-              routePath={routeResult?.path || null}
-              routeResult={routeResult}
+              routePath={null}
               currentFloorId={selectedFloorId}
               currentPosition={currentPosition}
               showBooths={showBooths}
@@ -865,8 +857,8 @@ export default function HomePage() {
 
           {/* 네비게이션 모드 하단 바 */}
           {navActive && (
-            <div className="absolute bottom-0 left-0 right-0 z-40 p-4 bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-2 max-w-lg mx-auto">
+            <div className="absolute bottom-0 left-0 right-0 z-40 p-4 pointer-events-none">
+              <div className="flex items-center gap-2 max-w-lg mx-auto pointer-events-auto">
                 <button onClick={navPrev} className="px-4 py-3 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   ◀ 이전
                 </button>
@@ -878,7 +870,7 @@ export default function HomePage() {
                 </button>
               </div>
               {clientRoute && (
-                <div className="mt-2 max-w-lg mx-auto">
+                <div className="mt-2 max-w-lg mx-auto pointer-events-auto">
                   <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (() => {
                       let acc = 0;
@@ -984,51 +976,7 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* Route error banner */}
-          {routeError && (
-            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-lg shadow-sm">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-              <span className="text-sm text-red-700 dark:text-red-300">{routeError}</span>
-              <button onClick={() => setRouteError(null)} className="text-red-400 hover:text-red-600 text-xs ml-2">&times;</button>
-            </div>
-          )}
 
-          {/* Multi-floor route indicator */}
-          {routeResult && routeResult.floors_visited.length > 1 && (
-            <div className="absolute top-4 left-4 z-20 bg-white/95 dark:bg-[#1e1e1e]/95 backdrop-blur-sm border border-gray-200 dark:border-gray-500/40 rounded-lg shadow-sm p-3 max-w-52">
-              <p className="text-[10px] font-semibold text-gray-600 dark:text-gray-300 uppercase mb-1.5">{t('route.floorsUsed')}</p>
-              <div className="flex flex-wrap gap-1">
-                {routeResult.floors_visited.map((fid) => {
-                  const fl = floors.find((f) => f.id === fid);
-                  const isCurrent = fid === selectedFloorId;
-                  return (
-                    <button
-                      key={fid}
-                      onClick={() => setSelectedFloorId(fid)}
-                      className={`px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                        isCurrent
-                          ? 'bg-indigo-600 text-white dark:bg-indigo-500'
-                          : 'bg-gray-100 text-gray-600 hover:bg-indigo-50 hover:text-indigo-600 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:text-indigo-400'
-                      }`}
-                    >
-                      {fl ? (typeof fl.name === 'string' ? fl.name : Object.values(fl.name)[0]) : `F${fid}`}
-                    </button>
-                  );
-                })}
-              </div>
-              {routeResult.facilities_used.length > 0 && (
-                <div className="mt-2 pt-1.5 border-t border-gray-100 dark:border-gray-700 space-y-0.5">
-                  {routeResult.facilities_used.map((fac, i) => (
-                    <div key={i} className="flex items-center gap-1.5 text-[10px] text-gray-500 dark:text-gray-400">
-                      <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                      {fac.type === 'stairs' ? 'Stairs' : fac.type === 'elevator' ? 'Elevator' : 'Escalator'}
-                    </div>
-                  ))}
-                </div>
-              )}
-              <p className="mt-1.5 text-[10px] text-gray-400 dark:text-gray-500">{t('route.distance')}: {Math.round(routeResult.total_distance)}px</p>
-            </div>
-          )}
 
           {/* Zoom controls + View toggle + Booth toggle */}
           <div className="absolute bottom-6 right-6 flex flex-col items-center gap-2 z-10">
