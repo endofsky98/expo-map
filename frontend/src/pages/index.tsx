@@ -383,25 +383,52 @@ export default function HomePage() {
     return -Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
   }
 
-  // 네비게이션 시작 — 줌 세팅 + 출발 지점으로 즉시 이동+회전
+  // 실선(네비 유효) 구간의 시작/끝 거리 계산
+  function getNavRange(): { navMinDist: number; navMaxDist: number } {
+    if (!clientRoute) return { navMinDist: 0, navMaxDist: 0 };
+    const path = clientRoute.path;
+    let navMinDist = 0;
+    let navMaxDist = clientRoute.distance;
+
+    // startExtIdx: path[0]~path[startExtIdx] 가 점선 → 이 구간 거리 skip
+    if (clientRoute.startExtIdx != null && clientRoute.startExtIdx > 0) {
+      let d = 0;
+      for (let i = 1; i <= clientRoute.startExtIdx; i++) {
+        d += Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
+      }
+      navMinDist = d;
+    }
+    // endExtIdx: path[endExtIdx]~끝이 점선 → 이 구간 거리 제외
+    if (clientRoute.endExtIdx != null && clientRoute.endExtIdx < path.length - 1) {
+      let d = 0;
+      for (let i = clientRoute.endExtIdx + 1; i < path.length; i++) {
+        d += Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
+      }
+      navMaxDist = clientRoute.distance - d;
+    }
+    return { navMinDist, navMaxDist };
+  }
+
+  // 네비게이션 시작 — 줌 세팅 + 실선 시작 지점으로 이동
   function startNavigation() {
     if (!clientRoute) return;
+    const { navMinDist } = getNavRange();
     setNavActive(true);
-    navCurDistRef.current = 0;
-    setNavCurDist(0);
-    const pos = clientRoute.path[0];
-    const rot = dirAtDist(0);
-    // 줌 1.5배 + 회전 즉시 설정 후 애니메이션
+    navCurDistRef.current = navMinDist;
+    setNavCurDist(navMinDist);
+    const pos = posAtDist(navMinDist);
+    const rot = dirAtDist(navMinDist);
     const panTo = (window as any).__mapViewerPanToWorld;
     const setTilt = (window as any).__mapViewerSetTilt;
     if (setTilt) setTilt(60);
-    if (panTo) panTo(pos.x, pos.y, 0.3, rot);
+    if (pos && panTo) panTo(pos.x, pos.y, 0.3, rot);
   }
 
-  // 다음 (100px 전진)
+  // 다음 (100px 전진) — 실선 구간 내에서만
   function navNext() {
     if (!clientRoute) return;
-    const newDist = Math.min(navCurDistRef.current + 100, clientRoute.distance);
+    const { navMaxDist } = getNavRange();
+    const newDist = Math.min(navCurDistRef.current + 100, navMaxDist);
     navCurDistRef.current = newDist;
     setNavCurDist(newDist);
     const pos = posAtDist(newDist);
@@ -410,15 +437,16 @@ export default function HomePage() {
       const animNav = (window as any).__mapViewerAnimateNav;
       if (animNav) animNav(pos.x, pos.y, rot, 500);
     }
-    if (newDist >= clientRoute.distance) {
+    if (newDist >= navMaxDist) {
       setNavConfirm('arrived');
     }
   }
 
-  // 이전 (100px 후퇴) — 방향은 다음 방향으로
+  // 이전 (100px 후퇴) — 실선 구간 내에서만
   function navPrev() {
     if (!clientRoute) return;
-    const newDist = Math.max(navCurDistRef.current - 100, 0);
+    const { navMinDist } = getNavRange();
+    const newDist = Math.max(navCurDistRef.current - 100, navMinDist);
     navCurDistRef.current = newDist;
     setNavCurDist(newDist);
     const pos = posAtDist(newDist);
