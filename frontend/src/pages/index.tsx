@@ -398,10 +398,7 @@ export default function HomePage() {
       }
 
       const destBooth = _navEnd.boothId ? useBooths.find((b: any) => b.id === _navEnd.boothId) : null;
-      console.log('[route] isMulti:', isMultiFloor, 'nodes:', useNodes.length, 'edges:', useEdges.length,
-        'start:', { x: _navStart.x, y: _navStart.y, f: _navStart.floorId },
-        'end:', { x: _navEnd.x, y: _navEnd.y, f: _navEnd.floorId },
-        'destBooth:', destBooth?.id);
+      
       let result: ReturnType<typeof findPath>;
       if (destBooth) {
         result = findPath({ x: _navStart.x, y: _navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
@@ -409,7 +406,7 @@ export default function HomePage() {
         const fakeBooth = { id: -1, booth_number: '', x: _navEnd.x - 1, y: _navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
         result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
       }
-      console.log('[route] result:', result ? { pathLen: result.path.length, dist: result.distance, floors: result.floors, segs: result.floorSegments?.map(s => ({ f: s.floorId, pts: s.path.length, d: s.distance })) } : null);
+      
       // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
         const last = result.path[result.path.length - 1];
@@ -434,15 +431,26 @@ export default function HomePage() {
         }
       }
       setClientRoute(result);
+      // 현재 층 세그먼트의 중간 지점으로 자동 이동
+      if (result) {
+        const curSeg = result.floorSegments?.find(s => s.floorId === _navStart.floorId) ?? result.floorSegments?.[0];
+        const midPath = curSeg?.path ?? result.path;
+        if (midPath.length >= 2) {
+          const mid = midPath[Math.floor(midPath.length / 2)];
+          const panTo = (window as any).__mapViewerPanToWorld;
+          if (panTo) setTimeout(() => panTo(mid.x, mid.y), 200);
+        }
+      }
     }
 
     computeRoute();
   }, [navStart, navEnd]);
 
-  // 경로 위 거리 d에서의 좌표
+  // 경로 위 거리 d에서의 좌표 (현재 층 기준)
   function posAtDist(d: number): { x: number; y: number } | null {
-    if (!clientRoute) return null;
-    const path = clientRoute.path;
+    const route = currentFloorRoute ?? clientRoute;
+    if (!route) return null;
+    const path = route.path;
     let traveled = 0;
     for (let i = 1; i < path.length; i++) {
       const dx = path[i].x - path[i-1].x, dy = path[i].y - path[i-1].y;
@@ -461,38 +469,35 @@ export default function HomePage() {
 
   // 경로 위 특정 거리의 진행 방향 각도 (다음 방향)
   function dirAtDist(d: number): number {
-    if (!clientRoute) return 0;
-    const path = clientRoute.path;
-    // d 위치에서 약간 앞의 좌표로 방향 계산
+    const route = currentFloorRoute ?? clientRoute;
+    if (!route) return 0;
     const p0 = posAtDist(d);
-    const p1 = posAtDist(Math.min(d + 20, clientRoute.distance));
+    const p1 = posAtDist(Math.min(d + 20, route.distance));
     if (!p0 || !p1 || (p0.x === p1.x && p0.y === p1.y)) return 0;
-    // 화면 위쪽이 진행 방향을 가리키도록: 지도를 반대로 회전
     return -Math.atan2(p1.x - p0.x, -(p1.y - p0.y));
   }
 
   // 실선(네비 유효) 구간의 시작/끝 거리 계산
   function getNavRange(): { navMinDist: number; navMaxDist: number } {
-    if (!clientRoute) return { navMinDist: 0, navMaxDist: 0 };
-    const path = clientRoute.path;
+    const route = currentFloorRoute ?? clientRoute;
+    if (!route) return { navMinDist: 0, navMaxDist: 0 };
+    const path = route.path;
     let navMinDist = 0;
-    let navMaxDist = clientRoute.distance;
+    let navMaxDist = route.distance;
 
-    // startExtIdx: path[0]~path[startExtIdx] 가 점선 → 이 구간 거리 skip
-    if (clientRoute.startExtIdx != null && clientRoute.startExtIdx > 0) {
+    if (route.startExtIdx != null && route.startExtIdx > 0) {
       let d = 0;
-      for (let i = 1; i <= clientRoute.startExtIdx; i++) {
+      for (let i = 1; i <= route.startExtIdx; i++) {
         d += Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
       }
       navMinDist = d;
     }
-    // endExtIdx: path[endExtIdx]~끝이 점선 → 이 구간 거리 제외
-    if (clientRoute.endExtIdx != null && clientRoute.endExtIdx < path.length - 1) {
+    if (route.endExtIdx != null && route.endExtIdx < path.length - 1) {
       let d = 0;
-      for (let i = clientRoute.endExtIdx + 1; i < path.length; i++) {
+      for (let i = route.endExtIdx + 1; i < path.length; i++) {
         d += Math.hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y);
       }
-      navMaxDist = clientRoute.distance - d;
+      navMaxDist = route.distance - d;
     }
     return { navMinDist, navMaxDist };
   }
@@ -502,8 +507,7 @@ export default function HomePage() {
 
   // 네비게이션 시작 — 줌 세팅 + 실선 시작 지점으로 이동
   function startNavigation() {
-    if (!clientRoute) return;
-    if (isMultiFloorRoute) return; // 멀티층 네비는 아직 미지원
+    if (!currentFloorRoute) return;
     const { navMinDist } = getNavRange();
     setNavActive(true);
     navCurDistRef.current = navMinDist;
@@ -518,7 +522,7 @@ export default function HomePage() {
 
   // 다음 (100px 전진) — 실선 구간 내에서만
   function navNext() {
-    if (!clientRoute) return;
+    if (!currentFloorRoute) return;
     const { navMaxDist } = getNavRange();
     const newDist = Math.min(navCurDistRef.current + 100, navMaxDist);
     navCurDistRef.current = newDist;
@@ -536,7 +540,7 @@ export default function HomePage() {
 
   // 이전 (100px 후퇴) — 실선 구간 내에서만
   function navPrev() {
-    if (!clientRoute) return;
+    if (!currentFloorRoute) return;
     const { navMinDist } = getNavRange();
     const newDist = Math.max(navCurDistRef.current - 100, navMinDist);
     navCurDistRef.current = newDist;
@@ -635,7 +639,6 @@ export default function HomePage() {
     // floorSegments 없으면 (구버전 호환) 그대로
     return clientRoute;
   }, [clientRoute, selectedFloorId]);
-  console.log('[floor] selectedFloorId:', selectedFloorId, 'currentFloorRoute:', currentFloorRoute ? { pathLen: currentFloorRoute.path.length, dist: currentFloorRoute.distance } : null);
 
   const showMap = !loading && (booths.length > 0 || currentImage !== null);
   const fromBooth = allBooths.find((b) => b.id === pathFrom);
@@ -691,7 +694,7 @@ export default function HomePage() {
                 도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
               <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
-              {clientRoute && !navActive && (
+              {currentFloorRoute && !navActive && (
                 <button onClick={startNavigation} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                   🧭 네비게이션
                 </button>

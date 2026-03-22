@@ -385,11 +385,9 @@ export function findPath(
 
   // 3. 출발점 스냅 (같은 층만)
   const start = snapToGraph(startPoint, graph, segments, startFloorId);
-  console.log('[pathfind] start snap:', start.nodeId, start.point, 'startFloorId:', startFloorId);
 
   // 4. 도착 후보 (같은 층만)
   const destCandidates = findDestCandidates(destBooth, graph, segments, allBooths, obstacles, destFloorId);
-  console.log('[pathfind] destCandidates:', destCandidates.length, 'destFloorId:', destFloorId);
   if (destCandidates.length === 0) return null;
 
   // 5. 각 후보에 A* → 최단 경로 선택

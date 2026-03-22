@@ -840,10 +840,8 @@ export default function MapViewer({
     gfx.clear();
     routeAnimRef.current = null;
 
-    console.log('[MapViewer route] clientRoute:', clientRoute ? { pathLen: clientRoute.path.length, dist: clientRoute.distance } : null, 'gfx:', !!gfx);
     if (!clientRoute || clientRoute.path.length < 2) return;
     const path = clientRoute.path;
-    console.log('[MapViewer route] drawing', path.length, 'points, first:', path[0], 'last:', path[path.length-1]);
     const startExt = clientRoute.startExtIdx ?? -1; // path[0]~path[startExt] 점선
     const endExt = clientRoute.endExtIdx ?? path.length; // path[endExt]~끝 점선
 
