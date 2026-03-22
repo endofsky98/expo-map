@@ -734,7 +734,7 @@ export default function HomePage() {
                 도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
               <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
-              {currentFloorRoute && !navActive && (
+              {clientRoute && !navActive && (
                 <button onClick={startNavigation} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                   🧭 네비게이션
                 </button>
