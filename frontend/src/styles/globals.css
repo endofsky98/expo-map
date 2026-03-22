@@ -62,3 +62,50 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.2s ease-out forwards;
 }
+
+/* 설정 버튼 영역 — 글자크기 조절 영향 받지 않도록 고정 */
+.settings-fixed-size {
+  font-size: 16px !important;
+}
+.settings-fixed-size .w-10 {
+  width: 40px !important;
+  min-width: 40px !important;
+}
+.settings-fixed-size .h-10 {
+  height: 40px !important;
+  min-height: 40px !important;
+}
+.settings-fixed-size .h-4 {
+  height: 16px !important;
+  width: 16px !important;
+}
+.settings-fixed-size .w-4 {
+  width: 16px !important;
+  height: 16px !important;
+}
+.settings-fixed-size .text-xs {
+  font-size: 12px !important;
+}
+.settings-fixed-size .text-sm {
+  font-size: 14px !important;
+}
+.settings-fixed-size .gap-1\.5 {
+  gap: 6px !important;
+}
+.settings-fixed-size .gap-2 {
+  gap: 8px !important;
+}
+.settings-fixed-size .px-2 {
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+.settings-fixed-size .py-1 {
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+.settings-fixed-size .rounded-lg {
+  border-radius: 8px !important;
+}
+.settings-fixed-size .rounded-md {
+  border-radius: 6px !important;
+}
