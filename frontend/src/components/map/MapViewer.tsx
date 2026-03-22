@@ -1898,7 +1898,7 @@ export default function MapViewer({
       const hexColor = '#' + (style.color).toString(16).padStart(6, '0');
 
       const textColor = style.textColor || '#fff';
-      const borderColor = style.color === 0xffffff ? 'rgba(209,213,219,0.9)' : 'rgba(255,255,255,0.9)';
+      const borderColor = style.borderColor || (style.color === 0xffffff ? 'rgba(209,213,219,0.9)' : 'rgba(255,255,255,0.9)');
 
       let el = facMarkers.get(fac.id);
       if (!el) {

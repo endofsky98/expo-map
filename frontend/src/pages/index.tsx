@@ -894,7 +894,7 @@ export default function HomePage() {
               navEndPoint={navEnd?.floorId === selectedFloorId ? navEnd : null}
               navCurrentPos={navCurrentPos}
               initialTransform={savedTransformRef.current}
-              onTransformChange={(t) => { savedTransformRef.current = t; }}
+              onTransformChange={(t) => { savedTransformRef.current = t; setIsBirdView(t.tilt > 0); }}
             />
             </MapErrorBoundary>
           )}
