@@ -92,17 +92,21 @@ export function renderBoothLayer(props: BoothLayerProps) {
 
       const companyName = b.company_name || ln((b as any).company?.name);
       const catName = ln((b as any).category?.name);
-      const displayName = companyName || b.booth_number;
+      // 뷰어와 동일: display_name > 업체명 > 부스번호
+      const boothDisplayName = b.display_name || companyName;
+      const hasName = !!boothDisplayName;
 
-      if (displayName) {
-        const label = createLabel(displayName, cx, cy, selected ? '#312e81' : '#1e293b', scale, { x: 0.5, y: 0.5 });
-        labelContainer.addChild(label);
-      }
-
-      // 회사명이 있으면 부스번호를 아래에 작게
-      if (companyName && scale >= 0.8) {
-        const numLabel = createLabel(b.booth_number, cx, cy + 14 / scale, '#94a3b8', scale, { x: 0.5, y: 0.5 });
+      if (hasName) {
+        // 부스번호를 위에
+        const numLabel = createLabel(b.booth_number, cx, cy - 10 / scale, '#94a3b8', scale, { x: 0.5, y: 0.5 });
         labelContainer.addChild(numLabel);
+        // 이름을 아래에 (간격 확보)
+        const label = createLabel(boothDisplayName, cx, cy + 10 / scale, selected ? '#312e81' : '#1e293b', scale, { x: 0.5, y: 0.5 });
+        labelContainer.addChild(label);
+      } else {
+        // 이름 없으면 부스번호만 중앙에
+        const label = createLabel(b.booth_number, cx, cy, selected ? '#312e81' : '#1e293b', scale, { x: 0.5, y: 0.5 });
+        labelContainer.addChild(label);
       }
     }
   }
