@@ -263,6 +263,16 @@ export default function HomePage() {
     }, 200);
   }, [selectedFloorId]);
 
+  // 부스 보기 공통 함수 — 검색 보기/출발/도착에서 공유
+  const viewBooth = useCallback((booth: Booth) => {
+    setSelectedBoothId(booth.id);
+    if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
+    setTimeout(() => {
+      const panTo = (window as any).__mapViewerPanToWorld;
+      if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 0.5);
+    }, 200);
+  }, [selectedFloorId]);
+
   const handleCategoryToggle = useCallback((categoryId: number) => {
     setActiveCategories((prev) => {
       const next = new Set(prev);
@@ -730,41 +740,16 @@ export default function HomePage() {
             <SearchBar
               booths={allBooths}
               onSelect={handleSearchSelect}
-              onView={(booth) => {
-                setSelectedBoothId(booth.id);
-                if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                setTimeout(() => {
-                  const panTo = (window as any).__mapViewerPanToWorld;
-                  if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 0.5);
-                }, 200);
-              }}
+              onView={viewBooth}
               onSetStart={(booth) => {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
-                setSelectedBoothId(null);
                 setNavStart({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
-                if (!navEnd) {
-                  // 보기와 동일
-                  setSelectedBoothId(booth.id);
-                  if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                  setTimeout(() => {
-                    const panTo = (window as any).__mapViewerPanToWorld;
-                    if (panTo) panTo(c.x, c.y, 0.5);
-                  }, 200);
-                }
+                if (!navEnd) viewBooth(booth);
               }}
               onSetEnd={(booth) => {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
-                setSelectedBoothId(null);
                 setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
-                if (!navStart) {
-                  // 보기와 동일
-                  setSelectedBoothId(booth.id);
-                  if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                  setTimeout(() => {
-                    const panTo = (window as any).__mapViewerPanToWorld;
-                    if (panTo) panTo(c.x, c.y, 0.5);
-                  }, 200);
-                }
+                if (!navStart) viewBooth(booth);
               }}
             />
           </div>
