@@ -742,8 +742,9 @@ export default function HomePage() {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setSelectedBoothId(null);
                 setNavStart({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
-                // 도착이 없을 때만 보기와 동일하게 이동
                 if (!navEnd) {
+                  // 보기와 동일
+                  setSelectedBoothId(booth.id);
                   if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                   setTimeout(() => {
                     const panTo = (window as any).__mapViewerPanToWorld;
@@ -755,8 +756,9 @@ export default function HomePage() {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setSelectedBoothId(null);
                 setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
-                // 출발이 없을 때만 보기와 동일하게 이동
                 if (!navStart) {
+                  // 보기와 동일
+                  setSelectedBoothId(booth.id);
                   if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                   setTimeout(() => {
                     const panTo = (window as any).__mapViewerPanToWorld;
