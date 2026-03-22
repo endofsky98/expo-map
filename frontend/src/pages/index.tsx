@@ -451,7 +451,22 @@ export default function HomePage() {
     if (!clientRoute) return null;
     if (clientRoute.floorSegments && clientRoute.floorSegments.length > 0) {
       const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
-      if (!seg || seg.path.length < 2) return null;
+      if (!seg) return null;
+      // 1포인트 세그먼트: 출발/도착 핀까지 연장해서 최소 2포인트로
+      if (seg.path.length < 2) {
+        const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
+        const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
+        const extPath = [...seg.path];
+        if (isStartFloor && navStart) {
+          extPath.unshift({ x: navStart.x, y: navStart.y });
+        }
+        if (isEndFloor && navEnd) {
+          extPath.push({ x: navEnd.x, y: navEnd.y });
+        }
+        if (extPath.length < 2) return null;
+        const extDist = extPath.reduce((acc, p, i) => i === 0 ? 0 : acc + Math.hypot(p.x - extPath[i-1].x, p.y - extPath[i-1].y), 0);
+        return { path: extPath, distance: extDist, floorSegments: clientRoute.floorSegments, floors: clientRoute.floors } as typeof clientRoute;
+      }
       if (clientRoute.floorSegments.length === 1) return clientRoute;
       const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
       const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
