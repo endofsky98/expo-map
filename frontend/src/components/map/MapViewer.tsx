@@ -1070,12 +1070,27 @@ export default function MapViewer({
       }
     }
 
-    // 출발/도착 부스는 항상 개별 표시 (클러스터에서 제외)
+    // 출발/도착 부스(또는 가장 가까운 부스)는 항상 개별 표시
     const pinBoothIds = new Set<number>();
     const sp = navStartPointRef.current;
     const ep = navEndPointRef.current;
-    if (sp?.boothId) pinBoothIds.add(sp.boothId);
-    if (ep?.boothId) pinBoothIds.add(ep.boothId);
+    const findNearest = (wx: number, wy: number): number | null => {
+      let bestId: number | null = null, bestDist = Infinity;
+      for (const b of boothsRef.current) {
+        const { cx, cy } = getBoothCenter(b);
+        const d = (cx - wx) ** 2 + (cy - wy) ** 2;
+        if (d < bestDist) { bestDist = d; bestId = b.id; }
+      }
+      return bestId;
+    };
+    if (sp) {
+      const id = sp.boothId || findNearest(sp.x, sp.y);
+      if (id) pinBoothIds.add(id);
+    }
+    if (ep) {
+      const id = ep.boothId || findNearest(ep.x, ep.y);
+      if (id) pinBoothIds.add(id);
+    }
 
     // Determine which booth IDs to show as pins + cluster badge info
     const newIds = new Set<number>(pinBoothIds);
