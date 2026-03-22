@@ -550,15 +550,23 @@ export default function MapViewer({
       app.ticker.remove(tickerFn);
       ro.disconnect();
       stopInertia();
-      app.destroy(true);
+      // 마커/배지 DOM 정리 (React가 overlay를 제거하기 전에)
+      for (const [, el] of markerElementsRef.current) el?.remove?.();
+      markerElementsRef.current.clear();
+      for (const [, el] of clusterBadgesRef.current) el?.remove?.();
+      clusterBadgesRef.current.clear();
+      clusterBadgeWorldRef.current.clear();
+      try { app.destroy(true); } catch { /* DOM already removed by React */ }
       pixiApp.current = null;
       mainContainerRef.current = null;
       canvasRef.current = null;
       clusterGfxRef.current = null;
       clusterContainerRef.current = null;
-      if (routeAnimGfxRef.current) { routeAnimGfxRef.current.destroy(); routeAnimGfxRef.current = null; }
+      try { if (routeAnimGfxRef.current) { routeAnimGfxRef.current.destroy(); } } catch {}
+      routeAnimGfxRef.current = null;
       routeAnimRef.current = null;
-      if (boothFloorGfxRef.current) { boothFloorGfxRef.current.destroy(); boothFloorGfxRef.current = null; }
+      try { if (boothFloorGfxRef.current) { boothFloorGfxRef.current.destroy(); } } catch {}
+      boothFloorGfxRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1325,7 +1333,7 @@ export default function MapViewer({
       // 사라진 클러스터 배지 제거
       for (const [cid, badge] of badges) {
         if (!activeBadgeIds.has(cid)) {
-          badge.remove();
+          badge?.remove?.();
           badges.delete(cid);
           badgeWorlds.delete(cid);
         }
@@ -1538,7 +1546,7 @@ export default function MapViewer({
     // Remove deleted booths
     for (const [id, el] of markers) {
       if (!currentIds.has(id)) {
-        el.remove();
+        el?.remove?.();
         markers.delete(id);
       }
     }
