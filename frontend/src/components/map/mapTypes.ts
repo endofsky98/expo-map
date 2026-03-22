@@ -46,8 +46,8 @@ export interface MapViewerProps {
   navMode?: 'none' | 'waiting_start';
   onNavTap?: (worldX: number, worldY: number) => void;
   onLongPress?: (worldX: number, worldY: number, screenX: number, screenY: number) => void;
-  navStartPoint?: { x: number; y: number } | null;
-  navEndPoint?: { x: number; y: number } | null;
+  navStartPoint?: { boothId?: number; x: number; y: number } | null;
+  navEndPoint?: { boothId?: number; x: number; y: number } | null;
   navCurrentPos?: { x: number; y: number } | null;
 }
 

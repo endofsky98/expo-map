@@ -1070,38 +1070,47 @@ export default function MapViewer({
       }
     }
 
+    // 출발/도착 부스는 항상 개별 표시 (클러스터에서 제외)
+    const pinBoothIds = new Set<number>();
+    const sp = navStartPointRef.current;
+    const ep = navEndPointRef.current;
+    if (sp?.boothId) pinBoothIds.add(sp.boothId);
+    if (ep?.boothId) pinBoothIds.add(ep.boothId);
+
     // Determine which booth IDs to show as pins + cluster badge info
-    const newIds = new Set<number>();
+    const newIds = new Set<number>(pinBoothIds);
     // clusterKey → { boothId, count }
     const clusterReps = new Map<string, { boothId: number; count: number; name?: string }>();
 
     for (const c of clusters) {
-      if (!c.isCluster || c.count === 1) {
-        // Individual marker
-        newIds.add(c.boothIds[0]);
+      // 클러스터에서 출발/도착 부스 제외
+      const filteredIds = c.boothIds.filter(id => !pinBoothIds.has(id));
+      const effectiveCount = filteredIds.length;
+
+      if (!c.isCluster || effectiveCount <= 1) {
+        // Individual marker(s)
+        for (const id of filteredIds) newIds.add(id);
       } else {
         // Cluster: pick representative — 경로가 있으면 경로에 가장 가까운 부스
         if (routeCorners) {
-          // 경로/코너에 가장 가까운 부스를 대표로
-          let bestId = c.boothIds[0];
+          let bestId = filteredIds[0];
           let bestScore = Infinity;
-          for (const bid of c.boothIds) {
+          for (const bid of filteredIds) {
             const score = boothRouteScore(bid);
             if (score < bestScore) { bestScore = score; bestId = bid; }
           }
           const bestBooth = boothMapRef.current.get(bestId);
           const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
           newIds.add(bestId);
-          clusterReps.set(c.id, { boothId: bestId, count: c.count, name });
+          clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
         } else {
-          // 경로 없으면 기존 로직
-          const rep = selectRepresentative(c.boothIds, boothsRef.current, hallsRef.current);
+          const rep = selectRepresentative(filteredIds, boothsRef.current, hallsRef.current);
           if (rep.booth) {
             newIds.add(rep.booth.id);
-            clusterReps.set(c.id, { boothId: rep.booth.id, count: c.count, name: rep.name });
-          } else if (c.boothIds.length > 0) {
-            newIds.add(c.boothIds[0]);
-            clusterReps.set(c.id, { boothId: c.boothIds[0], count: c.count });
+            clusterReps.set(c.id, { boothId: rep.booth.id, count: effectiveCount, name: rep.name });
+          } else if (filteredIds.length > 0) {
+            newIds.add(filteredIds[0]);
+            clusterReps.set(c.id, { boothId: filteredIds[0], count: effectiveCount });
           }
         }
       }
