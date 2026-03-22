@@ -398,6 +398,10 @@ export default function HomePage() {
       }
 
       const destBooth = _navEnd.boothId ? useBooths.find((b: any) => b.id === _navEnd.boothId) : null;
+      console.log('[route] isMulti:', isMultiFloor, 'nodes:', useNodes.length, 'edges:', useEdges.length,
+        'start:', { x: _navStart.x, y: _navStart.y, f: _navStart.floorId },
+        'end:', { x: _navEnd.x, y: _navEnd.y, f: _navEnd.floorId },
+        'destBooth:', destBooth?.id);
       let result: ReturnType<typeof findPath>;
       if (destBooth) {
         result = findPath({ x: _navStart.x, y: _navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
@@ -405,6 +409,7 @@ export default function HomePage() {
         const fakeBooth = { id: -1, booth_number: '', x: _navEnd.x - 1, y: _navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
         result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
       }
+      console.log('[route] result:', result ? { pathLen: result.path.length, dist: result.distance, floors: result.floors } : null);
       // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
         const last = result.path[result.path.length - 1];
