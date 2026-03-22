@@ -96,8 +96,6 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     const fn = nodes.get(`n${e.from_node_id}`);
     const tn = nodes.get(`n${e.to_node_id}`);
     if (!fn || !tn) continue;
-    // 다른 층 엣지는 일반 세그먼트에 포함하지 않음 (linked_node_id 크로스 엣지만 사용)
-    if (fn.floorId != null && tn.floorId != null && fn.floorId !== tn.floorId) continue;
     segments.push({ fromId: fn.id, toId: tn.id, from: fn, to: tn, edgeId: e.id });
   }
 
@@ -425,18 +423,28 @@ export function findPath(
     nodeFloors.push(n.floorId);
   }
 
-  // 층별 세그먼트 분리
+  // 층별 세그먼트 분리 — linked_node_id 크로스 엣지에서만 층 전환
+  // 경로의 각 노드에서 실제 층 전환(linked_node_id)인지 확인
   const floorSegments: FloorSegment[] = [];
-  let curFloor = nodeFloors[0];
+  // 실제 층 전환: 연속된 두 노드가 linked_node_id로 연결된 경우만
+  let curFloor = startFloorId ?? nodeFloors[0];
   let curPoints: Point[] = [points[0]];
   let curDist = 0;
   for (let i = 1; i < points.length; i++) {
-    const fl = nodeFloors[i];
+    const prevId = bestPath[i - 1];
+    const curId = bestPath[i];
+    const prevNode = graph.nodes.get(prevId);
+    const curNode = graph.nodes.get(curId);
     const segDist = dist(points[i - 1], points[i]);
-    if (fl !== curFloor && fl != null && curFloor != null) {
+    
+    // linked_node_id 크로스 엣지인지 확인
+    const isLinkedCross = prevNode?.floorId != null && curNode?.floorId != null 
+      && prevNode.floorId !== curNode.floorId;
+    
+    if (isLinkedCross) {
       // 층 전환 — 현재 세그먼트 마감
-      floorSegments.push({ floorId: curFloor, path: curPoints, distance: curDist });
-      curFloor = fl;
+      floorSegments.push({ floorId: curFloor!, path: curPoints, distance: curDist });
+      curFloor = curNode.floorId;
       curPoints = [points[i]];
       curDist = 0;
     } else {
