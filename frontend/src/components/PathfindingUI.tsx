@@ -3,8 +3,8 @@ import { Navigation, X, MapPin, Building2, Landmark } from 'lucide-react';
 import { Booth, Facility } from '@/types';
 import { useI18n } from '@/lib/i18n';
 
-/* ─── 편의시설 종류별 한글 라벨 ─── */
-const FACILITY_LABELS: Record<string, string> = {
+/* ─── 편의시설 종류별 기본 라벨 (ko 폴백용) ─── */
+const FACILITY_LABELS_KO: Record<string, string> = {
   restroom: '화장실',
   restroom_male: '남자화장실',
   restroom_female: '여자화장실',
@@ -21,6 +21,24 @@ const FACILITY_LABELS: Record<string, string> = {
   charging: '충전소',
   wifi: 'Wi-Fi',
   smoking: '흡연실',
+};
+const FACILITY_LABELS_EN: Record<string, string> = {
+  restroom: 'Restroom',
+  restroom_male: "Men's Room",
+  restroom_female: "Women's Room",
+  emergency_exit: 'Emergency Exit',
+  stairs: 'Stairs',
+  elevator: 'Elevator',
+  escalator: 'Escalator',
+  nursing_room: 'Nursing Room',
+  info_desk: 'Info Desk',
+  first_aid: 'First Aid',
+  locker: 'Locker',
+  atm: 'ATM',
+  cafe: 'Café',
+  charging: 'Charging',
+  wifi: 'Wi-Fi',
+  smoking: 'Smoking Area',
 };
 
 interface NavPoint {
@@ -44,7 +62,8 @@ interface PathfindingUIProps {
 export default function PathfindingUI({
   booths, facilities, navStart, navEnd, onSetStart, onSetEnd, onFloorSwitch,
 }: PathfindingUIProps) {
-  const { t, ln } = useI18n();
+  const { t, ln, locale } = useI18n();
+  const FACILITY_LABELS = locale === 'en' ? FACILITY_LABELS_EN : FACILITY_LABELS_KO;
   const [isOpen, setIsOpen] = useState(false);
 
   // 외부에서 팝업 열기 지원
@@ -122,21 +141,19 @@ export default function PathfindingUI({
     if (nav.boothId) {
       const b = booths.find(bb => bb.id === nav.boothId);
       if (b) {
-        const cn = b.company?.name;
-        return cn ? (typeof cn === 'string' ? cn : (cn as any).ko || (cn as any).en || b.booth_number) : b.booth_number;
+        return ln(b.display_name) || ln(b.company?.name) || b.booth_number;
       }
     }
     if (nav.facilityType) return FACILITY_LABELS[nav.facilityType] || nav.facilityType;
-    let bestDist = Infinity, bestName = '선택 지점';
+    let bestDist = Infinity, bestName = t('nav.selectPoint');
     for (const b of booths) {
       const d = Math.hypot(nav.x - (b.x + b.width / 2), nav.y - (b.y + b.height / 2));
       if (d < bestDist) {
         bestDist = d;
-        const cn = b.company?.name;
-        bestName = cn ? (typeof cn === 'string' ? cn : (cn as any).ko || (cn as any).en || b.booth_number) : b.booth_number;
+        bestName = ln(b.display_name) || ln(b.company?.name) || b.booth_number;
       }
     }
-    return `${bestName} 근처`;
+    return `${bestName} ${t('nav.nearby')}`;
   }
 
   const hasRoute = navStart || navEnd;
@@ -179,7 +196,7 @@ export default function PathfindingUI({
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700/50">
                 <div className="flex items-center gap-2">
                   <Navigation className="h-4 w-4 text-indigo-500" />
-                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">길찾기</span>
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">{t('route.title')}</span>
                 </div>
                 <button onClick={() => setIsOpen(false)} className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
                   <X className="h-4 w-4 text-gray-400" />
@@ -203,10 +220,10 @@ export default function PathfindingUI({
                         onChange={(e) => handleFromChange(e.target.value)}
                         className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm dark:border-gray-600 dark:bg-[#252525] dark:text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-colors"
                       >
-                        <option value="">{navStart ? getLabel(navStart) : '부스 선택...'}</option>
+                        <option value="">{navStart ? getLabel(navStart) : t('nav.selectBooth')}</option>
                         {booths.map((b) => (
                           <option key={b.id} value={b.id}>
-                            {b.booth_number} - {ln(b.company?.name) || t('search.unassigned')}
+                            {b.booth_number} - {ln(b.display_name) || ln(b.company?.name) || t('search.unassigned')}
                           </option>
                         ))}
                       </select>
@@ -245,10 +262,10 @@ export default function PathfindingUI({
                         onChange={(e) => handleToBoothChange(e.target.value)}
                         className="flex-1 px-3 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-sm dark:border-gray-600 dark:bg-[#252525] dark:text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-400 transition-colors"
                       >
-                        <option value="">{navEnd ? getLabel(navEnd) : '부스 선택...'}</option>
+                        <option value="">{navEnd ? getLabel(navEnd) : t('nav.selectBooth')}</option>
                         {booths.map((b) => (
                           <option key={b.id} value={b.id}>
-                            {b.booth_number} - {ln(b.company?.name) || t('search.unassigned')}
+                            {b.booth_number} - {ln(b.display_name) || ln(b.company?.name) || t('search.unassigned')}
                           </option>
                         ))}
                       </select>

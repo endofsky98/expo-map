@@ -333,12 +333,9 @@ export default function HomePage() {
   function getNavLabel(nav: { boothId?: number; x: number; y: number }): string {
     if (nav.boothId) {
       const b = allBooths.find(bb => bb.id === nav.boothId);
-      if (b) {
-        const cn = b.company?.name;
-        return cn ? (typeof cn === 'string' ? cn : (cn as any).ko || (cn as any).en || b.booth_number) : b.booth_number;
-      }
+      if (b) return ln(b.display_name) || ln(b.company?.name) || b.booth_number;
     }
-    return `${nearestName(nav.x, nav.y)} 근처`;
+    return `${nearestName(nav.x, nav.y)} ${t('nav.nearby')}`;
   }
 
   // 부스 클릭 → 출발/도착 선택
@@ -820,16 +817,16 @@ export default function HomePage() {
             >
               <Navigation2 className="h-4 w-4 text-indigo-500" />
               <span className="text-gray-600 dark:text-gray-400">
-                출발: <span className="font-medium text-green-600 dark:text-green-400">{navStart ? getNavLabel(navStart) : '—'}</span>
+                {t('nav.start')}: <span className="font-medium text-green-600 dark:text-green-400">{navStart ? getNavLabel(navStart) : '—'}</span>
               </span>
               <span className="text-gray-400">→</span>
               <span className="text-gray-600 dark:text-gray-400">
-                도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
+                {t('nav.destination')}: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
               <button onClick={(e) => { e.stopPropagation(); setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); setNavCurrentFloorId(null); }} className="text-gray-400 hover:text-red-500 ml-1 text-lg">&times;</button>
               {clientRoute && !navActive && (
                 <button onClick={(e) => { e.stopPropagation(); startNavigation(); }} className="ml-2 px-3 py-1 text-sm font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors">
-                  🧭 네비게이션
+                  🧭 {t('nav.startNav')}
                 </button>
               )}
             </div>
@@ -919,16 +916,16 @@ export default function HomePage() {
           {longPressChoice && (
             <div className="fixed z-50 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-xl shadow-lg p-3 w-48"
               style={{ left: Math.min(Math.max(8, longPressChoice.screenX - 96), window.innerWidth - 200), top: Math.max(8, longPressChoice.screenY - 110), userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none', pointerEvents: 'auto' }}>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">{nearestName(longPressChoice.x, longPressChoice.y)} 근처</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">{nearestName(longPressChoice.x, longPressChoice.y)} {t('nav.nearby')}</p>
               <div className="flex gap-2">
                 <button onClick={handleLongPressStart} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-600 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40 transition-colors">
-                  <MapPin className="h-3 w-3" /> 출발
+                  <MapPin className="h-3 w-3" /> {t('nav.start')}
                 </button>
                 <button onClick={handleLongPressEnd} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors">
-                  <MapPin className="h-3 w-3" /> 도착
+                  <MapPin className="h-3 w-3" /> {t('nav.destination')}
                 </button>
               </div>
-              <button onClick={() => setLongPressChoice(null)} className="w-full mt-1.5 text-xs text-gray-400 hover:text-gray-600 text-center">취소</button>
+              <button onClick={() => setLongPressChoice(null)} className="w-full mt-1.5 text-xs text-gray-400 hover:text-gray-600 text-center">{t('popup.cancel')}</button>
             </div>
           )}
 
@@ -939,7 +936,7 @@ export default function HomePage() {
                 onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); }}
                 className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-full shadow-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400 transition-colors"
               >
-                ✕ 경로 지우기
+                ✕ {t('nav.routeInit')}
               </button>
             </div>
           )}
@@ -949,13 +946,13 @@ export default function HomePage() {
             <div className="absolute bottom-0 left-0 right-0 z-40 p-4 pointer-events-none">
               <div className="flex items-center gap-2 max-w-lg mx-auto pointer-events-auto">
                 <button onClick={navPrev} className="px-5 py-4 text-base font-medium rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
-                  ◀ 이전
+                  {t('nav.prev')}
                 </button>
                 <button onClick={navNext} className="flex-1 py-4 text-base font-bold rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-colors">
-                  다음 ▶
+                  {t('nav.next')}
                 </button>
                 <button onClick={navCancel} className="px-5 py-4 text-base font-medium rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
-                  취소
+                  {t('nav.cancel')}
                 </button>
               </div>
               {clientRoute && (
@@ -998,11 +995,11 @@ export default function HomePage() {
                   </>
                 ) : (
                   <>
-                    <p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400 mb-2">🎉 도착하였습니다!</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 text-center">경로를 삭제하시겠습니까?</p>
+                    <p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400 mb-2">{t('nav.arrivedTitle')}</p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 text-center">{t('nav.deleteRoute')}</p>
                     <div className="flex gap-2 mt-4">
-                      <button onClick={navArrivedKeepRoute} className="flex-1 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">경로 유지</button>
-                      <button onClick={navArrivedDeleteRoute} className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white">삭제</button>
+                      <button onClick={navArrivedKeepRoute} className="flex-1 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">{t('nav.keepRoute')}</button>
+                      <button onClick={navArrivedDeleteRoute} className="flex-1 py-2 text-sm rounded-lg bg-red-500 text-white">{t('nav.delete')}</button>
                     </div>
                   </>
                 )}
@@ -1014,19 +1011,19 @@ export default function HomePage() {
           {navFloorTransition && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
               <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-xl p-6 w-72">
-                <p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400 mb-2">🚶 층 이동</p>
+                <p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400 mb-2">{t('nav.floorMove')}</p>
                 <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
-                  <span className="font-semibold">{navFloorTransition.label}</span>으로 이동하세요
+                  {t('nav.moveToFloor').replace('{label}', navFloorTransition.label)}
                 </p>
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => setNavFloorTransition(null)}
                     className="flex-1 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                  >취소</button>
+                  >{t('popup.cancel')}</button>
                   <button
                     onClick={navFloorTransitionConfirm}
                     className="flex-1 py-2 text-sm rounded-lg bg-blue-500 text-white font-semibold"
-                  >확인</button>
+                  >{t('nav.confirm')}</button>
                 </div>
               </div>
             </div>
