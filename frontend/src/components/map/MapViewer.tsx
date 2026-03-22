@@ -1156,20 +1156,14 @@ export default function MapViewer({
 
     const visibleBoothIds = new Set(visibleBooths.map(b => b.id));
 
-    // During interaction: keep stable set + add newly visible booths immediately
+    // During interaction: keep stable set, only drop markers that left viewport
     const stable = stableIdsRef.current;
     const currentDisplay = new Set<number>();
     for (const id of stable) {
       if (visibleBoothIds.has(id)) currentDisplay.add(id);
     }
-    // 새로 뷰포트에 들어온 부스를 즉시 추가 (settle 전에도 보이게)
-    for (const id of visibleBoothIds) {
-      currentDisplay.add(id);
-    }
-    // stableIds 즉시 업데이트 (다음 프레임에서도 유지)
-    stableIdsRef.current = currentDisplay;
 
-    // Schedule a settle recalculation (debounced — 클러스터 재계산)
+    // Schedule a settle recalculation (debounced after last interaction)
     if (settleTimerRef.current) clearTimeout(settleTimerRef.current);
     settleTimerRef.current = setTimeout(() => {
       recalcMarkers();
