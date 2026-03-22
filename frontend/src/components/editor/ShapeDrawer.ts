@@ -110,23 +110,60 @@ export function drawAmenityMarker(
 
 // ===== 텍스트 라벨 =====
 
+/** 텍스트 캐시: key → { text, style, resolution } */
+const _labelCache = new Map<string, PIXI.Text>();
+let _labelCacheGen = 0;
+
+/** 현재 렌더 사이클에서 사용된 캐시 키 */
+let _usedKeys = new Set<string>();
+
+/** 렌더 사이클 시작 시 호출 — 미사용 캐시 정리 */
+export function beginLabelCycle() {
+  _labelCacheGen++;
+  _usedKeys = new Set();
+}
+
+/** 렌더 사이클 종료 시 호출 — 미사용 Text destroy */
+export function endLabelCycle() {
+  for (const [key, t] of _labelCache) {
+    if (!_usedKeys.has(key)) {
+      t.destroy(true);
+      _labelCache.delete(key);
+    }
+  }
+}
+
 export function createLabel(
   text: string, x: number, y: number, color: string,
   scale: number, anchor?: { x: number; y: number },
 ): PIXI.Text {
   const dpr = (typeof window !== 'undefined' ? window.devicePixelRatio : 1) || 1;
-  // world 좌표 기준 폰트 크기 (5배)
   const fontSize = Math.max(15, 20 / scale);
-  const label = new PIXI.Text(text, {
+  const res = Math.min(dpr, 2); // 모바일 과도한 해상도 방지
+
+  // 캐시 키: 텍스트+색상+fontSize 기준 (위치는 매번 변경 가능)
+  const cacheKey = `${text}|${color}|${Math.round(fontSize)}`;
+  _usedKeys.add(cacheKey);
+
+  let label = _labelCache.get(cacheKey);
+  if (label && !label.destroyed) {
+    // 위치만 업데이트
+    label.x = x;
+    label.y = y;
+    if (label.parent) label.parent.removeChild(label);
+    return label;
+  }
+
+  label = new PIXI.Text(text, {
     fontSize,
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif',
     fill: color,
     fontWeight: '600',
-    // 고해상도 래스터라이즈로 블러 방지
   });
-  label.resolution = dpr * 2; // 2배 오버샘플링
+  label.resolution = res;
   if (anchor) label.anchor.set(anchor.x, anchor.y);
   label.x = x;
   label.y = y;
+  _labelCache.set(cacheKey, label);
   return label;
 }

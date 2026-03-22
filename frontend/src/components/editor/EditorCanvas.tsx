@@ -79,12 +79,13 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     const w = el.offsetWidth || 800;
     const h = el.offsetHeight || 500;
 
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); // 모바일 3x 방지
     const app = new PIXI.Application({
       width: w,
       height: h,
       backgroundColor: 0xf3f4f6,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
+      antialias: dpr <= 1, // 고해상도면 AA 불필요 → GPU 절약
+      resolution: dpr,
       autoDensity: true,
     });
     appRef.current = app;
@@ -144,7 +145,6 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
       bgSpriteRef.current = null;
     }
 
-    console.log('[EditorCanvas] Image:', props.imageUrl, 'sprite size:', props.imageWidth, 'x', props.imageHeight);
     const tex = PIXI.Texture.from(props.imageUrl);
     const sprite = new PIXI.Sprite(tex);
     sprite.width = props.imageWidth;
@@ -171,20 +171,29 @@ const EditorCanvas = forwardRef<EditorCanvasHandle, EditorCanvasProps>(function 
     setRenderTick(t => t + 1);
   }, []);
 
-  // ===== Render layers =====
+  // ===== Render layers (RAF throttle) =====
+  const renderPendingRef = useRef(false);
+  const renderRafRef = useRef<number | null>(null);
   useEffect(() => {
     if (!ready) return;
-    const ctx: LayerContext = {
-      hallGfx: hallGfxRef.current!,
-      boothGfx: boothGfxRef.current!,
-      boothLabelContainer: boothLabelRef.current!,
-      pathGfx: pathGfxRef.current!,
-      obstacleGfx: obstacleGfxRef.current!,
-      amenityGfx: amenityGfxRef.current!,
-      scale: transformRef.current.scale,
-      selectedObject: props.selectedObject,
-    };
-    props.renderLayers(ctx);
+    // RAF로 한 프레임에 한 번만 렌더
+    if (renderPendingRef.current) return;
+    renderPendingRef.current = true;
+    renderRafRef.current = requestAnimationFrame(() => {
+      renderPendingRef.current = false;
+      const ctx: LayerContext = {
+        hallGfx: hallGfxRef.current!,
+        boothGfx: boothGfxRef.current!,
+        boothLabelContainer: boothLabelRef.current!,
+        pathGfx: pathGfxRef.current!,
+        obstacleGfx: obstacleGfxRef.current!,
+        amenityGfx: amenityGfxRef.current!,
+        scale: transformRef.current.scale,
+        selectedObject: props.selectedObject,
+      };
+      props.renderLayers(ctx);
+    });
+    return () => { if (renderRafRef.current) cancelAnimationFrame(renderRafRef.current); renderPendingRef.current = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     ready, props.renderLayers, props.halls, props.booths, props.pathNodes, props.pathEdges,

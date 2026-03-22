@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js';
 import type { EditorBooth, SelectedObject, DrawStyle, Point } from '../editorTypes';
 import { LAYER_COLORS } from '../editorTypes';
-import { drawRect, drawPolygon, drawCircle, drawEllipse, createLabel } from '../ShapeDrawer';
+import { drawRect, drawPolygon, drawCircle, drawEllipse, createLabel, beginLabelCycle, endLabelCycle } from '../ShapeDrawer';
 import { drawResizeHandles } from '../resizeHandles';
 
 interface BoothLayerProps {
@@ -31,14 +31,13 @@ function ln(name: unknown): string {
 export function renderBoothLayer(props: BoothLayerProps) {
   const { graphics: g, labelContainer, booths, scale, selectedObject } = props;
   g.clear();
+  beginLabelCycle();
+  // removeChildren만 하고 destroy하지 않음 (캐시된 Text 재사용)
   labelContainer.removeChildren();
 
   const defaultColors = LAYER_COLORS.booth;
 
-  if (booths.length > 0) {
-    const b0 = booths[0];
-    console.log('[BoothLayer] first booth:', b0.id, 'x:', b0.x, 'y:', b0.y, 'w:', b0.width, 'h:', b0.height, 'total:', booths.length);
-  }
+
   for (const b of booths) {
     const selected = selectedObject?.kind === 'booth' && selectedObject.id === b.id;
 
@@ -110,4 +109,5 @@ export function renderBoothLayer(props: BoothLayerProps) {
       }
     }
   }
+  endLabelCycle();
 }
