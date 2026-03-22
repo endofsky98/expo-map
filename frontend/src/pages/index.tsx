@@ -18,6 +18,36 @@ import PathfindingUI from '@/components/PathfindingUI';
 
 const MapViewer = dynamic(() => import('@/components/map/MapViewer'), { ssr: false });
 
+// ErrorBoundary to catch render crashes and show error on screen
+import React from 'react';
+class MapErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[MapErrorBoundary]', error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ position: 'absolute', inset: 0, background: '#111', color: '#ff4444', padding: 16, fontSize: 12, fontFamily: 'monospace', overflow: 'auto', zIndex: 99999, whiteSpace: 'pre-wrap' }}>
+          <strong>MapViewer Error:</strong>{'\n'}
+          {this.state.error.message}{'\n\n'}
+          {this.state.error.stack}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // DEBUG: 화면에 에러 표시 (모바일 디버깅)
 if (typeof window !== 'undefined') {
   const _debugErrors: string[] = [];
@@ -639,6 +669,7 @@ export default function HomePage() {
               </div>
             </div>
           ) : (
+            <MapErrorBoundary key={`eb-${selectedFloorId}`}>
             <MapViewer
               key={selectedFloorId}
               booths={booths}
@@ -666,6 +697,7 @@ export default function HomePage() {
               navEndPoint={navEnd}
               navCurrentPos={navCurrentPos}
             />
+            </MapErrorBoundary>
           )}
 
           {/* 롱프레스 출발/도착 선택 팝업 */}
