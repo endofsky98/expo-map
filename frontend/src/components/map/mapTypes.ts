@@ -70,23 +70,23 @@ export function maxMarkersForScale(scale: number): number {
   return 8;
 }
 
-export const FACILITY_STYLES: Record<string, { color: number; label: string }> = {
+export const FACILITY_STYLES: Record<string, { color: number; label: string; textColor?: string }> = {
   restroom: { color: 0x3b82f6, label: 'WC' },
-  restroom_male: { color: 0x3b82f6, label: '🚹' },
-  restroom_female: { color: 0xec4899, label: '🚺' },
+  restroom_male: { color: 0x3b82f6, label: 'WC' },
+  restroom_female: { color: 0xec4899, label: 'WC' },
   emergency_exit: { color: 0xef4444, label: 'EXIT' },
   stairs: { color: 0x22c55e, label: 'S' },
   elevator: { color: 0xf59e0b, label: 'EV' },
   escalator: { color: 0xf97316, label: 'ES' },
-  info_desk: { color: 0x6366f1, label: 'ℹ' },
-  nursing_room: { color: 0xec4899, label: '🍼' },
-  first_aid: { color: 0xef4444, label: '➕' },
-  locker: { color: 0x8b5cf6, label: '🔒' },
+  info_desk: { color: 0xffffff, label: 'i', textColor: '#374151' },
+  nursing_room: { color: 0xec4899, label: 'NR' },
+  first_aid: { color: 0xef4444, label: '+' },
+  locker: { color: 0x8b5cf6, label: 'LK' },
   atm: { color: 0x10b981, label: 'ATM' },
-  cafe: { color: 0x92400e, label: '☕' },
-  charging: { color: 0xf59e0b, label: '⚡' },
-  wifi: { color: 0x0ea5e9, label: 'WiFi' },
-  smoking: { color: 0x6b7280, label: '🚬' },
+  cafe: { color: 0x92400e, label: 'CF' },
+  charging: { color: 0xf59e0b, label: 'CH' },
+  wifi: { color: 0x0ea5e9, label: 'Wi' },
+  smoking: { color: 0x6b7280, label: 'SM' },
 };
 
 export function parseZoomLevels(img: MapImage): ZoomLevel[] {

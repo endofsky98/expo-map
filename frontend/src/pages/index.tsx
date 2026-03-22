@@ -905,11 +905,11 @@ export default function HomePage() {
               style={{ left: Math.min(Math.max(8, longPressChoice.screenX - 96), window.innerWidth - 200), top: Math.max(8, longPressChoice.screenY - 110), userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none', pointerEvents: 'auto' }}>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 text-center">{nearestName(longPressChoice.x, longPressChoice.y)} 근처</p>
               <div className="flex gap-2">
-                <button onClick={handleLongPressStart} className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 hover:bg-green-200 transition-colors">
-                  🟢 출발
+                <button onClick={handleLongPressStart} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-green-50 text-green-600 hover:bg-green-100 dark:bg-green-900/20 dark:text-green-400 dark:hover:bg-green-900/40 transition-colors">
+                  <MapPin className="h-3 w-3" /> 출발
                 </button>
-                <button onClick={handleLongPressEnd} className="flex-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 transition-colors">
-                  🔴 도착
+                <button onClick={handleLongPressEnd} className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors">
+                  <MapPin className="h-3 w-3" /> 도착
                 </button>
               </div>
               <button onClick={() => setLongPressChoice(null)} className="w-full mt-1.5 text-xs text-gray-400 hover:text-gray-600 text-center">취소</button>
@@ -1042,7 +1042,7 @@ export default function HomePage() {
                       : 'bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 dark:bg-[#2a2a2a] dark:text-gray-300 dark:hover:bg-red-900/20 dark:hover:text-red-400'
                   }`}
                 >
-                  <Navigation2 className="h-3 w-3" />
+                  <MapPin className="h-3 w-3" />
                   {t('route.setDest')}
                 </button>
               </div>

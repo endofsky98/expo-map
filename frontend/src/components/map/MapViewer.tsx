@@ -1897,6 +1897,9 @@ export default function MapViewer({
       const style = FACILITY_STYLES[fac.type] || { color: 0x6b7280, label: '?' };
       const hexColor = '#' + (style.color).toString(16).padStart(6, '0');
 
+      const textColor = style.textColor || '#fff';
+      const borderColor = style.color === 0xffffff ? 'rgba(209,213,219,0.9)' : 'rgba(255,255,255,0.9)';
+
       let el = facMarkers.get(fac.id);
       if (!el) {
         el = document.createElement('div');
@@ -1905,10 +1908,11 @@ export default function MapViewer({
           'width:26px;height:26px;border-radius:50%;' +
           'display:flex;align-items:center;justify-content:center;' +
           'font-size:10px;font-weight:700;font-family:Inter,sans-serif;' +
-          'color:#fff;border:2px solid rgba(255,255,255,0.9);' +
           'box-shadow:0 1px 4px rgba(0,0,0,0.3);z-index:6;' +
           'will-change:transform;';
         el.style.background = hexColor;
+        el.style.color = textColor;
+        el.style.border = `2px solid ${borderColor}`;
         el.setAttribute('data-fac-wx', String(fac.x));
         el.setAttribute('data-fac-wy', String(fac.y));
         el.textContent = style.label;
@@ -1917,6 +1921,8 @@ export default function MapViewer({
       } else {
         // Update in case type/position changed
         el.style.background = hexColor;
+        el.style.color = textColor;
+        el.style.border = `2px solid ${borderColor}`;
         el.textContent = style.label;
         el.setAttribute('data-fac-wx', String(fac.x));
         el.setAttribute('data-fac-wy', String(fac.y));
