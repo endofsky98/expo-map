@@ -901,6 +901,9 @@ export default function MapViewer({
       gfx.parent.addChild(animGfx);
       routeAnimGfxRef.current = animGfx;
     }
+
+    // 경로 그린 후 즉시 렌더 트리거
+    renderTilesFnRef.current();
   }, [clientRoute]);
 
   // Ticker로 프로그레스바 애니메이션 (여러 개, 천천히)
