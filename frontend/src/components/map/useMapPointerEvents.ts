@@ -358,17 +358,17 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
 
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
-    // 마우스 우클릭 → 출발/도착 팝업 (롱프레스와 동일)
-    const rect = canvas.getBoundingClientRect();
+    // 마우스 우클릭 → 출발/도착 팝업 (롱프레스와 동일한 좌표 변환)
+    const rect = el.getBoundingClientRect();
     const sx = e.clientX - rect.left;
     const sy = e.clientY - rect.top;
     const t = transformRef.current;
-    const cos = Math.cos(-t.rotation);
-    const sin = Math.sin(-t.rotation);
+    const cosR = Math.cos(t.rotation);
+    const sinR = Math.sin(t.rotation);
     const dx = sx - t.x;
     const dy = sy - t.y;
-    const wx = (dx * cos - dy * sin) / t.scale;
-    const wy = (dx * sin + dy * cos) / t.scale;
+    const wx = (dx * cosR + dy * sinR) / t.scale;
+    const wy = (-dx * sinR + dy * cosR) / t.scale;
     onLongPressRef.current?.(wx, wy, e.clientX, e.clientY);
   };
 
