@@ -1097,6 +1097,44 @@ export default function MapViewer({
     // clusterKey → { boothId, count }
     const clusterReps = new Map<string, { boothId: number; count: number; name?: string }>();
 
+    // 클러스터별 중심 좌표 + 경로까지 거리 사전 계산
+    const clusterCenterMap = new Map<string, { cx: number; cy: number; routeDist: number }>();
+    for (const c of clusters) {
+      if (c.isCluster && c.count > 1) {
+        const cx = c.bboxX + c.bboxW / 2;
+        const cy = c.bboxY + c.bboxH / 2;
+        let routeDist = Infinity;
+        if (rp && rp.length >= 2) {
+          for (let i = 0; i < rp.length - 1; i++) {
+            const ax = rp[i].x, ay = rp[i].y, bx = rp[i+1].x, by = rp[i+1].y;
+            const dx = bx - ax, dy = by - ay, len2 = dx*dx + dy*dy;
+            let t = len2 > 0 ? ((cx-ax)*dx + (cy-ay)*dy) / len2 : 0;
+            t = Math.max(0, Math.min(1, t));
+            const d = Math.sqrt((cx-(ax+t*dx))**2 + (cy-(ay+t*dy))**2);
+            if (d < routeDist) routeDist = d;
+          }
+        }
+        clusterCenterMap.set(c.id, { cx, cy, routeDist });
+      }
+    }
+
+    // 클러스터가 경로 쪽으로 "가려지지 않는지" 판별
+    // 경로→클러스터 직선 사이에 더 가까운 다른 클러스터가 없으면 true
+    function isClusterVisibleToRoute(clusterId: string): boolean {
+      const self = clusterCenterMap.get(clusterId);
+      if (!self || self.routeDist === Infinity) return false;
+      // 경로에서 자기 클러스터 방향으로 더 가까이 있는 클러스터가 있는지 체크
+      for (const [otherId, other] of clusterCenterMap) {
+        if (otherId === clusterId) continue;
+        if (other.routeDist >= self.routeDist) continue; // 더 멀면 무시
+        // 경로→self 직선 근처에 other가 있는지 (간단한 각도 체크)
+        // self와 other의 거리가 self의 routeDist보다 작으면 가려질 수 있음
+        const d = Math.sqrt((self.cx - other.cx)**2 + (self.cy - other.cy)**2);
+        if (d < self.routeDist * 0.8) return false; // 사이에 있음
+      }
+      return true;
+    }
+
     for (const c of clusters) {
       // 클러스터에서 출발/도착 부스 제외
       const filteredIds = c.boothIds.filter(id => !pinBoothIds.has(id));
@@ -1106,8 +1144,39 @@ export default function MapViewer({
         // Individual marker(s)
         for (const id of filteredIds) newIds.add(id);
       } else {
-        // Cluster: pick representative — 경로가 있으면 경로에 가장 가까운 부스
-        if (routeCorners) {
+        const useRouteRep = routeCorners && isClusterVisibleToRoute(c.id);
+
+        if (useRouteRep) {
+          // 경로에서 보이는 클러스터: 코너 가까운 부스 우선 → 경로 가까운 부스
+          let bestId = filteredIds[0];
+          let bestCornerDist = Infinity;
+          let bestRouteDist = Infinity;
+          for (const bid of filteredIds) {
+            const booth = boothMapRef.current.get(bid);
+            if (!booth) continue;
+            const { cx, cy } = getBoothCenter(booth);
+            // 코너까지 최소 거리
+            let cornerDist = Infinity;
+            if (routeCorners) {
+              for (const corner of routeCorners) {
+                const d = Math.sqrt((cx - corner.x)**2 + (cy - corner.y)**2);
+                if (d < cornerDist) cornerDist = d;
+              }
+            }
+            const rDist = boothRouteScore(bid);
+            // 코너 거리 우선, 같으면 경로 거리
+            if (cornerDist < bestCornerDist - 50 || (Math.abs(cornerDist - bestCornerDist) <= 50 && rDist < bestRouteDist)) {
+              bestCornerDist = cornerDist;
+              bestRouteDist = rDist;
+              bestId = bid;
+            }
+          }
+          const bestBooth = boothMapRef.current.get(bestId);
+          const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
+          newIds.add(bestId);
+          clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
+        } else if (routeCorners) {
+          // 가려진 클러스터: 여전히 경로 기준이지만 우선도 낮음
           let bestId = filteredIds[0];
           let bestScore = Infinity;
           for (const bid of filteredIds) {
