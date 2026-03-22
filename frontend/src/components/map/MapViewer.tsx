@@ -595,10 +595,20 @@ export default function MapViewer({
     // Initial fit when image changes
     if (imageChanged) {
       if (initialTransform) {
-        // 부모에서 전달받은 transform 복원
-        transformRef.current = { ...initialTransform };
+        // 부모에서 전달받은 transform — scale/rotation/tilt만 복원, x/y는 재계산
+        const { width: cw, height: ch } = canvasDimsRef.current;
+        const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+        const restoreScale = Math.max(minFitScale, initialTransform.scale);
+        transformRef.current = {
+          scale: restoreScale,
+          x: (cw - imgWidth * restoreScale) / 2,
+          y: (ch - imgHeight * restoreScale) / 2,
+          rotation: initialTransform.rotation,
+          tilt: initialTransform.tilt,
+        };
+        clampPosition(transformRef.current);
         syncContainerPosition(mc, transformRef.current);
-        mc.scale.set(initialTransform.scale);
+        mc.scale.set(restoreScale);
         mc.rotation = initialTransform.rotation;
         applyTilt(initialTransform.tilt);
       } else {
