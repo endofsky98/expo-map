@@ -400,6 +400,12 @@ export function findPath(
 
   if (!bestPath) return null;
 
+  // 디버그: 경로의 노드와 층 정보
+  console.log('[pathfind] bestPath:', bestPath.map(id => {
+    const n = graph.nodes.get(id);
+    return `${id}(f${n?.floorId})`;
+  }).join(' → '));
+
   // 경로를 Point 배열로 변환 + 층 정보 추출
   const points: Point[] = [];
   const nodeFloors: (number | undefined)[] = [];
