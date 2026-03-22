@@ -368,6 +368,7 @@ export default function HomePage() {
     setNavStart({ boothId, x: c.cx, y: c.cy, floorId: b.floor_id ?? selectedFloorId ?? undefined });
     setBoothPopup(null);
     setLongPressChoice(null);
+    (document.activeElement as HTMLElement)?.blur?.();
   }
 
   function setAsDestination(boothId: number) {
@@ -377,6 +378,7 @@ export default function HomePage() {
     setNavEnd({ boothId, x: c.cx, y: c.cy, floorId: b.floor_id ?? selectedFloorId ?? undefined });
     setBoothPopup(null);
     setLongPressChoice(null);
+    (document.activeElement as HTMLElement)?.blur?.();
   }
 
   // 롱프레스 → 출발/도착 선택
