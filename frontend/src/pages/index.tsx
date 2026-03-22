@@ -400,10 +400,10 @@ export default function HomePage() {
       const destBooth = _navEnd.boothId ? useBooths.find((b: any) => b.id === _navEnd.boothId) : null;
       let result: ReturnType<typeof findPath>;
       if (destBooth) {
-        result = findPath({ x: _navStart.x, y: _navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles);
+        result = findPath({ x: _navStart.x, y: _navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
       } else {
         const fakeBooth = { id: -1, booth_number: '', x: _navEnd.x - 1, y: _navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
-        result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles);
+        result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
       }
       // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
@@ -606,7 +606,17 @@ export default function HomePage() {
     if (!clientRoute.floorSegments || clientRoute.floorSegments.length <= 1) return clientRoute; // 단일층
     const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
     if (!seg || seg.path.length < 2) return null;
-    return { path: seg.path, distance: seg.distance } as typeof clientRoute;
+    // 출발 층이면 startExtIdx 유지, 도착 층이면 endExtIdx 유지
+    const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
+    const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
+    return {
+      path: seg.path,
+      distance: seg.distance,
+      startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
+      endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
+      floorSegments: clientRoute.floorSegments,
+      floors: clientRoute.floors,
+    } as typeof clientRoute;
   }, [clientRoute, selectedFloorId]);
 
   const showMap = !loading && (booths.length > 0 || currentImage !== null);

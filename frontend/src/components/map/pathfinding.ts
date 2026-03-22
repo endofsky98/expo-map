@@ -107,7 +107,8 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
       const pt = segmentIntersection(segments[i].from, segments[i].to, segments[j].from, segments[j].to);
       if (pt) {
         const vId = `v${vIdx++}`;
-        nodes.set(vId, { id: vId, x: pt.x, y: pt.y });
+        const vFloor = nodes.get(segments[i].fromId)?.floorId;
+        nodes.set(vId, { id: vId, x: pt.x, y: pt.y, floorId: vFloor });
         // 각 엣지에 분할점 기록
         const ti = paramOnSegment(pt, segments[i].from, segments[i].to);
         const tj = paramOnSegment(pt, segments[j].from, segments[j].to);
@@ -127,7 +128,8 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
       const d = dist(node, nearest);
       if (d > 0.1 && d <= SNAP_RADIUS) {
         const vId = `v${vIdx++}`;
-        nodes.set(vId, { id: vId, x: nearest.x, y: nearest.y });
+        const vFloor = nodes.get(seg.fromId)?.floorId;
+        nodes.set(vId, { id: vId, x: nearest.x, y: nearest.y, floorId: vFloor });
         const t = paramOnSegment(nearest, seg.from, seg.to);
         addSplit(splitPoints, seg.edgeId, t, vId);
         // 노드→가상노드 엣지
@@ -193,20 +195,27 @@ function addSplit(map: Map<number, { t: number; nodeId: string }[]>, edgeId: num
 }
 
 // ===== 출발점 스냅 =====
-export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point; to: Point; fromId: string; toId: string }[]): { nodeId: string; point: Point } {
+export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point; to: Point; fromId: string; toId: string }[], floorId?: number): { nodeId: string; point: Point } {
   let bestDist = Infinity;
   let bestNodeId = '';
   let bestPoint: Point = p;
 
-  // 기존 노드에 스냅
+  // 기존 노드에 스냅 (floorId 지정 시 같은 층만)
   for (const [id, node] of graph.nodes) {
+    if (floorId != null && node.floorId != null && node.floorId !== floorId) continue;
     const d = dist(p, node);
     if (d < bestDist) { bestDist = d; bestNodeId = id; bestPoint = node; }
   }
 
-  // 엣지 위의 점에 스냅
+  // 엣지 위의 점에 스냅 (floorId 지정 시 같은 층 세그먼트만)
   let bestSeg: typeof segments[0] | null = null;
   for (const seg of segments) {
+    if (floorId != null) {
+      const fn = graph.nodes.get(seg.fromId);
+      const tn = graph.nodes.get(seg.toId);
+      if (fn?.floorId != null && fn.floorId !== floorId) continue;
+      if (tn?.floorId != null && tn.floorId !== floorId) continue;
+    }
     const nearest = nearestOnSegment(p, seg.from, seg.to);
     const d = dist(p, nearest);
     if (d < bestDist) {
@@ -218,7 +227,8 @@ export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point;
   // 엣지 위의 점이 더 가까우면 가상 노드 생성
   if (bestSeg) {
     const vId = `snap_start`;
-    graph.nodes.set(vId, { id: vId, x: bestPoint.x, y: bestPoint.y });
+    const snapFloor = floorId ?? graph.nodes.get(bestSeg.fromId)?.floorId;
+    graph.nodes.set(vId, { id: vId, x: bestPoint.x, y: bestPoint.y, floorId: snapFloor });
     const dFrom = dist(bestPoint, bestSeg.from);
     const dTo = dist(bestPoint, bestSeg.to);
     graph.adj.set(vId, [{ to: bestSeg.fromId, cost: dFrom }, { to: bestSeg.toId, cost: dTo }]);
@@ -239,6 +249,7 @@ export function findDestCandidates(
   segments: { from: Point; to: Point; fromId: string; toId: string }[],
   allBooths: Booth[],
   obstacles: Obstacle[],
+  floorId?: number,
 ): { nodeId: string; point: Point }[] {
   const { cx, cy } = getBoothCenter(booth);
   const center = { x: cx, y: cy };
@@ -248,6 +259,13 @@ export function findDestCandidates(
   const segBest = new Map<string, { point: Point; dist: number; seg: typeof segments[0] }>();
 
   for (const seg of segments) {
+    // floorId 지정 시 같은 층 세그먼트만
+    if (floorId != null) {
+      const fn = graph.nodes.get(seg.fromId);
+      const tn = graph.nodes.get(seg.toId);
+      if (fn?.floorId != null && fn.floorId !== floorId) continue;
+      if (tn?.floorId != null && tn.floorId !== floorId) continue;
+    }
     const nearest = nearestOnSegment(center, seg.from, seg.to);
     const d = dist(center, nearest);
     if (hasObstruction(center, nearest, allBooths, obstacles, booth.id)) continue;
@@ -263,7 +281,8 @@ export function findDestCandidates(
   const sorted = [...segBest.values()].sort((a, b) => a.dist - b.dist).slice(0, 4);
   return sorted.map((s, i) => {
     const vId = `dest_${i}`;
-    graph.nodes.set(vId, { id: vId, x: s.point.x, y: s.point.y });
+    const destFloor = floorId ?? graph.nodes.get(s.seg.fromId)?.floorId;
+    graph.nodes.set(vId, { id: vId, x: s.point.x, y: s.point.y, floorId: destFloor });
     const dFrom = dist(s.point, s.seg.from);
     const dTo = dist(s.point, s.seg.to);
     graph.adj.set(vId, [{ to: s.seg.fromId, cost: dFrom }, { to: s.seg.toId, cost: dTo }]);
@@ -355,6 +374,8 @@ export function findPath(
   rawEdges: RawEdge[],
   allBooths: Booth[],
   obstacles: Obstacle[],
+  startFloorId?: number,
+  destFloorId?: number,
 ): PathResult | null {
   // 1. 그래프 빌드
   const graph = buildGraph(rawNodes, rawEdges);
@@ -362,11 +383,11 @@ export function findPath(
   // 2. 분할된 세그먼트 사용 (교차점/근접 포함)
   const segments = graph.segments;
 
-  // 3. 출발점 스냅
-  const start = snapToGraph(startPoint, graph, segments);
+  // 3. 출발점 스냅 (같은 층만)
+  const start = snapToGraph(startPoint, graph, segments, startFloorId);
 
-  // 4. 도착 후보
-  const destCandidates = findDestCandidates(destBooth, graph, segments, allBooths, obstacles);
+  // 4. 도착 후보 (같은 층만)
+  const destCandidates = findDestCandidates(destBooth, graph, segments, allBooths, obstacles, destFloorId);
   if (destCandidates.length === 0) return null;
 
   // 5. 각 후보에 A* → 최단 경로 선택
