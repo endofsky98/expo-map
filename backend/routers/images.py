@@ -283,12 +283,16 @@ def set_current_image(image_id: int, db: Session = Depends(get_db)):
     img = db.query(MapImage).filter(MapImage.id == image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
-    # Unset current for same floor/hall scope
+    # Unset current for same floor/hall/locale scope
     scope = db.query(MapImage)
     if img.floor_id is not None:
         scope = scope.filter(MapImage.floor_id == img.floor_id)
     if img.hall_id is not None:
         scope = scope.filter(MapImage.hall_id == img.hall_id)
+    if img.locale is not None:
+        scope = scope.filter(MapImage.locale == img.locale)
+    else:
+        scope = scope.filter(MapImage.locale == None)
     scope.update({MapImage.is_current: False})
     img.is_current = True
     db.commit()
