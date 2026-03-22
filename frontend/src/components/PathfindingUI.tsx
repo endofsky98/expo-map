@@ -71,41 +71,37 @@ export default function PathfindingUI({
     else setToBoothId('');
   }, [navEnd]);
 
-  /* ─── 길찾기 실행 ─── */
-  function handleFind() {
-    // 출발: 드롭다운에서 선택 or 기존 navStart
-    let start = navStart;
-    if (fromBoothId) {
-      const b = booths.find(bb => bb.id === Number(fromBoothId));
-      if (b) start = { boothId: b.id, x: b.x + b.width / 2, y: b.y + b.height / 2, floorId: b.floor_id };
-    }
-    if (!start) return;
+  /* ─── 출발 즉시 등록 ─── */
+  function handleFromChange(val: string) {
+    setFromBoothId(val);
+    if (!val) return;
+    const b = booths.find(bb => bb.id === Number(val));
+    if (b) onSetStart({ boothId: b.id, x: b.x + b.width / 2, y: b.y + b.height / 2, floorId: b.floor_id });
+  }
 
-    // 도착
-    if (toType === 'booth') {
-      if (!toBoothId) return;
-      const b = booths.find(bb => bb.id === Number(toBoothId));
-      if (!b) return;
-      onSetStart(start);
-      onSetEnd({ boothId: b.id, x: b.x + b.width / 2, y: b.y + b.height / 2, floorId: b.floor_id });
-      if (start.floorId && onFloorSwitch) onFloorSwitch(start.floorId);
-    } else {
-      // 편의시설 → 가장 가까운 해당 타입 시설 찾기
-      if (!toFacilityType) return;
-      const candidates = facilities.filter(f => f.type === toFacilityType);
-      if (candidates.length === 0) return;
-      let best: Facility | null = null;
-      let bestDist = Infinity;
-      for (const f of candidates) {
-        const d = Math.hypot(start.x - f.x, start.y - f.y);
-        if (d < bestDist) { bestDist = d; best = f; }
-      }
-      if (!best) return;
-      onSetStart(start);
-      onSetEnd({ facilityType: toFacilityType, x: best.x, y: best.y, floorId: best.floor_id });
-      if (start.floorId && onFloorSwitch) onFloorSwitch(start.floorId);
+  /* ─── 도착 즉시 등록 (부스) ─── */
+  function handleToBoothChange(val: string) {
+    setToBoothId(val);
+    if (!val) return;
+    const b = booths.find(bb => bb.id === Number(val));
+    if (b) onSetEnd({ boothId: b.id, x: b.x + b.width / 2, y: b.y + b.height / 2, floorId: b.floor_id });
+  }
+
+  /* ─── 도착 즉시 등록 (편의시설) ─── */
+  function handleToFacilityChange(val: string) {
+    setToFacilityType(val);
+    if (!val) return;
+    // 출발 기준 가장 가까운 시설
+    const ref = navStart ?? { x: 3000, y: 4000 }; // fallback 중앙
+    const candidates = facilities.filter(f => f.type === val);
+    if (candidates.length === 0) return;
+    let best: Facility | null = null;
+    let bestDist = Infinity;
+    for (const f of candidates) {
+      const d = Math.hypot(ref.x - f.x, ref.y - f.y);
+      if (d < bestDist) { bestDist = d; best = f; }
     }
-    setIsOpen(false);
+    if (best) onSetEnd({ facilityType: val, x: best.x, y: best.y, floorId: best.floor_id });
   }
 
   function handleClear() {
@@ -180,7 +176,7 @@ export default function PathfindingUI({
                   <div className="flex items-center gap-1 mt-1">
                     <select
                       value={fromBoothId}
-                      onChange={(e) => setFromBoothId(e.target.value)}
+                      onChange={(e) => handleFromChange(e.target.value)}
                       className="flex-1 px-2 py-1.5 rounded border border-gray-200 bg-white text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
                     >
                       <option value="">{navStart ? getLabel(navStart) : '부스 선택...'}</option>
@@ -223,7 +219,7 @@ export default function PathfindingUI({
                   <div className="flex items-center gap-1">
                     <select
                       value={toBoothId}
-                      onChange={(e) => setToBoothId(e.target.value)}
+                      onChange={(e) => handleToBoothChange(e.target.value)}
                       className="flex-1 px-2 py-1.5 rounded border border-gray-200 bg-white text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
                     >
                       <option value="">{navEnd ? getLabel(navEnd) : '부스 선택...'}</option>
@@ -240,7 +236,7 @@ export default function PathfindingUI({
                 ) : (
                   <select
                     value={toFacilityType}
-                    onChange={(e) => setToFacilityType(e.target.value)}
+                    onChange={(e) => handleToFacilityChange(e.target.value)}
                     className="w-full px-2 py-1.5 rounded border border-gray-200 bg-white text-xs dark:border-gray-500/40 dark:bg-[#2a2a2a] dark:text-gray-200 outline-none"
                   >
                     <option value="">편의시설 선택...</option>
@@ -254,11 +250,10 @@ export default function PathfindingUI({
               {/* 버튼 */}
               <div className="flex gap-2">
                 <button
-                  onClick={handleFind}
-                  disabled={(!navStart && !fromBoothId) || (toType === 'booth' ? (!navEnd && !toBoothId) : !toFacilityType)}
-                  className="flex-1 px-3 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 disabled:opacity-40 transition-colors"
+                  onClick={() => setIsOpen(false)}
+                  className="flex-1 px-3 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-400 transition-colors"
                 >
-                  {t('route.find')}
+                  닫기
                 </button>
                 <button
                   onClick={handleClear}
