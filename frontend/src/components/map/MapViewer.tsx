@@ -186,6 +186,8 @@ export default function MapViewer({
   boothsRef.current = booths;
   const hallsRef = useRef<Hall[]>(halls);
   hallsRef.current = halls;
+  const routePathRef = useRef(routePath);
+  routePathRef.current = routePath;
   const boothMapRef = useRef<Map<number, Booth>>(new Map());
   const visibleFacilitiesRef = useRef(visibleFacilities);
   useEffect(() => {
@@ -949,8 +951,31 @@ export default function MapViewer({
       }
     }
 
-    // Supercluster 기반 줌 레벨별 클러스터링
-    const clusters = clusterBooths(visibleBooths, worldToScreen, 0, sc, boothsRef.current);
+    // 경로가 있으면 경로 근처 부스는 개별 표시 (클러스터에서 제외)
+    const rp = routePathRef.current;
+    const nearRouteIds = new Set<number>();
+    if (rp && rp.length >= 2) {
+      const ROUTE_PROX = 250; // world px 이내 부스는 경로 근처
+      for (const booth of visibleBooths) {
+        const { cx, cy } = getBoothCenter(booth);
+        for (let i = 0; i < rp.length - 1; i++) {
+          const ax = rp[i].x, ay = rp[i].y;
+          const bxx = rp[i + 1].x, byy = rp[i + 1].y;
+          // 선분 위 최근접점까지 거리
+          const dx = bxx - ax, dy = byy - ay;
+          const len2 = dx * dx + dy * dy;
+          let t = len2 > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / len2 : 0;
+          t = Math.max(0, Math.min(1, t));
+          const px = ax + t * dx, py = ay + t * dy;
+          const d = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2);
+          if (d <= ROUTE_PROX) { nearRouteIds.add(booth.id); break; }
+        }
+      }
+    }
+    const farBooths = nearRouteIds.size > 0 ? visibleBooths.filter(b => !nearRouteIds.has(b.id)) : visibleBooths;
+
+    // Supercluster 기반 줌 레벨별 클러스터링 (경로 먼 부스만)
+    const clusters = clusterBooths(farBooths, worldToScreen, 0, sc, boothsRef.current);
 
     // Draw PIXI shading: 홀/구역 음영 + 클러스터 음영
     if (clusterGfx) {
@@ -987,7 +1012,7 @@ export default function MapViewer({
     }
 
     // Determine which booth IDs to show as pins + cluster badge info
-    const newIds = new Set<number>();
+    const newIds = new Set<number>(nearRouteIds); // 경로 근처 부스는 항상 개별 표시
     // clusterKey → { boothId, count }
     const clusterReps = new Map<string, { boothId: number; count: number; name?: string }>();
 
