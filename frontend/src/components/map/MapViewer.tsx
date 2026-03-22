@@ -1893,8 +1893,8 @@ export default function MapViewer({
     }
 
     // Create/update DOM elements for visible facilities
-    const facSize = Math.round(16 + (markerFontSize - 16) * 0.8); // 16px 기본 → 마커 폰트에 비례
-    const facFontSize = Math.round(8 + (markerFontSize - 16) * 0.4);
+    const facSize = Math.round(24 + (markerFontSize - 16) * 0.8); // 기본 24px (기존 16의 1.5배)
+    const facFontSize = Math.round(12 + (markerFontSize - 16) * 0.4); // 기본 12px (기존 8의 1.5배)
 
     for (const fac of visibleFacilities) {
       const style = FACILITY_STYLES[fac.type] || { color: 0x6b7280, label: '?' };
