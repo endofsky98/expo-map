@@ -1163,7 +1163,7 @@ export default function MapViewer({
           clusterGfx.endFill();
           // 불투명 점선 테두리
           const dash = 15, gap = 10;
-          clusterGfx.lineStyle(1.5, 0x4f46e5, 0.7);
+          clusterGfx.lineStyle(3, 0x4f46e5, 0.7);
           // 둥근 사각형 경로를 점선으로 그리기
           const pts: { x: number; y: number }[] = [];
           // top: left+r → right-r
