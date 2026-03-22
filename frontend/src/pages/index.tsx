@@ -1069,7 +1069,7 @@ export default function HomePage() {
 
           {/* Zoom controls + View toggle + Settings */}
           {!uiHidden && (
-          <div className="absolute bottom-36 right-4 flex flex-col items-end gap-1.5 z-10 pointer-events-auto settings-fixed-size">
+          <div className="absolute right-4 flex flex-col items-end gap-1.5 z-10 pointer-events-auto settings-fixed-size" style={{ bottom: '144px', right: '16px' }}>
             {/* Bird's-eye / 2D view toggle */}
             <div className="flex items-center gap-2">
               {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">뷰 모드</span>}
