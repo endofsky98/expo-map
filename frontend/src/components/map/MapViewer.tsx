@@ -966,7 +966,7 @@ export default function MapViewer({
       }
     };
     app.ticker.add(ticker);
-    return () => { app.ticker.remove(ticker); };
+    return () => { try { app.ticker.remove(ticker); } catch {} };
   }, []);
 
   // ===== Booths (HTML DOM markers — Mapbox style) =====
