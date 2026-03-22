@@ -420,6 +420,25 @@ export default function HomePage() {
       if (cancelled) return;
       setClientRoute(result);
 
+      // 현재 층 경로의 시작~종료가 화면 80% 안에 보이게 센터+줌
+      if (result?.floorSegments) {
+        const curFloor = _navStart.floorId ?? _navEnd.floorId;
+        const seg = result.floorSegments.find(s => s.floorId === curFloor) ?? result.floorSegments[0];
+        if (seg && seg.path.length >= 2) {
+          const xs = seg.path.map(p => p.x);
+          const ys = seg.path.map(p => p.y);
+          const minX = Math.min(...xs), maxX = Math.max(...xs);
+          const minY = Math.min(...ys), maxY = Math.max(...ys);
+          const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+          const routeW = maxX - minX || 1, routeH = maxY - minY || 1;
+          // 화면 80% 기준으로 줌 계산
+          const cw = window.innerWidth * 0.8;
+          const ch = window.innerHeight * 0.8;
+          const scale = Math.min(cw / routeW, ch / routeH, 2.0); // 최대 2.0
+          const panTo = (window as any).__mapViewerPanToWorld;
+          if (panTo) setTimeout(() => panTo(cx, cy, scale), 300);
+        }
+      }
     }
 
     computeRoute();
@@ -768,9 +787,9 @@ export default function HomePage() {
               <span className="text-gray-600 dark:text-gray-400">
                 도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
-              <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); setNavCurrentFloorId(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+              <button onClick={(e) => { e.stopPropagation(); setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); setNavCurrentFloorId(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
               {clientRoute && !navActive && (
-                <button onClick={startNavigation} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                <button onClick={(e) => { e.stopPropagation(); startNavigation(); }} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                   🧭 네비게이션
                 </button>
               )}
