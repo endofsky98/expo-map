@@ -47,6 +47,12 @@ export default function PathfindingUI({
   const { t, ln } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
 
+  // 외부에서 팝업 열기 지원
+  useEffect(() => {
+    (window as any).__openPathfindingUI = () => setIsOpen(true);
+    return () => { delete (window as any).__openPathfindingUI; };
+  }, []);
+
   /* ─── 드롭다운 state ─── */
   const [fromType, setFromType] = useState<'booth'>('booth');          // 출발은 부스만
   const [toType, setToType] = useState<'booth' | 'facility'>('booth'); // 도착은 부스 or 편의시설

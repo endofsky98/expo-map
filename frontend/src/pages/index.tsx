@@ -702,7 +702,7 @@ export default function HomePage() {
       <Head><title>{t('app.title')}</title></Head>
       {/* DEBUG overlay — 에러 표시 */}
 
-      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden">
+      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none' }}>
         {/* Top bar — transparent overlay */}
         <div className="absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none">
           {/* Row 1: Logo + Floor selector + utilities — opaque background */}
@@ -740,33 +740,36 @@ export default function HomePage() {
               booths={allBooths}
               onSelect={handleSearchSelect}
               onView={(booth) => {
+                setSelectedBoothId(booth.id);
                 if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                 setTimeout(() => {
                   const panTo = (window as any).__mapViewerPanToWorld;
-                  if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 3.0);
+                  if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 0.5);
                 }, 200);
               }}
               onSetStart={(booth) => {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
+                setSelectedBoothId(null);
                 setNavStart({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
                 if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                 // navEnd가 없을 때만 즉시 이동 (경로 있으면 computeRoute에서 midpoint로 이동)
                 if (!navEnd) {
                   setTimeout(() => {
                     const panTo = (window as any).__mapViewerPanToWorld;
-                    if (panTo) panTo(c.x, c.y, 3.0);
+                    if (panTo) panTo(c.x, c.y, 0.5);
                   }, 200);
                 }
               }}
               onSetEnd={(booth) => {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
+                setSelectedBoothId(null);
                 setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
                 if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                 // navStart가 없을 때만 즉시 이동
                 if (!navStart) {
                   setTimeout(() => {
                     const panTo = (window as any).__mapViewerPanToWorld;
-                    if (panTo) panTo(c.x, c.y, 3.0);
+                    if (panTo) panTo(c.x, c.y, 0.5);
                   }, 200);
                 }
               }}
@@ -775,7 +778,10 @@ export default function HomePage() {
 
           {/* 길찾기 출발/도착 상태 바 */}
           {(navStart || navEnd) && (
-            <div className="mt-2 flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit">
+            <div
+              className="mt-2 flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit cursor-pointer hover:bg-white dark:hover:bg-[#1a1a1a] transition-colors"
+              onClick={() => { (window as any).__openPathfindingUI?.(); }}
+            >
               <Navigation2 className="h-3.5 w-3.5 text-indigo-500" />
               <span className="text-gray-600 dark:text-gray-400">
                 출발: <span className="font-medium text-green-600 dark:text-green-400">{navStart ? getNavLabel(navStart) : '—'}</span>

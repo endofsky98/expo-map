@@ -99,7 +99,7 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
           onFocus={() => query.trim() && results.length > 0 && setIsOpen(true)}
           className="w-full pl-10 pr-10 py-2.5 rounded-lg border border-gray-200 bg-white/90 backdrop-blur-sm
             outline-none transition focus:ring-2 focus:ring-indigo-600/20 focus:border-indigo-600
-            placeholder:text-gray-400 text-sm
+            placeholder:text-gray-400 text-sm select-text
             dark:border-gray-500/40 dark:bg-[#2a2a2a]/90 dark:text-gray-100
             dark:focus:ring-indigo-400/30 dark:focus:border-indigo-400"
         />
