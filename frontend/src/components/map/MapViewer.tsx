@@ -1893,6 +1893,9 @@ export default function MapViewer({
     }
 
     // Create/update DOM elements for visible facilities
+    const facSize = Math.round(16 + (markerFontSize - 16) * 0.8); // 16px 기본 → 마커 폰트에 비례
+    const facFontSize = Math.round(8 + (markerFontSize - 16) * 0.4);
+
     for (const fac of visibleFacilities) {
       const style = FACILITY_STYLES[fac.type] || { color: 0x6b7280, label: '?' };
       const hexColor = '#' + (style.color).toString(16).padStart(6, '0');
@@ -1905,32 +1908,27 @@ export default function MapViewer({
         el = document.createElement('div');
         el.style.cssText =
           'position:absolute;left:0;top:0;pointer-events:none;' +
-          'width:26px;height:26px;border-radius:50%;' +
+          'border-radius:50%;' +
           'display:flex;align-items:center;justify-content:center;' +
-          'font-size:10px;font-weight:700;font-family:Inter,sans-serif;' +
+          'font-weight:700;font-family:Inter,sans-serif;' +
           'box-shadow:0 1px 4px rgba(0,0,0,0.3);z-index:6;' +
           'will-change:transform;';
-        el.style.background = hexColor;
-        el.style.color = textColor;
-        el.style.border = `2px solid ${borderColor}`;
-        el.setAttribute('data-fac-wx', String(fac.x));
-        el.setAttribute('data-fac-wy', String(fac.y));
-        el.textContent = style.label;
         overlay.appendChild(el);
         facMarkers.set(fac.id, el);
-      } else {
-        // Update in case type/position changed
-        el.style.background = hexColor;
-        el.style.color = textColor;
-        el.style.border = `2px solid ${borderColor}`;
-        el.textContent = style.label;
-        el.setAttribute('data-fac-wx', String(fac.x));
-        el.setAttribute('data-fac-wy', String(fac.y));
       }
+      el.style.width = `${facSize}px`;
+      el.style.height = `${facSize}px`;
+      el.style.fontSize = `${facFontSize}px`;
+      el.style.background = hexColor;
+      el.style.color = textColor;
+      el.style.border = `2px solid ${borderColor}`;
+      el.textContent = style.label;
+      el.setAttribute('data-fac-wx', String(fac.x));
+      el.setAttribute('data-fac-wy', String(fac.y));
     }
 
     updateMarkerPositions();
-  }, [visibleFacilities]);
+  }, [visibleFacilities, markerFontSize]);
 
   // ===== Current Position =====
   useEffect(() => {
@@ -2041,6 +2039,7 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerZoomOut = zoomOut;
       (window as unknown as Record<string, unknown>).__mapViewerFontUp = () => setMarkerFontSize(s => Math.min(48, s + 4));
       (window as unknown as Record<string, unknown>).__mapViewerFontDown = () => setMarkerFontSize(s => Math.max(10, s - 4));
+      (window as unknown as Record<string, unknown>).__mapViewerSetMarkerFontSize = (s: number) => setMarkerFontSize(s);
       (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
       (window as unknown as Record<string, unknown>).__mapViewerSetTilt = (deg: number) => applyTilt(deg);
       (window as unknown as Record<string, unknown>).__mapViewerPanToWorld = (wx: number, wy: number, scale?: number, rotation?: number) => {

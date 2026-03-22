@@ -3,7 +3,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { ZoomIn, ZoomOut, Settings, Map as MapIcon, Navigation2, MapPin, Eye, EyeOff, Box, Square } from 'lucide-react';
+import { ZoomIn, ZoomOut, Settings, Map as MapIcon, Navigation2, MapPin, Eye, EyeOff, Box, Square, RotateCcw, RefreshCw } from 'lucide-react';
 import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle } from '@/types';
 import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchAmenities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchSetting } from '@/lib/api';
 import { findPath, type PathResult } from '@/components/map/pathfinding';
@@ -719,12 +719,28 @@ export default function HomePage() {
   function handleFontUp() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerFontUp;
     if (fn) fn();
-    setGlobalFontScale(prev => Math.min(1.5, prev + 0.1));
+    setGlobalFontScale(prev => {
+      const next = Math.min(1.5, +(prev + 0.1).toFixed(1));
+      document.documentElement.style.fontSize = `${next * 16}px`;
+      return next;
+    });
   }
   function handleFontDown() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerFontDown;
     if (fn) fn();
-    setGlobalFontScale(prev => Math.max(0.7, prev - 0.1));
+    setGlobalFontScale(prev => {
+      const next = Math.max(0.7, +(prev - 0.1).toFixed(1));
+      document.documentElement.style.fontSize = `${next * 16}px`;
+      return next;
+    });
+  }
+  function handleFontReset() {
+    const fnUp = (window as unknown as Record<string, unknown>).__mapViewerFontUp;
+    // 마커 폰트도 기본값으로 리셋
+    const setMF = (window as unknown as Record<string, unknown>).__mapViewerSetMarkerFontSize;
+    if (typeof setMF === 'function') (setMF as (s: number) => void)(16);
+    setGlobalFontScale(1);
+    document.documentElement.style.fontSize = '16px';
   }
   function handleZoomIn() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerZoomIn;
@@ -745,7 +761,7 @@ export default function HomePage() {
       <Head><title>{t('app.title')}</title></Head>
       {/* DEBUG overlay — 에러 표시 */}
 
-      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none', fontSize: `${globalFontScale}rem` }}>
+      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none' }}>
         {/* Top bar — transparent overlay */}
         <div className={`absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none transition-opacity duration-200 ${uiHidden ? 'opacity-0 pointer-events-none' : ''}`}>
           {/* Row 1: Logo + Floor selector + utilities — opaque background */}
@@ -1077,6 +1093,23 @@ export default function HomePage() {
                 }
               </button>
             </div>
+            {/* 뷰 리셋 — 설정 확장 시에만 */}
+            {settingsExpanded && (
+            <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '30ms' : '0ms' }}>
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">뷰 리셋</span>}
+              <button
+                onClick={() => {
+                  const resetView = (window as unknown as Record<string, () => void>).__mapViewerResetView;
+                  if (resetView) resetView();
+                  setIsBirdView(false);
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors"
+                title="뷰 리셋"
+              >
+                <RotateCcw className="h-4 w-4 text-gray-100" />
+              </button>
+            </div>
+            )}
             {/* 확대 */}
             <div className="flex items-center gap-2">
               {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">확대</span>}
@@ -1146,6 +1179,23 @@ export default function HomePage() {
                 </button>
               </div>
             </div>
+            {/* 설정 리셋 — 설정 확장 시에만 */}
+            {settingsExpanded && (
+            <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '250ms' : '0ms' }}>
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">설정 리셋</span>}
+              <button
+                onClick={() => {
+                  handleFontReset();
+                  setHiddenFacilityTypes(new Set());
+                  setShowBooths(true);
+                }}
+                className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors"
+                title="설정 리셋"
+              >
+                <RefreshCw className="h-4 w-4 text-gray-100" />
+              </button>
+            </div>
+            )}
             {/* 설정 토글 */}
             <div className="flex items-center gap-2">
               <button
