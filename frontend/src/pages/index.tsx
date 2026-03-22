@@ -532,7 +532,13 @@ export default function HomePage() {
     if (pos && panTo) panTo(pos.x, pos.y, 0.3, rot);
   }
 
-  // 다음 (100px 전진) — 실선 구간 내에서만
+  // 현재 층 세그먼트 인덱스
+  const currentSegIdx = clientRoute?.floorSegments?.findIndex(s => s.floorId === selectedFloorId) ?? -1;
+  const isLastSeg = currentSegIdx >= 0 && clientRoute?.floorSegments
+    ? currentSegIdx === clientRoute.floorSegments.length - 1 : true;
+  const isFirstSeg = currentSegIdx <= 0;
+
+  // 다음 (100px 전진) — 실선 구간 내에서만, 끝에 도달하면 다음 층으로
   function navNext() {
     if (!currentFloorRoute) return;
     const { navMaxDist } = getNavRange();
@@ -546,11 +552,31 @@ export default function HomePage() {
       if (animNav) animNav(pos.x, pos.y, rot, 500);
     }
     if (newDist >= navMaxDist) {
-      setNavConfirm('arrived');
+      // 멀티층: 다음 층 세그먼트가 있으면 층 전환
+      if (!isLastSeg && clientRoute?.floorSegments) {
+        const nextSeg = clientRoute.floorSegments[currentSegIdx + 1];
+        if (nextSeg) {
+          setSelectedFloorId(nextSeg.floorId);
+          // 다음 층으로 전환 후 시작 위치로 리셋 (setTimeout으로 리마운트 대기)
+          setTimeout(() => {
+            navCurDistRef.current = 0;
+            setNavCurDist(0);
+            const p = nextSeg.path[0];
+            if (p) {
+              const panTo = (window as any).__mapViewerPanToWorld;
+              const setTilt = (window as any).__mapViewerSetTilt;
+              if (setTilt) setTilt(60);
+              if (panTo) panTo(p.x, p.y, 0.3);
+            }
+          }, 500);
+        }
+      } else {
+        setNavConfirm('arrived');
+      }
     }
   }
 
-  // 이전 (100px 후퇴) — 실선 구간 내에서만
+  // 이전 (100px 후퇴) — 실선 구간 내에서만, 시작에 도달하면 이전 층으로
   function navPrev() {
     if (!currentFloorRoute) return;
     const { navMinDist } = getNavRange();
@@ -562,6 +588,25 @@ export default function HomePage() {
     if (pos) {
       const animNav = (window as any).__mapViewerAnimateNav;
       if (animNav) animNav(pos.x, pos.y, rot, 500);
+    }
+    // 멀티층: 시작에 도달 + 이전 층 세그먼트가 있으면 층 전환
+    if (newDist <= navMinDist && !isFirstSeg && clientRoute?.floorSegments) {
+      const prevSeg = clientRoute.floorSegments[currentSegIdx - 1];
+      if (prevSeg) {
+        setSelectedFloorId(prevSeg.floorId);
+        setTimeout(() => {
+          const maxD = prevSeg.distance;
+          navCurDistRef.current = maxD;
+          setNavCurDist(maxD);
+          const p = prevSeg.path[prevSeg.path.length - 1];
+          if (p) {
+            const panTo = (window as any).__mapViewerPanToWorld;
+            const setTilt = (window as any).__mapViewerSetTilt;
+            if (setTilt) setTilt(60);
+            if (panTo) panTo(p.x, p.y, 0.3);
+          }
+        }, 500);
+      }
     }
   }
 
