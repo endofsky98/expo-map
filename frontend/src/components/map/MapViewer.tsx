@@ -40,6 +40,8 @@ export default function MapViewer({
   navStartPoint,
   navEndPoint,
   navCurrentPos,
+  initialTransform,
+  onTransformChange,
 }: MapViewerProps) {
   const { ln } = useI18n();
   const [facilityTooltip, setFacilityTooltip] = useState<{ facility: Facility; screenX: number; screenY: number } | null>(null);
@@ -334,6 +336,7 @@ export default function MapViewer({
     onZoomChangeRef.current?.(clamped);
     scheduleRenderTiles();
     scheduleMarkerUpdate();
+    onTransformChange?.({ ...transformRef.current });
   }
 
   function applyZoom(newScale: number, pivotX: number, pivotY: number) {
@@ -386,6 +389,7 @@ export default function MapViewer({
     // 마커 오버레이에는 tilt 적용하지 않음 — 마커는 항상 정면 고정
     scheduleRenderTiles();
     scheduleMarkerUpdate();
+    onTransformChange?.({ ...transformRef.current });
   }
 
   // #6: Inertia scrolling
@@ -588,22 +592,31 @@ export default function MapViewer({
 
     // Initial fit when image changes
     if (imageChanged) {
-      const { width: cw, height: ch } = canvasDimsRef.current;
-      const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
-      const fitScale = Math.max(minFitScale, Math.min(cw / imgWidth, ch / imgHeight) * 0.9);
-      transformRef.current = {
-        scale: fitScale,
-        x: (cw - imgWidth * fitScale) / 2,
-        y: (ch - imgHeight * fitScale) / 2,
-        rotation: 0,
-        tilt: 0,
-      };
-      clampPosition(transformRef.current);
-      syncContainerPosition(mc, transformRef.current);
-      mc.scale.set(fitScale);
-      mc.rotation = 0;
-      applyTilt(0);
-      onZoomChangeRef.current?.(fitScale);
+      if (initialTransform) {
+        // 부모에서 전달받은 transform 복원
+        transformRef.current = { ...initialTransform };
+        syncContainerPosition(mc, transformRef.current);
+        mc.scale.set(initialTransform.scale);
+        mc.rotation = initialTransform.rotation;
+        applyTilt(initialTransform.tilt);
+      } else {
+        const { width: cw, height: ch } = canvasDimsRef.current;
+        const minFitScale = Math.max(cw / imgWidth, ch / imgHeight);
+        const fitScale = Math.max(minFitScale, Math.min(cw / imgWidth, ch / imgHeight) * 0.9);
+        transformRef.current = {
+          scale: fitScale,
+          x: (cw - imgWidth * fitScale) / 2,
+          y: (ch - imgHeight * fitScale) / 2,
+          rotation: 0,
+          tilt: 0,
+        };
+        clampPosition(transformRef.current);
+        syncContainerPosition(mc, transformRef.current);
+        mc.scale.set(fitScale);
+        mc.rotation = 0;
+        applyTilt(0);
+      }
+      onZoomChangeRef.current?.(transformRef.current.scale);
     }
 
     if (useTileMode && tileInfo) {

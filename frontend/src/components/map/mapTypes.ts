@@ -49,6 +49,8 @@ export interface MapViewerProps {
   navStartPoint?: { boothId?: number; x: number; y: number } | null;
   navEndPoint?: { boothId?: number; x: number; y: number } | null;
   navCurrentPos?: { x: number; y: number } | null;
+  initialTransform?: { x: number; y: number; scale: number; rotation: number; tilt: number } | null;
+  onTransformChange?: (t: { x: number; y: number; scale: number; rotation: number; tilt: number }) => void;
 }
 
 export const MIN_ZOOM = 0.1;

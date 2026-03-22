@@ -117,8 +117,10 @@ export default function HomePage() {
   const [navCurDist, setNavCurDist] = useState(0); // 현재 위치 (경로상 거리 px)
   const navCurDistRef = useRef(0);
   const [navConfirm, setNavConfirm] = useState<'cancel' | 'arrived' | null>(null);
+  const [navFloorTransition, setNavFloorTransition] = useState<{ targetFloorId: number; label: string } | null>(null);
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
+  const savedTransformRef = useRef<{ x: number; y: number; scale: number; rotation: number; tilt: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [boothPopup, setBoothPopup] = useState<Booth | null>(null);
@@ -517,19 +519,27 @@ export default function HomePage() {
   // 멀티층 경로 여부
   const isMultiFloorRoute = clientRoute?.floors && clientRoute.floors.length > 1;
 
-  // 네비게이션 시작 — 줌 세팅 + 실선 시작 지점으로 이동
+  // 네비게이션 시작 — 경로의 첫 번째 층으로 이동 후 시작
   function startNavigation() {
-    if (!currentFloorRoute) return;
-    const { navMinDist } = getNavRange();
+    if (!clientRoute?.floorSegments || clientRoute.floorSegments.length === 0) return;
+    const firstSeg = clientRoute.floorSegments[0];
+    // 첫 번째 세그먼트 층으로 이동
+    if (selectedFloorId !== firstSeg.floorId) {
+      setSelectedFloorId(firstSeg.floorId);
+    }
     setNavActive(true);
-    navCurDistRef.current = navMinDist;
-    setNavCurDist(navMinDist);
-    const pos = posAtDist(navMinDist);
-    const rot = dirAtDist(navMinDist);
-    const panTo = (window as any).__mapViewerPanToWorld;
-    const setTilt = (window as any).__mapViewerSetTilt;
-    if (setTilt) setTilt(60);
-    if (pos && panTo) panTo(pos.x, pos.y, 0.3, rot);
+    // 시작은 setTimeout으로 리마운트 대기 후
+    setTimeout(() => {
+      const route = clientRoute.floorSegments![0];
+      if (!route || route.path.length < 2) return;
+      navCurDistRef.current = 0;
+      setNavCurDist(0);
+      const pos = route.path[0];
+      const panTo = (window as any).__mapViewerPanToWorld;
+      const setTilt = (window as any).__mapViewerSetTilt;
+      if (setTilt) setTilt(60);
+      if (pos && panTo) panTo(pos.x, pos.y, 0.3);
+    }, 300);
   }
 
   // 현재 층 세그먼트 인덱스
@@ -552,28 +562,39 @@ export default function HomePage() {
       if (animNav) animNav(pos.x, pos.y, rot, 500);
     }
     if (newDist >= navMaxDist) {
-      // 멀티층: 다음 층 세그먼트가 있으면 층 전환
       if (!isLastSeg && clientRoute?.floorSegments) {
+        // 다음 층 세그먼트가 있음 — "N층으로 이동하세요" 알림
         const nextSeg = clientRoute.floorSegments[currentSegIdx + 1];
         if (nextSeg) {
-          setSelectedFloorId(nextSeg.floorId);
-          // 다음 층으로 전환 후 시작 위치로 리셋 (setTimeout으로 리마운트 대기)
-          setTimeout(() => {
-            navCurDistRef.current = 0;
-            setNavCurDist(0);
-            const p = nextSeg.path[0];
-            if (p) {
-              const panTo = (window as any).__mapViewerPanToWorld;
-              const setTilt = (window as any).__mapViewerSetTilt;
-              if (setTilt) setTilt(60);
-              if (panTo) panTo(p.x, p.y, 0.3);
-            }
-          }, 500);
+          // floor_id → 표시 층 이름 (floor_id=1→1층, floor_id=2→3층)
+          const fn = floors?.find(f => f.id === nextSeg.floorId)?.name;
+          const floorLabel = typeof fn === 'string' ? fn : (fn ? Object.values(fn)[0] : `${nextSeg.floorId}층`);
+          setNavFloorTransition({ targetFloorId: nextSeg.floorId, label: floorLabel });
         }
       } else {
         setNavConfirm('arrived');
       }
     }
+  }
+
+  // 층 전환 확인 — 알림에서 "확인" 누르면 실행
+  function navFloorTransitionConfirm() {
+    if (!navFloorTransition || !clientRoute?.floorSegments) return;
+    const targetFloorId = navFloorTransition.targetFloorId;
+    setNavFloorTransition(null);
+    setSelectedFloorId(targetFloorId);
+    setTimeout(() => {
+      navCurDistRef.current = 0;
+      setNavCurDist(0);
+      const seg = clientRoute!.floorSegments!.find(s => s.floorId === targetFloorId);
+      const p = seg?.path[0];
+      if (p) {
+        const panTo = (window as any).__mapViewerPanToWorld;
+        const setTilt = (window as any).__mapViewerSetTilt;
+        if (setTilt) setTilt(60);
+        if (panTo) panTo(p.x, p.y, 0.3);
+      }
+    }, 500);
   }
 
   // 이전 (100px 후퇴) — 실선 구간 내에서만, 시작에 도달하면 이전 층으로
@@ -589,23 +610,12 @@ export default function HomePage() {
       const animNav = (window as any).__mapViewerAnimateNav;
       if (animNav) animNav(pos.x, pos.y, rot, 500);
     }
-    // 멀티층: 시작에 도달 + 이전 층 세그먼트가 있으면 층 전환
     if (newDist <= navMinDist && !isFirstSeg && clientRoute?.floorSegments) {
       const prevSeg = clientRoute.floorSegments[currentSegIdx - 1];
       if (prevSeg) {
-        setSelectedFloorId(prevSeg.floorId);
-        setTimeout(() => {
-          const maxD = prevSeg.distance;
-          navCurDistRef.current = maxD;
-          setNavCurDist(maxD);
-          const p = prevSeg.path[prevSeg.path.length - 1];
-          if (p) {
-            const panTo = (window as any).__mapViewerPanToWorld;
-            const setTilt = (window as any).__mapViewerSetTilt;
-            if (setTilt) setTilt(60);
-            if (panTo) panTo(p.x, p.y, 0.3);
-          }
-        }, 500);
+        const fn2 = floors?.find(f => f.id === prevSeg.floorId)?.name;
+        const floorLabel2 = typeof fn2 === 'string' ? fn2 : (fn2 ? Object.values(fn2)[0] : `${prevSeg.floorId}층`);
+        setNavFloorTransition({ targetFloorId: prevSeg.floorId, label: floorLabel2 });
       }
     }
   }
@@ -794,6 +804,8 @@ export default function HomePage() {
               navStartPoint={navStart?.floorId === selectedFloorId ? navStart : null}
               navEndPoint={navEnd?.floorId === selectedFloorId ? navEnd : null}
               navCurrentPos={navCurrentPos}
+              initialTransform={savedTransformRef.current}
+              onTransformChange={(t) => { savedTransformRef.current = t; }}
             />
             </MapErrorBoundary>
           )}
@@ -876,6 +888,28 @@ export default function HomePage() {
                     </div>
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* 층 전환 알림 */}
+          {navFloorTransition && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+              <div className="bg-white dark:bg-[#1e1e1e] rounded-xl shadow-xl p-6 w-72">
+                <p className="text-lg font-bold text-center text-blue-600 dark:text-blue-400 mb-2">🚶 층 이동</p>
+                <p className="text-sm text-gray-700 dark:text-gray-300 text-center">
+                  <span className="font-semibold">{navFloorTransition.label}</span>으로 이동하세요
+                </p>
+                <div className="flex gap-2 mt-4">
+                  <button
+                    onClick={() => setNavFloorTransition(null)}
+                    className="flex-1 py-2 text-sm rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                  >취소</button>
+                  <button
+                    onClick={navFloorTransitionConfirm}
+                    className="flex-1 py-2 text-sm rounded-lg bg-blue-500 text-white font-semibold"
+                  >확인</button>
+                </div>
               </div>
             </div>
           )}

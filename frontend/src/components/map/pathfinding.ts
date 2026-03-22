@@ -385,89 +385,135 @@ export function findPath(
   const destIds = findDestInFloorGraph(destBooth, dstGraph, allBooths, obstacles);
   if (destIds.length === 0) return null;
 
-  // 출발층의 층간 전환 노드 (linked_node_id의 상대가 도착층인 것)
-  const srcTransitions: { srcNodeId: string; dstNodeId: string; rawNode: RawNode }[] = [];
+  // 층간 연결 맵: floorId → [{ nodeId (해당 층), linkedNodeId (다른 층), linkedFloorId }]
+  const floorLinks = new Map<number, { nodeId: string; linkedNodeId: string; linkedFloorId: number }[]>();
   for (const tn of transitionNodes) {
-    if (tn.floor_id !== srcFloor) continue;
     const linked = rawNodes.find(n => n.id === tn.linked_node_id);
     if (!linked) continue;
-    if (linked.floor_id === dstFloor) {
-      srcTransitions.push({ srcNodeId: `n${tn.id}`, dstNodeId: `n${linked.id}`, rawNode: tn });
-    }
-  }
-
-  if (srcTransitions.length === 0) {
-    // 직접 연결 불가 — 중간층 경유 (미구현, 일단 null)
-    return null;
-  }
-
-  // 각 층간 전환 노드 경유 경로 계산
-  interface CandidateRoute {
-    srcPath: string[];     // 출발 → 출발층 전환노드
-    srcDist: number;
-    dstPath: string[];     // 도착층 전환노드 → 도착
-    dstDist: number;
-    totalDist: number;
-    srcTransNodeId: string;  // 출발층 전환노드
-    dstTransNodeId: string;  // 도착층 전환노드
-  }
-
-  const candidates: CandidateRoute[] = [];
-
-  for (const trans of srcTransitions) {
-    // 출발 → 출발층 전환노드
-    if (!srcGraph.nodes.has(trans.srcNodeId)) continue;
-    const srcPath = astar(srcGraph, startId, trans.srcNodeId);
-    if (!srcPath) continue;
-    const srcDist = pathDistance(srcGraph, srcPath);
-
-    // 도착층 전환노드 → 도착
-    if (!dstGraph.nodes.has(trans.dstNodeId)) continue;
-    const dstResult = findSameFloorPath(trans.dstNodeId, destIds, dstGraph);
-    if (!dstResult) continue;
-
-    const totalDist = srcDist + dstResult.dist;
-    candidates.push({
-      srcPath,
-      srcDist,
-      dstPath: dstResult.path,
-      dstDist: dstResult.dist,
-      totalDist,
-      srcTransNodeId: trans.srcNodeId,
-      dstTransNodeId: trans.dstNodeId,
+    if (!floorLinks.has(tn.floor_id)) floorLinks.set(tn.floor_id, []);
+    floorLinks.get(tn.floor_id)!.push({
+      nodeId: `n${tn.id}`,
+      linkedNodeId: `n${linked.id}`,
+      linkedFloorId: linked.floor_id,
     });
   }
 
-  if (candidates.length === 0) return null;
+  // 그래프 캐시 (층별)
+  const graphCache = new Map<number, PathGraph>();
+  function getFloorGraph(fid: number): PathGraph {
+    if (!graphCache.has(fid)) graphCache.set(fid, buildFloorGraph(rawNodes, rawEdges, fid));
+    return graphCache.get(fid)!;
+  }
+  graphCache.set(srcFloor, srcGraph);
+  graphCache.set(dstFloor, dstGraph);
 
-  // 최단 경로 선택
-  candidates.sort((a, b) => a.totalDist - b.totalDist);
-  const best = candidates[0];
+  // BFS로 층 경유 경로 탐색
+  // 상태: { floorId, nodeId(해당 층에서의 현재 위치), segments[], totalDist }
+  interface BfsState {
+    floorId: number;
+    nodeId: string;
+    segments: FloorSegment[];
+    totalDist: number;
+    visitedFloors: Set<number>;
+  }
 
-  // 출발층 세그먼트
-  const srcPoints = best.srcPath.map(id => {
-    const n = srcGraph.nodes.get(id)!;
-    return { x: n.x, y: n.y };
-  });
+  const queue: BfsState[] = [];
+  // 출발층에서 모든 층간 전환 노드까지 경로 계산
+  const srcLinks = floorLinks.get(srcFloor) || [];
+  for (const link of srcLinks) {
+    if (!srcGraph.nodes.has(link.nodeId)) continue;
+    const path = astar(srcGraph, startId, link.nodeId);
+    if (!path) continue;
+    const d = pathDistance(srcGraph, path);
+    const points = path.map(id => { const n = srcGraph.nodes.get(id)!; return { x: n.x, y: n.y }; });
+    const visited = new Set([srcFloor, link.linkedFloorId]);
+    queue.push({
+      floorId: link.linkedFloorId,
+      nodeId: link.linkedNodeId,
+      segments: [{ floorId: srcFloor, path: points, distance: d }],
+      totalDist: d,
+      visitedFloors: visited,
+    });
+  }
 
-  // 도착층 세그먼트
-  const dstPoints = best.dstPath.map(id => {
-    const n = dstGraph.nodes.get(id)!;
-    return { x: n.x, y: n.y };
-  });
+  // 직접 출발층→도착층 연결도 포함 (위에서 이미 dstFloor인 것)
+  // + 중간층 경유 BFS
+  interface BestRoute {
+    segments: FloorSegment[];
+    totalDist: number;
+  }
+  let bestRoute: BestRoute | null = null;
 
-  const floorSegments: FloorSegment[] = [
-    { floorId: srcFloor, path: srcPoints, distance: best.srcDist },
-    { floorId: dstFloor, path: dstPoints, distance: best.dstDist },
-  ];
+  while (queue.length > 0) {
+    const state = queue.shift()!;
+    
+    // 이미 더 좋은 경로 발견했으면 skip
+    if (bestRoute && state.totalDist >= bestRoute.totalDist) continue;
 
-  const allPoints = [...srcPoints, ...dstPoints];
-  const floors = [srcFloor, dstFloor];
+    const curGraph = getFloorGraph(state.floorId);
+
+    if (state.floorId === dstFloor) {
+      // 도착층 도달 — 도착지까지 경로 계산
+      if (!curGraph.nodes.has(state.nodeId)) continue;
+      const result = findSameFloorPath(state.nodeId, destIds, curGraph);
+      if (!result) continue;
+      const total = state.totalDist + result.dist;
+      if (!bestRoute || total < bestRoute.totalDist) {
+        const points = result.path.map(id => { const n = curGraph.nodes.get(id)!; return { x: n.x, y: n.y }; });
+        bestRoute = {
+          segments: [...state.segments, { floorId: dstFloor, path: points, distance: result.dist }],
+          totalDist: total,
+        };
+      }
+      continue;
+    }
+
+    // 아직 도착층이 아님 — 이 층의 층간 노드로 이동
+    const curLinks = floorLinks.get(state.floorId) || [];
+    for (const link of curLinks) {
+      if (state.visitedFloors.has(link.linkedFloorId)) continue; // 이미 방문한 층 skip
+      if (!curGraph.nodes.has(state.nodeId) || !curGraph.nodes.has(link.nodeId)) continue;
+      
+      let path: string[] | null;
+      let d: number;
+      if (state.nodeId === link.nodeId) {
+        // 같은 노드 — 거리 0
+        path = [state.nodeId];
+        d = 0;
+      } else {
+        path = astar(curGraph, state.nodeId, link.nodeId);
+        if (!path) continue;
+        d = pathDistance(curGraph, path);
+      }
+      
+      const total = state.totalDist + d;
+      if (bestRoute && total >= bestRoute.totalDist) continue;
+      
+      const points = path.map(id => { const n = curGraph.nodes.get(id)!; return { x: n.x, y: n.y }; });
+      const newSegments = d > 0
+        ? [...state.segments, { floorId: state.floorId, path: points, distance: d }]
+        : [...state.segments]; // 거리 0이면 세그먼트 생략
+      const visited = new Set(state.visitedFloors);
+      visited.add(link.linkedFloorId);
+      queue.push({
+        floorId: link.linkedFloorId,
+        nodeId: link.linkedNodeId,
+        segments: newSegments,
+        totalDist: total,
+        visitedFloors: visited,
+      });
+    }
+  }
+
+  if (!bestRoute) return null;
+
+  const allPoints = bestRoute.segments.flatMap(s => s.path);
+  const floors = bestRoute.segments.map(s => s.floorId);
 
   return {
     path: allPoints,
-    distance: best.totalDist,
-    floorSegments,
+    distance: bestRoute.totalDist,
+    floorSegments: bestRoute.segments,
     floors,
   };
 }
