@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Eye, MapPin } from 'lucide-react';
 import { Booth } from '@/types';
 import { useI18n } from '@/lib/i18n';
 import { searchBooths } from '@/lib/api';
@@ -7,6 +7,8 @@ import { searchBooths } from '@/lib/api';
 interface SearchBarProps {
   booths: Booth[];
   onSelect: (booth: Booth) => void;
+  onView?: (booth: Booth) => void;
+  onSetEnd?: (booth: Booth) => void;
 }
 
 function searchInName(
@@ -18,7 +20,7 @@ function searchInName(
   return Object.values(name).some((v) => v.toLowerCase().includes(query));
 }
 
-export default function SearchBar({ booths, onSelect }: SearchBarProps) {
+export default function SearchBar({ booths, onSelect, onView, onSetEnd }: SearchBarProps) {
   const { t, ln } = useI18n();
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -109,28 +111,50 @@ export default function SearchBar({ booths, onSelect }: SearchBarProps) {
       {isOpen && results.length > 0 && (
         <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 rounded-lg shadow-lg max-h-64 overflow-y-auto z-50">
           {results.map((booth) => (
-            <button
+            <div
               key={booth.id}
-              onClick={() => handleSelect(booth)}
-              className="w-full px-4 py-2.5 text-left hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center gap-3 text-sm transition-colors"
+              className="flex items-center gap-2 px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
             >
-              <span className="shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-md bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs font-semibold">
-                {booth.booth_number}
-              </span>
-              <div className="flex-1 min-w-0">
-                <span className="truncate block text-gray-700 dark:text-gray-200">
-                  {ln(booth.company?.name) || t('search.unassigned')}
+              <button
+                onClick={() => handleSelect(booth)}
+                className="flex-1 min-w-0 flex items-center gap-2.5 text-left"
+              >
+                <span className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-md bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
+                  {booth.booth_number}
                 </span>
-                {(booth.floor || booth.hall) && (
-                  <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                    {booth.floor ? ln(booth.floor.name) : ''}{booth.hall ? ` / ${ln(booth.hall.name)}` : ''}
+                <div className="flex-1 min-w-0">
+                  <span className="truncate block text-xs text-gray-700 dark:text-gray-200">
+                    {ln(booth.company?.name) || t('search.unassigned')}
                   </span>
-                )}
-              </div>
+                  {(booth.floor || booth.hall) && (
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                      {booth.floor ? ln(booth.floor.name) : ''}{booth.hall ? ` / ${ln(booth.hall.name)}` : ''}
+                    </span>
+                  )}
+                </div>
+              </button>
               {booth.category && (
-                <span className="ml-auto shrink-0 w-2.5 h-2.5 rounded-full" style={{ backgroundColor: booth.category.color }} />
+                <span className="shrink-0 w-2 h-2 rounded-full" style={{ backgroundColor: booth.category.color }} />
               )}
-            </button>
+              {onView && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onView(booth); setIsOpen(false); }}
+                  className="shrink-0 px-2 py-1 text-[10px] font-medium rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+                  title="보기"
+                >
+                  <Eye className="h-3 w-3" />
+                </button>
+              )}
+              {onSetEnd && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onSetEnd(booth); setIsOpen(false); }}
+                  className="shrink-0 px-2 py-1 text-[10px] font-medium rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
+                  title="도착"
+                >
+                  <MapPin className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

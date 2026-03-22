@@ -725,7 +725,21 @@ export default function HomePage() {
 
           {/* Row 2: Search bar — 80% width */}
           <div className="mt-2 pointer-events-auto" style={{ width: '80%' }}>
-            <SearchBar booths={allBooths} onSelect={handleSearchSelect} />
+            <SearchBar
+              booths={allBooths}
+              onSelect={handleSearchSelect}
+              onView={(booth) => {
+                if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
+                setTimeout(() => {
+                  const panTo = (window as any).__mapViewerPanToWorld;
+                  if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 1.0);
+                }, 200);
+              }}
+              onSetEnd={(booth) => {
+                const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
+                setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
+              }}
+            />
           </div>
 
           {/* 길찾기 출발/도착 상태 바 */}
