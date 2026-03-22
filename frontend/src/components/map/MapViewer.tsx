@@ -765,7 +765,8 @@ export default function MapViewer({
       }
       gfx.endFill();
     }
-  }, [booths]);
+    gfx.visible = showBooths;
+  }, [booths, showBooths]);
 
   // ===== Route =====
   useEffect(() => {
