@@ -72,6 +72,11 @@ export default function PathfindingUI({
     return () => { delete (window as any).__openPathfindingUI; };
   }, []);
 
+  // 출발+도착 둘 다 설정되면 자동 닫기
+  useEffect(() => {
+    if (navStart && navEnd) setIsOpen(false);
+  }, [navStart, navEnd]);
+
   /* ─── 드롭다운 state ─── */
   const [fromType, setFromType] = useState<'booth'>('booth');
   const [toType, setToType] = useState<'booth' | 'facility'>('booth');
