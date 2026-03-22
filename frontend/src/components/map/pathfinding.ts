@@ -307,10 +307,18 @@ function pathDistance(graph: PathGraph, path: string[]): number {
 }
 
 // ===== 결과 타입 =====
+export interface RouteWaypoint {
+  x: number;
+  y: number;
+  type: string;  // 'stairs' | 'escalator' | 'elevator' | 'entrance' | 'exit' 등
+  label: string; // 한글 라벨
+}
+
 export interface FloorSegment {
   floorId: number;
   path: Point[];
   distance: number;
+  waypoints?: RouteWaypoint[];
 }
 
 export interface PathResult {
@@ -337,6 +345,30 @@ function findSameFloorPath(
     }
   }
   return best;
+}
+
+// ===== 경로 상 특수 노드(계단/에스컬레이터/엘리베이터 등) 수집 =====
+const WAYPOINT_LABELS: Record<string, string> = {
+  stairs: '계단', escalator: '에스컬레이터', elevator: '엘리베이터',
+  entrance: '입구', exit: '출구', emergency_exit: '비상구',
+  restroom: '화장실', info_desk: '안내데스크',
+};
+const WAYPOINT_TYPES = new Set(Object.keys(WAYPOINT_LABELS));
+
+function collectWaypoints(pathNodeIds: string[], rawNodes: RawNode[], graph: PathGraph): RouteWaypoint[] {
+  const waypoints: RouteWaypoint[] = [];
+  const rawNodeMap = new Map(rawNodes.map(n => [String(n.id), n]));
+  for (const nodeId of pathNodeIds) {
+    // snap_ 노드는 건너뜀
+    if (nodeId.startsWith('snap_') || nodeId.startsWith('dest_') || nodeId.startsWith('v')) continue;
+    const rawId = nodeId.replace(/^n/, '');
+    const raw = rawNodeMap.get(rawId);
+    if (!raw || !raw.type || !WAYPOINT_TYPES.has(raw.type)) continue;
+    const gn = graph.nodes.get(nodeId);
+    if (!gn) continue;
+    waypoints.push({ x: gn.x, y: gn.y, type: raw.type, label: WAYPOINT_LABELS[raw.type] || raw.type });
+  }
+  return waypoints;
 }
 
 // ===== 메인: 멀티층 길찾기 =====
@@ -370,7 +402,9 @@ export function findPath(
       const n = graph.nodes.get(id)!;
       return { x: n.x, y: n.y };
     });
-    const floorSegments: FloorSegment[] = [{ floorId: srcFloor, path: points, distance: result.dist }];
+    // 경로에 포함된 특수 노드(계단, 에스컬레이터 등) waypoints 수집
+    const waypoints = collectWaypoints(result.path, rawNodes, graph);
+    const floorSegments: FloorSegment[] = [{ floorId: srcFloor, path: points, distance: result.dist, waypoints }];
     return { path: points, distance: result.dist, floorSegments, floors: [srcFloor] };
   }
 
@@ -506,6 +540,22 @@ export function findPath(
   }
 
   if (!bestRoute) return null;
+
+  // 각 세그먼트에 waypoints 추가 (경로 근처 특수 노드)
+  for (const seg of bestRoute.segments) {
+    const wp: RouteWaypoint[] = [];
+    const floorNodes = rawNodes.filter(n => n.floor_id === seg.floorId && n.type && WAYPOINT_TYPES.has(n.type));
+    for (const rn of floorNodes) {
+      // 경로 포인트 중 하나와 20px 이내면 경유지로 포함
+      for (const p of seg.path) {
+        if (Math.hypot(p.x - rn.x, p.y - rn.y) < 30) {
+          wp.push({ x: rn.x, y: rn.y, type: rn.type, label: WAYPOINT_LABELS[rn.type] || rn.type });
+          break;
+        }
+      }
+    }
+    seg.waypoints = wp;
+  }
 
   const allPoints = bestRoute.segments.flatMap(s => s.path);
   const floors = bestRoute.segments.map(s => s.floorId);

@@ -799,10 +799,10 @@ export default function HomePage() {
         {(navStart || navEnd) && (
           <div className={`absolute ${uiHidden ? 'top-3' : 'top-28'} left-4 z-20 transition-all duration-200`}>
             <div
-              className="flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit cursor-pointer hover:bg-white dark:hover:bg-[#1a1a1a] transition-colors"
+              className="flex items-center gap-3 text-sm pointer-events-auto bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm rounded-lg px-4 py-3 w-fit cursor-pointer hover:bg-white dark:hover:bg-[#1a1a1a] transition-colors shadow-sm border border-gray-200 dark:border-gray-700"
               onClick={() => { (window as any).__openPathfindingUI?.(); }}
             >
-              <Navigation2 className="h-3.5 w-3.5 text-indigo-500" />
+              <Navigation2 className="h-4 w-4 text-indigo-500" />
               <span className="text-gray-600 dark:text-gray-400">
                 출발: <span className="font-medium text-green-600 dark:text-green-400">{navStart ? getNavLabel(navStart) : '—'}</span>
               </span>
@@ -810,13 +810,26 @@ export default function HomePage() {
               <span className="text-gray-600 dark:text-gray-400">
                 도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
-              <button onClick={(e) => { e.stopPropagation(); setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); setNavCurrentFloorId(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+              <button onClick={(e) => { e.stopPropagation(); setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); setNavCurrentFloorId(null); }} className="text-gray-400 hover:text-red-500 ml-1 text-lg">&times;</button>
               {clientRoute && !navActive && (
-                <button onClick={(e) => { e.stopPropagation(); startNavigation(); }} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                <button onClick={(e) => { e.stopPropagation(); startNavigation(); }} className="ml-2 px-3 py-1 text-sm font-medium rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                   🧭 네비게이션
                 </button>
               )}
             </div>
+            {/* 경유지 안내 (계단/에스컬레이터 등) */}
+            {clientRoute?.floorSegments && clientRoute.floorSegments.flatMap(s => s.waypoints ?? []).length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1 pointer-events-none">
+                {clientRoute.floorSegments.flatMap((s, si) =>
+                  (s.waypoints ?? []).map((wp, wi) => (
+                    <span key={`${si}-${wi}`} className="inline-flex items-center gap-1 text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40 text-amber-700 dark:text-amber-400 rounded-full px-2 py-0.5">
+                      {wp.type === 'stairs' ? '🪜' : wp.type === 'escalator' ? '🔼' : wp.type === 'elevator' ? '🛗' : wp.type === 'entrance' ? '🚪' : wp.type === 'exit' || wp.type === 'emergency_exit' ? '🚨' : '📍'}
+                      {wp.label} 경유
+                    </span>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -919,13 +932,13 @@ export default function HomePage() {
           {navActive && (
             <div className="absolute bottom-0 left-0 right-0 z-40 p-4 pointer-events-none">
               <div className="flex items-center gap-2 max-w-lg mx-auto pointer-events-auto">
-                <button onClick={navPrev} className="px-4 py-3 text-sm font-medium rounded-lg bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+                <button onClick={navPrev} className="px-5 py-4 text-base font-medium rounded-xl bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
                   ◀ 이전
                 </button>
-                <button onClick={navNext} className="flex-1 py-3 text-sm font-bold rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors">
+                <button onClick={navNext} className="flex-1 py-4 text-base font-bold rounded-xl bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                   다음 ▶
                 </button>
-                <button onClick={navCancel} className="px-4 py-3 text-sm font-medium rounded-lg bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
+                <button onClick={navCancel} className="px-5 py-4 text-base font-medium rounded-xl bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
                   취소
                 </button>
               </div>
@@ -1094,32 +1107,28 @@ export default function HomePage() {
                   A−
                 </button>
               </div>
-              {/* 편의시설 개별 토글 */}
-              {allFacilityTypes.map((ft, i) => (
-                <div key={ft} className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? `${150 + i * 40}ms` : '0ms' }}>
-                  {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{FACILITY_LABELS[ft] || ft}</span>}
-                  <button
-                    onClick={() => {
-                      setHiddenFacilityTypes(prev => {
-                        const next = new Set(prev);
-                        if (next.has(ft)) next.delete(ft);
-                        else next.add(ft);
-                        return next;
-                      });
-                    }}
-                    className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-colors ${
-                      !hiddenFacilityTypes.has(ft)
-                        ? 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
-                        : 'bg-gray-600/80 border-gray-400/50'
-                    }`}
-                    title={FACILITY_LABELS[ft] || ft}
-                  >
-                    <MapPin className={`h-4 w-4 ${!hiddenFacilityTypes.has(ft) ? 'text-gray-100' : 'text-gray-400'}`} />
-                  </button>
-                </div>
-              ))}
+              {/* 부대시설 통합 토글 */}
+              <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '150ms' : '0ms' }}>
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">부대시설</span>}
+                <button
+                  onClick={() => {
+                    setHiddenFacilityTypes(prev => {
+                      if (prev.size > 0) return new Set();
+                      return new Set(allFacilityTypes);
+                    });
+                  }}
+                  className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-colors ${
+                    hiddenFacilityTypes.size === 0
+                      ? 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
+                      : 'bg-gray-600/80 border-gray-400/50'
+                  }`}
+                  title="부대시설 보이기/숨기기"
+                >
+                  <MapPin className={`h-4 w-4 ${hiddenFacilityTypes.size === 0 ? 'text-gray-100' : 'text-gray-400'}`} />
+                </button>
+              </div>
               {/* 부스 보이기 토글 */}
-              <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? `${150 + allFacilityTypes.length * 40 + 40}ms` : '0ms' }}>
+              <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '200ms' : '0ms' }}>
                 {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{showBooths ? '부스 숨기기' : '부스 보이기'}</span>}
                 <button
                   onClick={() => setShowBooths(prev => !prev)}

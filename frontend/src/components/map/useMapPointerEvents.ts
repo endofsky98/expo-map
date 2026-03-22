@@ -72,6 +72,8 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   let longPressFired = false;
   // Mouse button tracking
   let mouseButton: number | null = null;
+  // 우클릭 드래그(회전) 감지용 — 회전 중이면 contextmenu에서 팝업 안 뜨게
+  let rightDragMoved = false;
   // Double-tap
   let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
   // Two-finger tap (for zoom out)
@@ -85,6 +87,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     mouseButton = (e.pointerType === 'mouse') ? e.button : null;
+    if (mouseButton === 2) rightDragMoved = false;
 
     const allPtrs = Array.from(pointers.values());
 
@@ -251,6 +254,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     if (isRotatePitch) {
       const dx = e.clientX - lastDragX;
       const dy = e.clientY - lastDragY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) rightDragMoved = true;
       if (Math.abs(dx) > 0) {
         const bearingDelta = dx * -0.8 * (Math.PI / 180);
         const { width: cw, height: ch } = canvasDimsRef.current;
@@ -320,7 +324,10 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
 
     if (isDragging) {
       isDragging = false;
+      const wasRightClick = mouseButton === 2;
       mouseButton = null;
+      // 우클릭은 contextmenu에서 처리 — 여기서 handleClick 호출 안 함
+      if (wasRightClick) return;
       const dx = e.clientX - pointerDownInfo.x;
       const dy = e.clientY - pointerDownInfo.y;
       const dt = Date.now() - pointerDownInfo.time;
@@ -360,6 +367,8 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
 
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
+    // 우클릭 드래그로 회전했으면 팝업 무시
+    if (rightDragMoved) { rightDragMoved = false; return; }
     // 마우스 우클릭 → 출발/도착 팝업 (롱프레스와 동일한 좌표 변환)
     const rect = el.getBoundingClientRect();
     const sx = e.clientX - rect.left;

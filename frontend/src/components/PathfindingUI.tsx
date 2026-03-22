@@ -276,10 +276,10 @@ export default function PathfindingUI({
                 </div>
 
                 {/* 롱프레스 안내 */}
-                <div className="flex items-start gap-1.5 px-2 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <span className="text-blue-500 text-sm shrink-0">💡</span>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
-                    맵에서 <b>길게 누르거나</b> (PC: <b>우클릭</b>) 출발/도착을 지정할 수도 있어요
+                <div className="flex items-start gap-1.5 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                  <span className="text-gray-400 text-xs shrink-0 mt-0.5">💡</span>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                    지도에서 원하는 위치를 <b>길게 터치</b>하면 바로 출발/도착을 지정할 수 있어요
                   </p>
                 </div>
 
