@@ -1099,8 +1099,10 @@ export default function HomePage() {
               {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">뷰 리셋</span>}
               <button
                 onClick={() => {
-                  const resetView = (window as unknown as Record<string, () => void>).__mapViewerResetView;
-                  if (resetView) resetView();
+                  const setTilt = (window as unknown as Record<string, (deg: number) => void>).__mapViewerSetTilt;
+                  const setRotation = (window as unknown as Record<string, (rad: number) => void>).__mapViewerSetRotation;
+                  if (setTilt) setTilt(0);
+                  if (setRotation) setRotation(0);
                   setIsBirdView(false);
                 }}
                 className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors"

@@ -2042,6 +2042,14 @@ export default function MapViewer({
       (window as unknown as Record<string, unknown>).__mapViewerSetMarkerFontSize = (s: number) => setMarkerFontSize(s);
       (window as unknown as Record<string, unknown>).__mapViewerResetView = resetView;
       (window as unknown as Record<string, unknown>).__mapViewerSetTilt = (deg: number) => applyTilt(deg);
+      (window as unknown as Record<string, unknown>).__mapViewerSetRotation = (rad: number) => {
+        const mc = mainContainerRef.current;
+        if (!mc) return;
+        transformRef.current.rotation = rad;
+        mc.rotation = rad;
+        syncContainerPosition(mc, transformRef.current);
+        scheduleMarkerUpdate();
+      };
       (window as unknown as Record<string, unknown>).__mapViewerPanToWorld = (wx: number, wy: number, scale?: number, rotation?: number) => {
         const mc = mainContainerRef.current;
         if (!mc) return;
