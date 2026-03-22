@@ -797,7 +797,7 @@ export default function HomePage() {
 
         {/* 길찾기 출발/도착 상태 바 — UI 숨김 시에도 표시 */}
         {(navStart || navEnd) && (
-          <div className={`absolute ${uiHidden ? 'top-3' : 'top-28'} left-4 z-20 transition-all duration-200`}>
+          <div className={`absolute ${uiHidden ? 'top-3' : 'top-32'} left-4 z-20 transition-all duration-200`}>
             <div
               className="flex items-center gap-3 text-sm pointer-events-auto bg-white/90 dark:bg-[#1a1a1a]/90 backdrop-blur-sm rounded-lg px-4 py-3 w-fit cursor-pointer hover:bg-white dark:hover:bg-[#1a1a1a] transition-colors shadow-sm border border-gray-200 dark:border-gray-700"
               onClick={() => { (window as any).__openPathfindingUI?.(); }}

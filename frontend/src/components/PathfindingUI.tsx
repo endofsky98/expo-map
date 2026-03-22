@@ -143,9 +143,9 @@ export default function PathfindingUI({
 
   /* 탭 버튼 공통 스타일 */
   const tabCls = (active: boolean) =>
-    `flex-1 flex items-center justify-center gap-2 py-3 text-base font-semibold rounded-xl transition-colors ${
+    `flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-semibold rounded-lg transition-colors ${
       active
-        ? 'bg-indigo-600 text-white shadow-md'
+        ? 'bg-indigo-600 text-white shadow-sm'
         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-[#2a2a2a]'
     }`;
 
@@ -221,13 +221,13 @@ export default function PathfindingUI({
                 <div>
                   <label className="text-xs font-semibold text-red-500 dark:text-red-400 mb-1.5 block">🏁 도착</label>
                   {/* 부스 / 편의시설 탭 */}
-                  <div className="flex gap-1.5 mb-3 p-1.5 bg-gray-100 dark:bg-[#252525] rounded-xl">
+                  <div className="flex gap-1 mb-2 p-1 bg-gray-100 dark:bg-[#252525] rounded-lg">
                     <button onClick={() => setToType('booth')} className={tabCls(toType === 'booth')}>
-                      <Building2 className="h-5 w-5" />
+                      <Building2 className="h-4 w-4" />
                       부스
                     </button>
                     <button onClick={() => setToType('facility')} className={tabCls(toType === 'facility')}>
-                      <Landmark className="h-5 w-5" />
+                      <Landmark className="h-4 w-4" />
                       편의시설
                     </button>
                   </div>

@@ -74,6 +74,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   let mouseButton: number | null = null;
   // 우클릭 드래그(회전) 감지용 — 회전 중이면 contextmenu에서 팝업 안 뜨게
   let rightDragMoved = false;
+  let rightDownTime = 0; // 우클릭 누른 시각
   // Double-tap
   let lastTapTime = 0, lastTapX = 0, lastTapY = 0;
   // Two-finger tap (for zoom out)
@@ -87,7 +88,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     canvas.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     mouseButton = (e.pointerType === 'mouse') ? e.button : null;
-    if (mouseButton === 2) rightDragMoved = false;
+    if (mouseButton === 2) { rightDragMoved = false; rightDownTime = Date.now(); }
 
     const allPtrs = Array.from(pointers.values());
 
@@ -367,8 +368,9 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
 
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
-    // 우클릭 드래그로 회전했으면 팝업 무시
+    // 우클릭 드래그로 회전했거나 0.5초 이상 누르고 있었으면 팝업 무시
     if (rightDragMoved) { rightDragMoved = false; return; }
+    if (Date.now() - rightDownTime > 500) return;
     // 마우스 우클릭 → 출발/도착 팝업 (롱프레스와 동일한 좌표 변환)
     const rect = el.getBoundingClientRect();
     const sx = e.clientX - rect.left;
