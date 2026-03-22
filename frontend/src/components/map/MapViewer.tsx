@@ -951,24 +951,29 @@ export default function MapViewer({
       }
     }
 
-    // 경로가 있으면 경로 근처 부스는 개별 표시 (클러스터에서 제외)
+    // 경로가 있으면 코너(꺾이는 점) 근처 부스를 개별 표시 (클러스터에서 제외)
     const rp = routePathRef.current;
     const nearRouteIds = new Set<number>();
     if (rp && rp.length >= 2) {
-      const ROUTE_PROX = 250; // world px 이내 부스는 경로 근처
+      // 코너 추출: 시작점, 끝점 + 방향이 바뀌는 점
+      const corners: { x: number; y: number }[] = [rp[0]]; // 시작점
+      const ANGLE_THRESH = 15 * Math.PI / 180; // 15도 이상 꺾이면 코너
+      for (let i = 1; i < rp.length - 1; i++) {
+        const dx1 = rp[i].x - rp[i - 1].x, dy1 = rp[i].y - rp[i - 1].y;
+        const dx2 = rp[i + 1].x - rp[i].x, dy2 = rp[i + 1].y - rp[i].y;
+        const a1 = Math.atan2(dy1, dx1), a2 = Math.atan2(dy2, dx2);
+        let diff = Math.abs(a2 - a1);
+        if (diff > Math.PI) diff = 2 * Math.PI - diff;
+        if (diff >= ANGLE_THRESH) corners.push(rp[i]);
+      }
+      corners.push(rp[rp.length - 1]); // 끝점
+
+      const CORNER_PROX = 350; // 코너에서 350px 이내 부스
       for (const booth of visibleBooths) {
         const { cx, cy } = getBoothCenter(booth);
-        for (let i = 0; i < rp.length - 1; i++) {
-          const ax = rp[i].x, ay = rp[i].y;
-          const bxx = rp[i + 1].x, byy = rp[i + 1].y;
-          // 선분 위 최근접점까지 거리
-          const dx = bxx - ax, dy = byy - ay;
-          const len2 = dx * dx + dy * dy;
-          let t = len2 > 0 ? ((cx - ax) * dx + (cy - ay) * dy) / len2 : 0;
-          t = Math.max(0, Math.min(1, t));
-          const px = ax + t * dx, py = ay + t * dy;
-          const d = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2);
-          if (d <= ROUTE_PROX) { nearRouteIds.add(booth.id); break; }
+        for (const corner of corners) {
+          const d = Math.sqrt((cx - corner.x) ** 2 + (cy - corner.y) ** 2);
+          if (d <= CORNER_PROX) { nearRouteIds.add(booth.id); break; }
         }
       }
     }
