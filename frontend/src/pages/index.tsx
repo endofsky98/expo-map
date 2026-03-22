@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -373,7 +373,10 @@ export default function HomePage() {
 
     const isMultiFloor = navStart.floorId != null && navEnd.floorId != null && navStart.floorId !== navEnd.floorId;
 
+    const _navStart = navStart;
+    const _navEnd = navEnd;
     async function computeRoute() {
+      if (!_navStart || !_navEnd) return;
       let useNodes = pathNodes;
       let useEdges = pathEdges;
       let useBooths = allBooths;
@@ -394,32 +397,32 @@ export default function HomePage() {
         useObstacles = allObs;
       }
 
-      const destBooth = navEnd.boothId ? useBooths.find((b: any) => b.id === navEnd.boothId) : null;
+      const destBooth = _navEnd.boothId ? useBooths.find((b: any) => b.id === _navEnd.boothId) : null;
       let result: ReturnType<typeof findPath>;
       if (destBooth) {
-        result = findPath({ x: navStart.x, y: navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles);
+        result = findPath({ x: _navStart.x, y: _navStart.y }, destBooth, useNodes, useEdges, useBooths, useObstacles);
       } else {
-        const fakeBooth = { id: -1, booth_number: '', x: navEnd.x - 1, y: navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
-        result = findPath({ x: navStart.x, y: navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles);
+        const fakeBooth = { id: -1, booth_number: '', x: _navEnd.x - 1, y: _navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
+        result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles);
       }
       // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
         const last = result.path[result.path.length - 1];
-        const dx = navEnd.x - last.x, dy = navEnd.y - last.y;
+        const dx = _navEnd.x - last.x, dy = navEnd.y - last.y;
         const extra = Math.sqrt(dx * dx + dy * dy);
         if (extra > 2) {
           result.endExtIdx = result.path.length - 1;
-          result.path.push({ x: navEnd.x, y: navEnd.y });
+          result.path.push({ x: navEnd.x, y: _navEnd.y });
           result.distance += extra;
         }
       }
       // 경로 시작에서 실제 출발 마커 위치까지 선 연장 (점선 구간)
       if (result && result.path.length > 0) {
         const first = result.path[0];
-        const dx = navStart.x - first.x, dy = navStart.y - first.y;
+        const dx = _navStart.x - first.x, dy = navStart.y - first.y;
         const extra = Math.sqrt(dx * dx + dy * dy);
         if (extra > 2) {
-          result.path.unshift({ x: navStart.x, y: navStart.y });
+          result.path.unshift({ x: _navStart.x, y: _navStart.y });
           result.distance += extra;
           result.startExtIdx = 1;
           if (result.endExtIdx != null) result.endExtIdx += 1;
