@@ -8,8 +8,8 @@ interface PathPanelProps {
   floors: { id: number; name: string }[];
   currentFloorId: number | null;
   onSaveNode: (id: number, data: Partial<PathNode>) => void;
-  onLinkNodes: (nodeId: number, targetNodeId: number) => void;
-  onUnlinkNode: (nodeId: number) => void;
+  onLinkNodes: (nodeId: number, targetNodeId: number) => Promise<void>;
+  onUnlinkNode: (nodeId: number) => Promise<void>;
   onDeleteNode: (id: number) => void;
   onDeleteEdge: (id: number) => void;
   onToggleEdge: (id: number, isOpen: boolean) => void;
@@ -46,8 +46,8 @@ function NodeEditor({
   floors: { id: number; name: string }[];
   currentFloorId: number | null;
   onSaveNode: (id: number, data: Partial<PathNode>) => void;
-  onLinkNodes: (nodeId: number, targetNodeId: number) => void;
-  onUnlinkNode: (nodeId: number) => void;
+  onLinkNodes: (nodeId: number, targetNodeId: number) => Promise<void>;
+  onUnlinkNode: (nodeId: number) => Promise<void>;
   onDeleteNode: (id: number) => void;
   pathNodes: PathNode[];
 }) {
@@ -69,9 +69,20 @@ function NodeEditor({
   }, [node.id]);
 
   const isCrossFloor = CROSS_FLOOR_TYPES.includes(form.type);
-  const linkedNode = node.linked_node_id != null
-    ? pathNodes.find(n => n.id === node.linked_node_id)
-    : undefined;
+  // linked node는 다른 층에 있을 수 있으므로 API에서 직접 로드
+  const [linkedNode, setLinkedNode] = useState<PathNode | undefined>(undefined);
+  useEffect(() => {
+    if (node.linked_node_id == null) { setLinkedNode(undefined); return; }
+    // 먼저 현재 층 노드에서 검색
+    const local = pathNodes.find(n => n.id === node.linked_node_id);
+    if (local) { setLinkedNode(local); return; }
+    // 없으면 API에서 로드
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+    fetch(`${API_BASE}/api/path-nodes/${node.linked_node_id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setLinkedNode(data || undefined))
+      .catch(() => setLinkedNode(undefined));
+  }, [node.id, node.linked_node_id, pathNodes]);
 
   function handleSave() {
     onSaveNode(node.id, {
@@ -99,9 +110,15 @@ function NodeEditor({
     setLoadingTargetNodes(false);
   }
 
-  function handleLink() {
+  const [linkingInProgress, setLinkingInProgress] = useState(false);
+  async function handleLink() {
     if (selectedTargetNodeId === '') return;
-    onLinkNodes(node.id, selectedTargetNodeId as number);
+    setLinkingInProgress(true);
+    try {
+      await onLinkNodes(node.id, selectedTargetNodeId as number);
+    } finally {
+      setLinkingInProgress(false);
+    }
   }
 
   return (
@@ -204,10 +221,10 @@ function NodeEditor({
           )}
           <button
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm rounded py-1.5 disabled:opacity-40"
-            disabled={selectedTargetNodeId === ''}
+            disabled={selectedTargetNodeId === '' || linkingInProgress}
             onClick={handleLink}
           >
-            연결하기
+            {linkingInProgress ? '연결 중...' : '연결하기'}
           </button>
         </div>
       )}
