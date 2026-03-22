@@ -607,6 +607,9 @@ export default function MapViewer({
       }
 
       const doRender = () => {
+        try { _doRenderTiles(); } catch (e) { console.error('[doRender tiles] error:', e); }
+      };
+      const _doRenderTiles = () => {
         if (!tileInfo || !currentImage || !tileStateRef.current) return;
         const { x: tx, y: ty, scale: sc, rotation: rot } = transformRef.current;
         const { width: canvasW, height: canvasH } = canvasDimsRef.current;
@@ -963,6 +966,9 @@ export default function MapViewer({
   // recalcMarkers: called after interaction settles (debounced ~300ms)
   // Clusters visible booths → PIXI shading + DOM pin markers with optional count badge
   function recalcMarkers() {
+    try { _recalcMarkersInner(); } catch (e) { console.error('[recalcMarkers] error:', e); }
+  }
+  function _recalcMarkersInner() {
     const markers = markerElementsRef.current;
     const { scale: sc, x: tx, y: ty, rotation: rot } = transformRef.current;
     const { width: cw, height: ch } = canvasDimsRef.current;
@@ -1332,6 +1338,9 @@ export default function MapViewer({
 
   // updateMarkerPositions: called on every transform change via rAF
   function updateMarkerPositions() {
+    try { _updateMarkerPositionsInner(); } catch (e) { console.error('[updateMarkerPositions] error:', e); }
+  }
+  function _updateMarkerPositionsInner() {
     const overlay = markerOverlayRef.current;
     if (!overlay) return;
     const markers = markerElementsRef.current;
