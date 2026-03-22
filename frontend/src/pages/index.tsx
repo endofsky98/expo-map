@@ -101,6 +101,7 @@ export default function HomePage() {
   const [zoom, setZoom] = useState(1);
   const [uiHidden, setUiHidden] = useState(false); // 화면 터치 시 UI 숨김
   const [settingsExpanded, setSettingsExpanded] = useState(false); // 우측 설정 펼침
+  const [showSettingsLabels, setShowSettingsLabels] = useState(false); // 설정 버튼 라벨 표시
   const savedTransformRef = useRef<{ x: number; y: number; scale: number; rotation: number; tilt: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -242,6 +243,19 @@ export default function HomePage() {
     return () => { window.setCurrentPosition = undefined; };
   }, []);
 
+  // 동적 편의시설 타입 목록 (에디터에서 등록한 모든 시설)
+  const allFacilityTypes = useMemo(() => {
+    const types = new Set(allFacilitiesAndAmenities.map(f => f.type));
+    return Array.from(types).sort();
+  }, [allFacilitiesAndAmenities]);
+
+  const FACILITY_LABELS: Record<string, string> = {
+    restroom: '화장실', restroom_male: '남자화장실', restroom_female: '여자화장실',
+    emergency_exit: '비상구', stairs: '계단', elevator: '엘리베이터', escalator: '에스컬레이터',
+    nursing_room: '수유실', info_desk: '안내데스크', first_aid: '응급처치',
+    locker: '보관함', atm: 'ATM', cafe: '카페', charging: '충전소', wifi: 'Wi-Fi', smoking: '흡연실',
+  };
+
   const handleFloorChange = useCallback((floorId: number) => {
     setSelectedFloorId(floorId);
   }, []);
@@ -253,6 +267,7 @@ export default function HomePage() {
 
   const handleMapClick = useCallback((x: number, y: number, floorId: number) => {
     setUiHidden(prev => !prev);
+    setShowSettingsLabels(false);
   }, []);
 
   const handleSearchSelect = useCallback((booth: Booth) => {
@@ -1025,85 +1040,124 @@ export default function HomePage() {
 
           {/* Zoom controls + View toggle + Settings */}
           {!uiHidden && (
-          <div className="absolute bottom-20 right-4 flex flex-col items-center gap-1.5 z-10 pointer-events-auto">
+          <div className="absolute bottom-20 right-4 flex flex-col items-end gap-1.5 z-10 pointer-events-auto">
             {/* Bird's-eye / 2D view toggle */}
-            <button
-              onClick={() => {
-                const next = !isBirdView;
-                setIsBirdView(next);
-                const setTilt = (window as unknown as Record<string, (deg: number) => void>).__mapViewerSetTilt;
-                if (setTilt) setTilt(next ? 45 : 0);
-              }}
-              className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
-                isBirdView
-                  ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-600/40 hover:bg-indigo-100'
-                  : 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-              }`}
-              title={isBirdView ? '2D View' : "Bird's-eye View"}
-            >
-              {isBirdView
-                ? <Square className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-                : <Box className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-              }
-            </button>
+            <div className="flex items-center gap-2">
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">뷰 모드</span>}
+              <button
+                onClick={() => {
+                  const next = !isBirdView;
+                  setIsBirdView(next);
+                  const setTilt = (window as unknown as Record<string, (deg: number) => void>).__mapViewerSetTilt;
+                  if (setTilt) setTilt(next ? 45 : 0);
+                }}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-colors ${
+                  isBirdView
+                    ? 'bg-gray-600/80 border-gray-400/50 hover:bg-gray-500/80'
+                    : 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
+                }`}
+                title={isBirdView ? '2D View' : "Bird's-eye View"}
+              >
+                {isBirdView
+                  ? <Square className="h-4 w-4 text-gray-100" />
+                  : <Box className="h-4 w-4 text-gray-100" />
+                }
+              </button>
+            </div>
             {/* 확대 */}
-            <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom in">
-              <ZoomIn className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-            </button>
+            <div className="flex items-center gap-2">
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">확대</span>}
+              <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors" title="Zoom in">
+                <ZoomIn className="h-4 w-4 text-gray-100" />
+              </button>
+            </div>
             {/* 축소 */}
-            <button onClick={handleZoomOut} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom out">
-              <ZoomOut className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-            </button>
-            {/* 설정 확장 영역 */}
-            {settingsExpanded && (
-              <>
-                <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-sm font-bold text-gray-700 dark:text-gray-300" title="글자 크게">
+            <div className="flex items-center gap-2">
+              {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">축소</span>}
+              <button onClick={handleZoomOut} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors" title="Zoom out">
+                <ZoomOut className="h-4 w-4 text-gray-100" />
+              </button>
+            </div>
+            {/* 설정 확장 영역 — 애니메이션 포함 */}
+            <div className={`flex flex-col items-end gap-1.5 overflow-hidden transition-all duration-300 ease-out ${settingsExpanded ? 'max-h-[600px] opacity-100' : 'max-h-0 opacity-0'}`}>
+              {/* 글자 크게 */}
+              <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '50ms' : '0ms' }}>
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">글자 크게</span>}
+                <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors text-sm font-bold text-gray-100" title="글자 크게">
                   A+
                 </button>
-                <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-xs font-bold text-gray-700 dark:text-gray-300" title="글자 작게">
+              </div>
+              {/* 글자 작게 */}
+              <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? '100ms' : '0ms' }}>
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">글자 작게</span>}
+                <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-gray-800/80 border border-gray-600/50 shadow-sm backdrop-blur-sm hover:bg-gray-700/80 transition-colors text-xs font-bold text-gray-100" title="글자 작게">
                   A−
                 </button>
-                {/* 편의시설 보이기 토글 */}
-                <button
-                  onClick={() => setHiddenFacilityTypes(prev => prev.size > 0 ? new Set() : new Set(Object.keys(FACILITY_STYLES)))}
-                  className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
-                    hiddenFacilityTypes.size === 0
-                      ? 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50'
-                      : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600/40'
-                  }`}
-                  title="편의시설 보이기/숨기기"
-                >
-                  <MapPin className={`h-4 w-4 ${hiddenFacilityTypes.size === 0 ? 'text-gray-700 dark:text-gray-300' : 'text-amber-600 dark:text-amber-400'}`} />
-                </button>
-                {/* 부스 보이기 토글 */}
+              </div>
+              {/* 편의시설 개별 토글 */}
+              {allFacilityTypes.map((ft, i) => (
+                <div key={ft} className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? `${150 + i * 40}ms` : '0ms' }}>
+                  {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{FACILITY_LABELS[ft] || ft}</span>}
+                  <button
+                    onClick={() => {
+                      setHiddenFacilityTypes(prev => {
+                        const next = new Set(prev);
+                        if (next.has(ft)) next.delete(ft);
+                        else next.add(ft);
+                        return next;
+                      });
+                    }}
+                    className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-colors ${
+                      !hiddenFacilityTypes.has(ft)
+                        ? 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
+                        : 'bg-gray-600/80 border-gray-400/50'
+                    }`}
+                    title={FACILITY_LABELS[ft] || ft}
+                  >
+                    <MapPin className={`h-4 w-4 ${!hiddenFacilityTypes.has(ft) ? 'text-gray-100' : 'text-gray-400'}`} />
+                  </button>
+                </div>
+              ))}
+              {/* 부스 보이기 토글 */}
+              <div className={`flex items-center gap-2 transition-all duration-200 ${settingsExpanded ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}`} style={{ transitionDelay: settingsExpanded ? `${150 + allFacilityTypes.length * 40 + 40}ms` : '0ms' }}>
+                {showSettingsLabels && <span className="text-xs font-medium text-gray-100 bg-gray-800/70 backdrop-blur-sm px-2 py-1 rounded-md whitespace-nowrap animate-fade-in">{showBooths ? '부스 숨기기' : '부스 보이기'}</span>}
                 <button
                   onClick={() => setShowBooths(prev => !prev)}
-                  className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
+                  className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-colors ${
                     showBooths
-                      ? 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50'
-                      : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600/40'
+                      ? 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
+                      : 'bg-gray-600/80 border-gray-400/50'
                   }`}
                   title={showBooths ? '부스 숨기기' : '부스 보이기'}
                 >
                   {showBooths
-                    ? <Eye className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-                    : <EyeOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    ? <Eye className="h-4 w-4 text-gray-100" />
+                    : <EyeOff className="h-4 w-4 text-gray-400" />
                   }
                 </button>
-              </>
-            )}
+              </div>
+            </div>
             {/* 설정 토글 */}
-            <button
-              onClick={() => setSettingsExpanded(prev => !prev)}
-              className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
-                settingsExpanded
-                  ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-600/40'
-                  : 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-              }`}
-              title="설정"
-            >
-              <Settings className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  setSettingsExpanded(prev => {
+                    const next = !prev;
+                    if (next) setShowSettingsLabels(true);
+                    else setShowSettingsLabels(false);
+                    return next;
+                  });
+                }}
+                className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm backdrop-blur-sm transition-all duration-300 ${
+                  settingsExpanded
+                    ? 'bg-gray-600/80 border-gray-400/50 rotate-90'
+                    : 'bg-gray-800/80 border-gray-600/50 hover:bg-gray-700/80'
+                }`}
+                title="설정"
+              >
+                <Settings className="h-4 w-4 text-gray-100" />
+              </button>
+            </div>
           </div>
           )}
         </div>

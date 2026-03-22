@@ -78,6 +78,15 @@ export const FACILITY_STYLES: Record<string, { color: number; label: string }> =
   stairs: { color: 0x22c55e, label: 'S' },
   elevator: { color: 0xf59e0b, label: 'EV' },
   escalator: { color: 0xf97316, label: 'ES' },
+  info_desk: { color: 0x6366f1, label: 'ℹ' },
+  nursing_room: { color: 0xec4899, label: '🍼' },
+  first_aid: { color: 0xef4444, label: '➕' },
+  locker: { color: 0x8b5cf6, label: '🔒' },
+  atm: { color: 0x10b981, label: 'ATM' },
+  cafe: { color: 0x92400e, label: '☕' },
+  charging: { color: 0xf59e0b, label: '⚡' },
+  wifi: { color: 0x0ea5e9, label: 'WiFi' },
+  smoking: { color: 0x6b7280, label: '🚬' },
 };
 
 export function parseZoomLevels(img: MapImage): ZoomLevel[] {

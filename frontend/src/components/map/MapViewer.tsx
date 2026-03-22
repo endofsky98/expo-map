@@ -88,6 +88,7 @@ export default function MapViewer({
 
   const markerOverlayRef = useRef<HTMLDivElement | null>(null);
   const markerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
+  const facilityMarkerElementsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const rafIdRef = useRef<number>(0);
   const prevVisibleIdsRef = useRef<Set<number>>(new Set());
   const prevScaleRef = useRef<number>(1);
@@ -554,6 +555,8 @@ export default function MapViewer({
       // 마커/배지 DOM 정리 (React가 overlay를 제거하기 전에)
       for (const [, el] of markerElementsRef.current) el?.remove?.();
       markerElementsRef.current.clear();
+      for (const [, el] of facilityMarkerElementsRef.current) el?.remove?.();
+      facilityMarkerElementsRef.current.clear();
       for (const [, el] of clusterBadgesRef.current) el?.remove?.();
       clusterBadgesRef.current.clear();
       clusterBadgeWorldRef.current.clear();
@@ -1687,6 +1690,14 @@ export default function MapViewer({
       }
     }
 
+    // Facility DOM markers 위치 업데이트 (fixed size, no rotation)
+    for (const [, el] of facilityMarkerElementsRef.current) {
+      const wx = parseFloat(el.getAttribute('data-fac-wx') || '0');
+      const wy = parseFloat(el.getAttribute('data-fac-wy') || '0');
+      const { sx: fsx, sy: fsy } = worldToScreen(wx, wy);
+      el.style.transform = `translate(${fsx}px, ${fsy}px) translate(-50%, -50%)`;
+    }
+
     // Save current visible set for next frame comparison
     prevVisibleIdsRef.current = new Set(sampledIds);
 
@@ -1863,37 +1874,56 @@ export default function MapViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navStartPoint, navEndPoint, navCurrentPos]);
 
-  // ===== Facilities =====
+  // ===== Facilities (DOM-based, fixed size regardless of zoom) =====
   useEffect(() => {
-    const layer = facilityLayerRef.current;
-    layer.removeChildren();
-    const sc = transformRef.current.scale;
+    // Clear PIXI facility layer (kept for backwards compat)
+    facilityLayerRef.current.removeChildren();
 
+    const overlay = markerOverlayRef.current;
+    if (!overlay) return;
+    const facMarkers = facilityMarkerElementsRef.current;
+    const currentFacIds = new Set(visibleFacilities.map(f => f.id));
+
+    // Remove deleted/hidden facility markers
+    for (const [id, el] of facMarkers) {
+      if (!currentFacIds.has(id)) {
+        el?.remove?.();
+        facMarkers.delete(id);
+      }
+    }
+
+    // Create/update DOM elements for visible facilities
     for (const fac of visibleFacilities) {
       const style = FACILITY_STYLES[fac.type] || { color: 0x6b7280, label: '?' };
-      const r = Math.max(10, 14 / sc);
+      const hexColor = '#' + (style.color).toString(16).padStart(6, '0');
 
-      const g = new PIXI.Graphics();
-      g.lineStyle(2 / sc, 0xffffff);
-      g.beginFill(style.color, 0.9);
-      g.drawCircle(0, 0, r);
-      g.endFill();
-      g.x = fac.x;
-      g.y = fac.y;
-      layer.addChild(g);
-
-      const text = new PIXI.Text(style.label, {
-        fontSize: Math.max(7, 9 / sc),
-        fontFamily: 'Inter, sans-serif',
-        fontWeight: 'bold',
-        fill: 'white',
-        align: 'center',
-      });
-      text.anchor.set(0.5, 0.5);
-      text.x = fac.x;
-      text.y = fac.y;
-      layer.addChild(text);
+      let el = facMarkers.get(fac.id);
+      if (!el) {
+        el = document.createElement('div');
+        el.style.cssText =
+          'position:absolute;left:0;top:0;pointer-events:none;' +
+          'width:26px;height:26px;border-radius:50%;' +
+          'display:flex;align-items:center;justify-content:center;' +
+          'font-size:10px;font-weight:700;font-family:Inter,sans-serif;' +
+          'color:#fff;border:2px solid rgba(255,255,255,0.9);' +
+          'box-shadow:0 1px 4px rgba(0,0,0,0.3);z-index:6;' +
+          'will-change:transform;';
+        el.style.background = hexColor;
+        el.setAttribute('data-fac-wx', String(fac.x));
+        el.setAttribute('data-fac-wy', String(fac.y));
+        el.textContent = style.label;
+        overlay.appendChild(el);
+        facMarkers.set(fac.id, el);
+      } else {
+        // Update in case type/position changed
+        el.style.background = hexColor;
+        el.textContent = style.label;
+        el.setAttribute('data-fac-wx', String(fac.x));
+        el.setAttribute('data-fac-wy', String(fac.y));
+      }
     }
+
+    updateMarkerPositions();
   }, [visibleFacilities]);
 
   // ===== Current Position =====

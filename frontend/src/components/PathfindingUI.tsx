@@ -143,9 +143,9 @@ export default function PathfindingUI({
 
   /* 탭 버튼 공통 스타일 */
   const tabCls = (active: boolean) =>
-    `flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+    `flex-1 flex items-center justify-center gap-2 py-3 text-base font-semibold rounded-xl transition-colors ${
       active
-        ? 'bg-indigo-600 text-white shadow-sm'
+        ? 'bg-indigo-600 text-white shadow-md'
         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-[#2a2a2a]'
     }`;
 
@@ -221,13 +221,13 @@ export default function PathfindingUI({
                 <div>
                   <label className="text-xs font-semibold text-red-500 dark:text-red-400 mb-1.5 block">🏁 도착</label>
                   {/* 부스 / 편의시설 탭 */}
-                  <div className="flex gap-1 mb-2 p-1 bg-gray-100 dark:bg-[#252525] rounded-xl">
+                  <div className="flex gap-1.5 mb-3 p-1.5 bg-gray-100 dark:bg-[#252525] rounded-xl">
                     <button onClick={() => setToType('booth')} className={tabCls(toType === 'booth')}>
-                      <Building2 className="h-3.5 w-3.5" />
+                      <Building2 className="h-5 w-5" />
                       부스
                     </button>
                     <button onClick={() => setToType('facility')} className={tabCls(toType === 'facility')}>
-                      <Landmark className="h-3.5 w-3.5" />
+                      <Landmark className="h-5 w-5" />
                       편의시설
                     </button>
                   </div>
@@ -273,6 +273,14 @@ export default function PathfindingUI({
                       ))}
                     </div>
                   )}
+                </div>
+
+                {/* 롱프레스 안내 */}
+                <div className="flex items-start gap-1.5 px-2 py-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                  <span className="text-blue-500 text-sm shrink-0">💡</span>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 leading-relaxed">
+                    맵에서 <b>길게 누르거나</b> (PC: <b>우클릭</b>) 출발/도착을 지정할 수도 있어요
+                  </p>
                 </div>
 
                 {/* 하단 버튼 */}
