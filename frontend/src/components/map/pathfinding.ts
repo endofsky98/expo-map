@@ -96,6 +96,8 @@ export function buildGraph(rawNodes: RawNode[], rawEdges: RawEdge[]): PathGraph 
     const fn = nodes.get(`n${e.from_node_id}`);
     const tn = nodes.get(`n${e.to_node_id}`);
     if (!fn || !tn) continue;
+    // 다른 층 엣지는 일반 세그먼트에 포함하지 않음 (linked_node_id 크로스 엣지만 사용)
+    if (fn.floorId != null && tn.floorId != null && fn.floorId !== tn.floorId) continue;
     segments.push({ fromId: fn.id, toId: tn.id, from: fn, to: tn, edgeId: e.id });
   }
 

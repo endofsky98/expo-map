@@ -446,6 +446,27 @@ export default function HomePage() {
     computeRoute();
   }, [navStart, navEnd]);
 
+  // 현재 층 경로만 추출 (단일층/멀티층 공통)
+  const currentFloorRoute = useMemo(() => {
+    if (!clientRoute) return null;
+    if (clientRoute.floorSegments && clientRoute.floorSegments.length > 0) {
+      const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
+      if (!seg || seg.path.length < 2) return null;
+      if (clientRoute.floorSegments.length === 1) return clientRoute;
+      const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
+      const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
+      return {
+        path: seg.path,
+        distance: seg.distance,
+        startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
+        endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
+        floorSegments: clientRoute.floorSegments,
+        floors: clientRoute.floors,
+      } as typeof clientRoute;
+    }
+    return clientRoute;
+  }, [clientRoute, selectedFloorId]);
+
   // 경로 위 거리 d에서의 좌표 (현재 층 기준)
   function posAtDist(d: number): { x: number; y: number } | null {
     const route = currentFloorRoute ?? clientRoute;
@@ -612,33 +633,6 @@ export default function HomePage() {
     const fn = (window as unknown as Record<string, () => void>).__mapViewerZoomOut;
     if (fn) fn();
   }
-
-  // 현재 층 경로만 추출 (단일층/멀티층 공통)
-  const currentFloorRoute = useMemo(() => {
-    if (!clientRoute) return null;
-    // floorSegments가 있으면 현재 층 세그먼트만 추출
-    if (clientRoute.floorSegments && clientRoute.floorSegments.length > 0) {
-      const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
-      if (!seg || seg.path.length < 2) return null;
-      if (clientRoute.floorSegments.length === 1) {
-        // 단일층 — 원래 경로 그대로 (ext 구간 포함)
-        return clientRoute;
-      }
-      // 멀티층 — 현재 층 세그먼트만
-      const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
-      const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
-      return {
-        path: seg.path,
-        distance: seg.distance,
-        startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
-        endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
-        floorSegments: clientRoute.floorSegments,
-        floors: clientRoute.floors,
-      } as typeof clientRoute;
-    }
-    // floorSegments 없으면 (구버전 호환) 그대로
-    return clientRoute;
-  }, [clientRoute, selectedFloorId]);
 
   const showMap = !loading && (booths.length > 0 || currentImage !== null);
   const fromBooth = allBooths.find((b) => b.id === pathFrom);
