@@ -41,7 +41,7 @@ export interface MapViewerProps {
   onBoothClick: (booth: Booth) => void;
   onMapClick?: (x: number, y: number, floorId: number) => void;
   onZoomChange?: (zoom: number) => void;
-  clientRoute?: { path: { x: number; y: number }[]; distance: number; startExtIdx?: number; endExtIdx?: number } | null;
+  clientRoute?: { path: { x: number; y: number }[]; distance: number; startExtIdx?: number; endExtIdx?: number; floorSegments?: { floorId: number; path: { x: number; y: number }[]; distance: number }[] } | null;
   navMode?: 'none' | 'waiting_start';
   onNavTap?: (worldX: number, worldY: number) => void;
   onLongPress?: (worldX: number, worldY: number, screenX: number, screenY: number) => void;

@@ -864,9 +864,37 @@ export default function MapViewer({
     routeAnimRef.current = null;
 
     if (!clientRoute || clientRoute.path.length < 2) return;
-    const path = clientRoute.path;
-    const startExt = clientRoute.startExtIdx ?? -1; // path[0]~path[startExt] 점선
-    const endExt = clientRoute.endExtIdx ?? path.length; // path[endExt]~끝 점선
+
+    // 멀티층 경로: 현재 층 세그먼트만 렌더링
+    let path = clientRoute.path;
+    let startExt = clientRoute.startExtIdx ?? -1;
+    let endExt = clientRoute.endExtIdx ?? path.length;
+
+    if (clientRoute.floorSegments && clientRoute.floorSegments.length > 1 && currentFloorId) {
+      const curSeg = clientRoute.floorSegments.find(s => s.floorId === currentFloorId);
+      if (curSeg && curSeg.path.length >= 2) {
+        path = curSeg.path;
+        // 현재 층이 첫 세그먼트면 startExt 유지, 아니면 점선 없음
+        const isFirst = clientRoute.floorSegments[0].floorId === currentFloorId;
+        const isLast = clientRoute.floorSegments[clientRoute.floorSegments.length - 1].floorId === currentFloorId;
+        startExt = isFirst ? (clientRoute.startExtIdx ?? -1) : -1;
+        endExt = isLast ? (clientRoute.endExtIdx != null ? clientRoute.endExtIdx - (clientRoute.path.length - path.length) : path.length) : path.length;
+        // endExt 보정: 전체 path 인덱스 → 현재 세그먼트 인덱스
+        if (isLast && clientRoute.endExtIdx != null) {
+          // endExtIdx는 전체 path 기준이므로, 현재 세그먼트 내 상대 인덱스 계산
+          let offset = 0;
+          for (const seg of clientRoute.floorSegments) {
+            if (seg.floorId === currentFloorId) break;
+            offset += seg.path.length;
+          }
+          endExt = clientRoute.endExtIdx - offset;
+          if (endExt < 0 || endExt >= path.length) endExt = path.length;
+        }
+      } else {
+        // 현재 층에 경로 없음
+        return;
+      }
+    }
 
     // 실선 구간
     const solidStart = startExt >= 0 ? startExt : 0;
@@ -927,7 +955,7 @@ export default function MapViewer({
 
     // 경로 그린 후 즉시 렌더 트리거
     renderTilesFnRef.current();
-  }, [clientRoute]);
+  }, [clientRoute, currentFloorId]);
 
   // Ticker로 프로그레스바 애니메이션 (여러 개, 천천히)
   useEffect(() => {
