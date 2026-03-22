@@ -350,6 +350,7 @@ export default function HomePage() {
   // 출발+도착 둘 다 설정되면 자동 경로 계산
   useEffect(() => {
     if (!navStart || !navEnd) { setClientRoute(null); return; }
+    let cancelled = false;
 
     const _navStart = navStart;
     const _navEnd = navEnd;
@@ -363,6 +364,7 @@ export default function HomePage() {
         fetch(`${API_BASE}/api/booths`).then(r => r.json()).catch(() => allBooths),
         fetch(`${API_BASE}/api/obstacles`).then(r => r.json()).catch(() => obstacles),
       ]);
+      if (cancelled) return;
 
       const destBooth = _navEnd.boothId ? useBooths.find((b: any) => b.id === _navEnd.boothId) : null;
       
@@ -405,20 +407,22 @@ export default function HomePage() {
         result.path = result.floorSegments.flatMap(s => s.path);
       }
 
+      if (cancelled) return;
       setClientRoute(result);
-      // 현재 층 세그먼트의 중간 지점으로 자동 이동
+      // 경로 중간점으로 자동 이동 — 줌아웃해서 전체 경로 보이게
       if (result) {
         const curSeg = result.floorSegments?.find(s => s.floorId === _navStart.floorId) ?? result.floorSegments?.[0];
         const midPath = curSeg?.path ?? result.path;
         if (midPath.length >= 2) {
           const mid = midPath[Math.floor(midPath.length / 2)];
           const panTo = (window as any).__mapViewerPanToWorld;
-          if (panTo) setTimeout(() => panTo(mid.x, mid.y), 200);
+          if (panTo) setTimeout(() => panTo(mid.x, mid.y, 0.5), 500);
         }
       }
     }
 
     computeRoute();
+    return () => { cancelled = true; };
   }, [navStart, navEnd]);
 
   // 현재 층 경로만 추출 (floorSegments 기반)
@@ -746,19 +750,25 @@ export default function HomePage() {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setNavStart({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
                 if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                setTimeout(() => {
-                  const panTo = (window as any).__mapViewerPanToWorld;
-                  if (panTo) panTo(c.x, c.y, 2.0);
-                }, 200);
+                // navEnd가 없을 때만 즉시 이동 (경로 있으면 computeRoute에서 midpoint로 이동)
+                if (!navEnd) {
+                  setTimeout(() => {
+                    const panTo = (window as any).__mapViewerPanToWorld;
+                    if (panTo) panTo(c.x, c.y, 2.0);
+                  }, 200);
+                }
               }}
               onSetEnd={(booth) => {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
                 if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                setTimeout(() => {
-                  const panTo = (window as any).__mapViewerPanToWorld;
-                  if (panTo) panTo(c.x, c.y, 2.0);
-                }, 200);
+                // navStart가 없을 때만 즉시 이동
+                if (!navStart) {
+                  setTimeout(() => {
+                    const panTo = (window as any).__mapViewerPanToWorld;
+                    if (panTo) panTo(c.x, c.y, 2.0);
+                  }, 200);
+                }
               }}
             />
           </div>
