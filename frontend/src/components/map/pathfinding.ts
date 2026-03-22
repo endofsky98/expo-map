@@ -395,7 +395,7 @@ function findSameFloorPathMulti(
         const routeDist = pathDistance(graph, p);
         const goalNode = graph.nodes.get(goalId);
         const endSnapDist = goalNode ? dist(goalNode, destCenter) : 0;
-        const totalDist = startSnapDist + routeDist + endSnapDist;
+        const totalDist = startSnapDist * 2 + routeDist + endSnapDist * 2;
         if (!best || totalDist < best.totalDist) {
           best = { path: p, dist: routeDist, totalDist, startId, goalId };
         }
