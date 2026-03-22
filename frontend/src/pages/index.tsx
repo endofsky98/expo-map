@@ -7,6 +7,7 @@ import { ZoomIn, ZoomOut, Settings, Map as MapIcon, Navigation2, MapPin, Eye, Ey
 import { Booth, Category, MapImage, Floor, Hall, Facility, Obstacle } from '@/types';
 import { fetchBooths, fetchCategories, fetchCurrentImage, fetchFloors, fetchHalls, fetchFacilities, fetchAmenities, fetchObstacles, fetchPathNodes, fetchPathEdges, fetchSetting } from '@/lib/api';
 import { findPath, type PathResult } from '@/components/map/pathfinding';
+import { FACILITY_STYLES } from '@/components/map/mapTypes';
 import { getBoothCenter } from '@/components/map/clusterUtils';
 import { useI18n } from '@/lib/i18n';
 import SearchBar from '@/components/SearchBar';
@@ -98,6 +99,8 @@ export default function HomePage() {
   const [navCurrentFloorId, setNavCurrentFloorId] = useState<number | null>(null); // 네비 중 현재 위치가 있는 층
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [uiHidden, setUiHidden] = useState(false); // 화면 터치 시 UI 숨김
+  const [settingsExpanded, setSettingsExpanded] = useState(false); // 우측 설정 펼침
   const savedTransformRef = useRef<{ x: number; y: number; scale: number; rotation: number; tilt: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -249,7 +252,7 @@ export default function HomePage() {
   }, []);
 
   const handleMapClick = useCallback((x: number, y: number, floorId: number) => {
-    console.log(`onMapClick: x=${x}, y=${y}, floorId=${floorId}`);
+    setUiHidden(prev => !prev);
   }, []);
 
   const handleSearchSelect = useCallback((booth: Booth) => {
@@ -726,7 +729,7 @@ export default function HomePage() {
 
       <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none' }}>
         {/* Top bar — transparent overlay */}
-        <div className="absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none">
+        <div className={`absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none transition-opacity duration-200 ${uiHidden ? 'opacity-0 pointer-events-none' : ''}`}>
           {/* Row 1: Logo + Floor selector + utilities — opaque background */}
           <div className="flex items-center gap-3 pointer-events-auto bg-white dark:bg-[#1a1a1a] rounded-lg px-3 py-2 shadow-sm border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 shrink-0">
@@ -775,10 +778,13 @@ export default function HomePage() {
             />
           </div>
 
-          {/* 길찾기 출발/도착 상태 바 */}
-          {(navStart || navEnd) && (
+        </div>
+
+        {/* 길찾기 출발/도착 상태 바 — UI 숨김 시에도 표시 */}
+        {(navStart || navEnd) && (
+          <div className={`absolute ${uiHidden ? 'top-3' : 'top-28'} left-4 z-20 transition-all duration-200`}>
             <div
-              className="mt-2 flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit cursor-pointer hover:bg-white dark:hover:bg-[#1a1a1a] transition-colors"
+              className="flex items-center gap-2 text-xs pointer-events-auto bg-white/80 dark:bg-[#1a1a1a]/80 backdrop-blur-sm rounded-lg px-3 py-1.5 w-fit cursor-pointer hover:bg-white dark:hover:bg-[#1a1a1a] transition-colors"
               onClick={() => { (window as any).__openPathfindingUI?.(); }}
             >
               <Navigation2 className="h-3.5 w-3.5 text-indigo-500" />
@@ -796,8 +802,8 @@ export default function HomePage() {
                 </button>
               )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* Map area — full screen behind transparent top bar */}
         <div className="absolute inset-0">
@@ -1017,8 +1023,9 @@ export default function HomePage() {
 
 
 
-          {/* Zoom controls + View toggle + Booth toggle */}
-          <div className="absolute bottom-6 right-6 flex flex-col items-center gap-2 z-10">
+          {/* Zoom controls + View toggle + Settings */}
+          {!uiHidden && (
+          <div className="absolute bottom-20 right-4 flex flex-col items-center gap-1.5 z-10 pointer-events-auto">
             {/* Bird's-eye / 2D view toggle */}
             <button
               onClick={() => {
@@ -1039,34 +1046,66 @@ export default function HomePage() {
                 : <Box className="h-4 w-4 text-gray-700 dark:text-gray-300" />
               }
             </button>
-            <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-sm font-bold text-gray-700 dark:text-gray-300" title="글자 크게">
-              A+
-            </button>
-            <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-xs font-bold text-gray-700 dark:text-gray-300" title="글자 작게">
-              A−
-            </button>
+            {/* 확대 */}
             <button onClick={handleZoomIn} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom in">
               <ZoomIn className="h-4 w-4 text-gray-700 dark:text-gray-300" />
             </button>
+            {/* 축소 */}
             <button onClick={handleZoomOut} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors" title="Zoom out">
               <ZoomOut className="h-4 w-4 text-gray-700 dark:text-gray-300" />
             </button>
-            {/* v7: Booth visibility toggle (debug/test) */}
+            {/* 설정 확장 영역 */}
+            {settingsExpanded && (
+              <>
+                <button onClick={handleFontUp} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-sm font-bold text-gray-700 dark:text-gray-300" title="글자 크게">
+                  A+
+                </button>
+                <button onClick={handleFontDown} className="w-10 h-10 flex items-center justify-center rounded-lg bg-white dark:bg-[#1e1e1e] border border-gray-200 dark:border-gray-500/40 shadow-sm hover:bg-gray-50 dark:hover:bg-[#2a2a2a] transition-colors text-xs font-bold text-gray-700 dark:text-gray-300" title="글자 작게">
+                  A−
+                </button>
+                {/* 편의시설 보이기 토글 */}
+                <button
+                  onClick={() => setHiddenFacilityTypes(prev => prev.size > 0 ? new Set() : new Set(Object.keys(FACILITY_STYLES)))}
+                  className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
+                    hiddenFacilityTypes.size === 0
+                      ? 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50'
+                      : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600/40'
+                  }`}
+                  title="편의시설 보이기/숨기기"
+                >
+                  <MapPin className={`h-4 w-4 ${hiddenFacilityTypes.size === 0 ? 'text-gray-700 dark:text-gray-300' : 'text-amber-600 dark:text-amber-400'}`} />
+                </button>
+                {/* 부스 보이기 토글 */}
+                <button
+                  onClick={() => setShowBooths(prev => !prev)}
+                  className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
+                    showBooths
+                      ? 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50'
+                      : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600/40'
+                  }`}
+                  title={showBooths ? '부스 숨기기' : '부스 보이기'}
+                >
+                  {showBooths
+                    ? <Eye className="h-4 w-4 text-gray-700 dark:text-gray-300" />
+                    : <EyeOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  }
+                </button>
+              </>
+            )}
+            {/* 설정 토글 */}
             <button
-              onClick={() => setShowBooths((prev) => !prev)}
+              onClick={() => setSettingsExpanded(prev => !prev)}
               className={`w-10 h-10 flex items-center justify-center rounded-lg border shadow-sm transition-colors ${
-                showBooths
-                  ? 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
-                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-600/40 hover:bg-amber-100 dark:hover:bg-amber-900/30'
+                settingsExpanded
+                  ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-600/40'
+                  : 'bg-white dark:bg-[#1e1e1e] border-gray-200 dark:border-gray-500/40 hover:bg-gray-50 dark:hover:bg-[#2a2a2a]'
               }`}
-              title={showBooths ? 'Hide booths' : 'Show booths'}
+              title="설정"
             >
-              {showBooths
-                ? <Eye className="h-4 w-4 text-gray-700 dark:text-gray-300" />
-                : <EyeOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-              }
+              <Settings className="h-4 w-4 text-gray-700 dark:text-gray-300" />
             </button>
           </div>
+          )}
         </div>
       </div>
     </>
