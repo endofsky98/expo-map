@@ -200,22 +200,15 @@ export function snapToGraph(p: Point, graph: PathGraph, segments: { from: Point;
   let bestNodeId = '';
   let bestPoint: Point = p;
 
-  // 기존 노드에 스냅 (floorId 지정 시 같은 층만)
+  // 기존 노드에 스냅
   for (const [id, node] of graph.nodes) {
-    if (floorId != null && node.floorId != null && node.floorId !== floorId) continue;
     const d = dist(p, node);
     if (d < bestDist) { bestDist = d; bestNodeId = id; bestPoint = node; }
   }
 
-  // 엣지 위의 점에 스냅 (floorId 지정 시 같은 층 세그먼트만)
+  // 엣지 위의 점에 스냅
   let bestSeg: typeof segments[0] | null = null;
   for (const seg of segments) {
-    if (floorId != null) {
-      const fn = graph.nodes.get(seg.fromId);
-      const tn = graph.nodes.get(seg.toId);
-      if (fn?.floorId != null && fn.floorId !== floorId) continue;
-      if (tn?.floorId != null && tn.floorId !== floorId) continue;
-    }
     const nearest = nearestOnSegment(p, seg.from, seg.to);
     const d = dist(p, nearest);
     if (d < bestDist) {
@@ -259,13 +252,6 @@ export function findDestCandidates(
   const segBest = new Map<string, { point: Point; dist: number; seg: typeof segments[0] }>();
 
   for (const seg of segments) {
-    // floorId 지정 시 같은 층 세그먼트만
-    if (floorId != null) {
-      const fn = graph.nodes.get(seg.fromId);
-      const tn = graph.nodes.get(seg.toId);
-      if (fn?.floorId != null && fn.floorId !== floorId) continue;
-      if (tn?.floorId != null && tn.floorId !== floorId) continue;
-    }
     const nearest = nearestOnSegment(center, seg.from, seg.to);
     const d = dist(center, nearest);
     if (hasObstruction(center, nearest, allBooths, obstacles, booth.id)) continue;
