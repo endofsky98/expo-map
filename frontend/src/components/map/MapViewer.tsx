@@ -1339,8 +1339,12 @@ export default function MapViewer({
     }
     clusterRepCenterRef.current = repCenters;
 
-    // 홀 이름은 그룹화 시 표시하지 않음
-    clusterNameMapRef.current = new Map();
+    // 클러스터 대표 이름 (홀/구역 이름 포함) → ref에 저장
+    const nameMap = new Map<number, string>();
+    for (const [, rep] of clusterReps) {
+      if (rep.name) nameMap.set(rep.boothId, rep.name);
+    }
+    clusterNameMapRef.current = nameMap;
 
     const oldIds = stableIdsRef.current;
 
@@ -1556,9 +1560,11 @@ export default function MapViewer({
       const numEl = el.querySelector('[data-num]') as HTMLElement;
       const labelEl = el.querySelector('[data-label]') as HTMLElement;
       if (nameEl) {
-        const displayName = booth.display_name || lnFn(booth.company?.name) || '';
+        // 클러스터 대표면 홀/구역 이름 우선 사용
+        const clusterName = clusterNameMapRef.current.get(booth.id);
+        const displayName = clusterName || booth.display_name || lnFn(booth.company?.name) || '';
         nameEl.textContent = displayName || booth.booth_number;
-        nameEl.style.whiteSpace = booth.display_name ? 'pre-line' : 'nowrap';
+        nameEl.style.whiteSpace = (clusterName || booth.display_name) ? 'pre-line' : 'nowrap';
         nameEl.style.lineHeight = '0.8';
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
         // 표기이름/회사명 있으면 부스번호 표시, 없으면 숨기기
