@@ -145,9 +145,9 @@ export function clusterBooths(
   }
 
   const indexBooths = allBooths || booths;
-  // 글자 크기 차이 %에 비례하여 클러스터 반경 조정 (zoom은 글자 크기 무관)
-  const fontRatio = fontSize / 16; // 기준 16px → 1.0, 20px → 1.25, 12px → 0.75
-  const adjustedRadius = Math.round(SC_RADIUS * fontRatio);
+  // 글자 크기 차이 %의 절반만 반경 증가 (zoom은 글자 크기 무관)
+  const fontRatio = (fontSize - 16) / 16; // 20px → 0.25, 24px → 0.5
+  const adjustedRadius = Math.round(SC_RADIUS * (1 + fontRatio * 0.5));
   const index = getOrCreateIndex(indexBooths, adjustedRadius);
   const zoom = scaleToZoom(scale);
 
