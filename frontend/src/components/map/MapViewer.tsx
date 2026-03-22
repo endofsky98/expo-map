@@ -1237,19 +1237,20 @@ export default function MapViewer({
       if (nameEl) {
         const displayName = booth.display_name || lnFn(booth.company?.name) || '';
         nameEl.textContent = displayName || booth.booth_number;
-        if (booth.display_name) nameEl.style.whiteSpace = 'pre-line';
+        nameEl.style.whiteSpace = booth.display_name ? 'pre-line' : 'nowrap';
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
-        // 회사명이 있으면 부스번호 표시, 없으면 숨기기
+        // 표기이름/회사명 있으면 부스번호 표시, 없으면 숨기기
         if (numEl) {
           numEl.textContent = booth.booth_number;
           numEl.style.fontSize = `${markerFontSizeRef.current}px`;
-          numEl.style.display = companyName ? '' : 'none';
-        } else if (companyName && labelEl) {
+          numEl.style.display = displayName ? '' : 'none';
+        } else if (displayName && labelEl) {
           // numEl 없으면 생성
           const ns = document.createElement('div');
           ns.setAttribute('data-num', '');
           ns.textContent = booth.booth_number;
-          ns.style.fontSize = '12px'; ns.style.fontWeight = '500';
+          ns.style.fontSize = `${markerFontSizeRef.current}px`;
+          ns.style.fontWeight = '500';
           ns.style.color = '#6b7280'; ns.style.whiteSpace = 'nowrap';
           ns.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff';
           labelEl.insertBefore(ns, nameEl);
