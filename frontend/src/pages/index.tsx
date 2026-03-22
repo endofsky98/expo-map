@@ -94,7 +94,7 @@ export default function HomePage() {
   const [navCurDist, setNavCurDist] = useState(0); // 현재 위치 (경로상 거리 px)
   const navCurDistRef = useRef(0);
   const [navConfirm, setNavConfirm] = useState<'cancel' | 'arrived' | null>(null);
-  const [navFloorTransition, setNavFloorTransition] = useState<{ targetFloorId: number; label: string } | null>(null);
+  const [navFloorTransition, setNavFloorTransition] = useState<{ targetFloorId: number; label: string; direction: 'forward' | 'backward' } | null>(null);
   const [navCurrentFloorId, setNavCurrentFloorId] = useState<number | null>(null); // 네비 중 현재 위치가 있는 층
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -553,7 +553,7 @@ export default function HomePage() {
           // floor_id → 표시 층 이름 (floor_id=1→1층, floor_id=2→3층)
           const fn = floors?.find(f => f.id === nextSeg.floorId)?.name;
           const floorLabel = typeof fn === 'string' ? fn : (fn ? Object.values(fn)[0] : `${nextSeg.floorId}층`);
-          setNavFloorTransition({ targetFloorId: nextSeg.floorId, label: floorLabel });
+          setNavFloorTransition({ targetFloorId: nextSeg.floorId, label: floorLabel, direction: 'forward' });
         }
       } else {
         setNavConfirm('arrived');
@@ -565,19 +565,27 @@ export default function HomePage() {
   function navFloorTransitionConfirm() {
     if (!navFloorTransition || !clientRoute?.floorSegments) return;
     const targetFloorId = navFloorTransition.targetFloorId;
+    const direction = navFloorTransition.direction;
     setNavFloorTransition(null);
     setSelectedFloorId(targetFloorId);
     setNavCurrentFloorId(targetFloorId);
     setTimeout(() => {
-      navCurDistRef.current = 0;
-      setNavCurDist(0);
       const seg = clientRoute!.floorSegments!.find(s => s.floorId === targetFloorId);
-      const p = seg?.path[0];
-      if (p) {
-        const panTo = (window as any).__mapViewerPanToWorld;
-        const setTilt = (window as any).__mapViewerSetTilt;
-        if (setTilt) setTilt(60);
-        if (panTo) panTo(p.x, p.y, 0.3);
+      if (!seg || seg.path.length < 2) return;
+      if (direction === 'backward') {
+        // 이전 → 해당 층의 끝에서 시작
+        navCurDistRef.current = seg.distance;
+        setNavCurDist(seg.distance);
+        const p = seg.path[seg.path.length - 1];
+        const animNav = (window as any).__mapViewerAnimateNav;
+        if (animNav) animNav(p.x, p.y, 0, 300);
+      } else {
+        // 다음 → 해당 층의 처음에서 시작
+        navCurDistRef.current = 0;
+        setNavCurDist(0);
+        const p = seg.path[0];
+        const animNav = (window as any).__mapViewerAnimateNav;
+        if (animNav) animNav(p.x, p.y, 0, 300);
       }
     }, 500);
   }
@@ -604,7 +612,7 @@ export default function HomePage() {
       if (prevSeg) {
         const fn2 = floors?.find(f => f.id === prevSeg.floorId)?.name;
         const floorLabel2 = typeof fn2 === 'string' ? fn2 : (fn2 ? Object.values(fn2)[0] : `${prevSeg.floorId}층`);
-        setNavFloorTransition({ targetFloorId: prevSeg.floorId, label: floorLabel2 });
+        setNavFloorTransition({ targetFloorId: prevSeg.floorId, label: floorLabel2, direction: 'backward' });
       }
     }
   }
