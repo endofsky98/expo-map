@@ -1285,9 +1285,7 @@ export default function MapViewer({
             }
           }
           const bestBooth = boothMapRef.current.get(bestId);
-          let name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
-          const hallName0 = getClusterHallName(filteredIds);
-          if (hallName0) name = hallName0;
+          const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
           newIds.add(bestId);
           clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
         } else if (routeCorners) {
@@ -1305,20 +1303,14 @@ export default function MapViewer({
             }
           }
           const bestBooth = boothMapRef.current.get(bestId);
-          let name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
-          // 홀/구역 이름으로 덮어쓰기 (전체 보일 때)
-          const hallName = getClusterHallName(filteredIds);
-          if (hallName) name = hallName;
+          const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
           newIds.add(bestId);
           clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
         } else {
           const rep = selectRepresentative(filteredIds, boothsRef.current, hallsRef.current);
           if (rep.booth) {
-            let repName = rep.name;
-            const hallName = getClusterHallName(filteredIds);
-            if (hallName) repName = hallName;
             newIds.add(rep.booth.id);
-            clusterReps.set(c.id, { boothId: rep.booth.id, count: effectiveCount, name: repName });
+            clusterReps.set(c.id, { boothId: rep.booth.id, count: effectiveCount, name: rep.name });
           } else if (filteredIds.length > 0) {
             newIds.add(filteredIds[0]);
             clusterReps.set(c.id, { boothId: filteredIds[0], count: effectiveCount });
@@ -1339,10 +1331,68 @@ export default function MapViewer({
     }
     clusterRepCenterRef.current = repCenters;
 
-    // 클러스터 대표 이름 (홀/구역 이름 포함) → ref에 저장
+    // 홀/구역별 클러스터 수 + 개별 부스 수 → 1개씩만 있을 때 홀 이름 표시
+    const hallClusterCount = new Map<number, { count: number; repBoothId: number; hallName: string }>();
+    const hallIndividualCount = new Map<number, number>();
+    const hallsForCheck = hallsRef.current;
+    const { width: cvW3, height: cvH3 } = canvasDimsRef.current;
+    // 화면에 전체 보이는 홀만 대상
+    const visibleHalls = new Set<number>();
+    for (const h of hallsForCheck) {
+      if (h.area_x == null || h.area_y == null || h.area_width == null || h.area_height == null) continue;
+      const tl = worldToScreen(h.area_x, h.area_y);
+      const tr = worldToScreen(h.area_x + h.area_width, h.area_y);
+      const bl = worldToScreen(h.area_x, h.area_y + h.area_height);
+      const br = worldToScreen(h.area_x + h.area_width, h.area_y + h.area_height);
+      const xs = [tl.sx, tr.sx, bl.sx, br.sx], ys = [tl.sy, tr.sy, bl.sy, br.sy];
+      const mn = -20;
+      if (Math.min(...xs) >= mn && Math.max(...xs) <= cvW3 - mn && Math.min(...ys) >= mn && Math.max(...ys) <= cvH3 - mn) {
+        visibleHalls.add(h.id);
+      }
+    }
+    // 클러스터별 → 어느 홀에 속하는지 (좌표 기반)
+    for (const [cid, rep] of clusterReps) {
+      if (rep.count <= 1) continue;
+      const booth = boothMapRef.current.get(rep.boothId);
+      if (!booth) continue;
+      const { cx, cy } = getBoothCenter(booth);
+      for (const h of hallsForCheck) {
+        if (!visibleHalls.has(h.id)) continue;
+        if (h.area_x == null || h.area_y == null || h.area_width == null || h.area_height == null) continue;
+        if (cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height) {
+          const prev = hallClusterCount.get(h.id);
+          const hn = h.display_name || (typeof h.name === 'string' ? h.name : (h.name ? Object.values(h.name)[0] : ''));
+          if (!prev) hallClusterCount.set(h.id, { count: 1, repBoothId: rep.boothId, hallName: hn });
+          else hallClusterCount.set(h.id, { count: prev.count + 1, repBoothId: prev.repBoothId, hallName: hn });
+          break; // 가장 먼저 매칭된 홀
+        }
+      }
+    }
+    // 개별 부스(클러스터 아닌)도 같은 홀 안에 있는지 체크
+    for (const c of clusters) {
+      if (c.isCluster && c.count > 1) continue;
+      for (const boothId of c.boothIds) {
+        if (!newIds.has(boothId)) continue;
+        const b = boothMapRef.current.get(boothId);
+        if (!b) continue;
+        const { cx, cy } = getBoothCenter(b);
+        for (const h of hallsForCheck) {
+          if (!visibleHalls.has(h.id)) continue;
+          if (h.area_x == null || h.area_y == null || h.area_width == null || h.area_height == null) continue;
+          if (cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height) {
+            hallIndividualCount.set(h.id, (hallIndividualCount.get(h.id) || 0) + 1);
+            break;
+          }
+        }
+      }
+    }
+    // 클러스터 딱 1개 + 개별 부스 0개인 홀만 이름 표시
     const nameMap = new Map<number, string>();
-    for (const [, rep] of clusterReps) {
-      if (rep.name) nameMap.set(rep.boothId, rep.name);
+    for (const [hallId, info] of hallClusterCount) {
+      const individualCnt = hallIndividualCount.get(hallId) || 0;
+      if (info.count === 1 && individualCnt === 0) {
+        nameMap.set(info.repBoothId, info.hallName);
+      }
     }
     clusterNameMapRef.current = nameMap;
 
