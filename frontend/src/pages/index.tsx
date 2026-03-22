@@ -449,6 +449,9 @@ export default function HomePage() {
   // 현재 층 경로만 추출 (단일층/멀티층 공통)
   const currentFloorRoute = useMemo(() => {
     if (!clientRoute) return null;
+    console.log('[currentFloorRoute] selectedFloorId:', selectedFloorId,
+      'floorSegments:', clientRoute.floorSegments?.map(s => `f${s.floorId}(${s.path.length}pts)`),
+      'floors:', clientRoute.floors);
     if (clientRoute.floorSegments && clientRoute.floorSegments.length > 0) {
       const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
       if (!seg) return null;
