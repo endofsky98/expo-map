@@ -95,6 +95,7 @@ export default function HomePage() {
   const navCurDistRef = useRef(0);
   const [navConfirm, setNavConfirm] = useState<'cancel' | 'arrived' | null>(null);
   const [navFloorTransition, setNavFloorTransition] = useState<{ targetFloorId: number; label: string } | null>(null);
+  const [navCurrentFloorId, setNavCurrentFloorId] = useState<number | null>(null); // 네비 중 현재 위치가 있는 층
   const [currentPosition, setCurrentPosition] = useState<CurrentPosition | null>(null);
   const [zoom, setZoom] = useState(1);
   const savedTransformRef = useRef<{ x: number; y: number; scale: number; rotation: number; tilt: number } | null>(null);
@@ -455,8 +456,8 @@ export default function HomePage() {
     return path[path.length - 1];
   }
 
-  // 현재 위치 좌표
-  const navCurrentPos = navActive ? posAtDist(navCurDist) : null;
+  // 현재 위치 좌표 — 네비 중 현재 층에서만 표시
+  const navCurrentPos = (navActive && navCurrentFloorId === selectedFloorId) ? posAtDist(navCurDist) : null;
 
   // 경로 위 특정 거리의 진행 방향 각도 (다음 방향)
   function dirAtDist(d: number): number {
@@ -505,6 +506,7 @@ export default function HomePage() {
       setSelectedFloorId(firstSeg.floorId);
     }
     setNavActive(true);
+    setNavCurrentFloorId(firstSeg.floorId);
     // 시작은 setTimeout으로 리마운트 대기 후
     setTimeout(() => {
       const route = clientRoute.floorSegments![0];
@@ -527,6 +529,11 @@ export default function HomePage() {
 
   // 다음 (100px 전진) — 실선 구간 내에서만, 끝에 도달하면 다음 층으로
   function navNext() {
+    // 다른 층을 보고 있으면 네비 현재 층으로 먼저 이동
+    if (navCurrentFloorId != null && selectedFloorId !== navCurrentFloorId) {
+      setSelectedFloorId(navCurrentFloorId);
+      return;
+    }
     if (!currentFloorRoute) return;
     const { navMaxDist } = getNavRange();
     const newDist = Math.min(navCurDistRef.current + 100, navMaxDist);
@@ -560,6 +567,7 @@ export default function HomePage() {
     const targetFloorId = navFloorTransition.targetFloorId;
     setNavFloorTransition(null);
     setSelectedFloorId(targetFloorId);
+    setNavCurrentFloorId(targetFloorId);
     setTimeout(() => {
       navCurDistRef.current = 0;
       setNavCurDist(0);
@@ -576,6 +584,10 @@ export default function HomePage() {
 
   // 이전 (100px 후퇴) — 실선 구간 내에서만, 시작에 도달하면 이전 층으로
   function navPrev() {
+    if (navCurrentFloorId != null && selectedFloorId !== navCurrentFloorId) {
+      setSelectedFloorId(navCurrentFloorId);
+      return;
+    }
     if (!currentFloorRoute) return;
     const { navMinDist } = getNavRange();
     const newDist = Math.max(navCurDistRef.current - 100, navMinDist);
@@ -607,6 +619,7 @@ export default function HomePage() {
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
+    setNavCurrentFloorId(null);
     const pos = posAtDist(navCurDistRef.current) || { x: 0, y: 0 };
     const animNav = (window as any).__mapViewerAnimateNav;
     if (animNav) animNav(pos.x, pos.y, 0, 400);
@@ -623,6 +636,7 @@ export default function HomePage() {
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
+    setNavCurrentFloorId(null);
     setNavStart(null);
     setNavEnd(null);
     setClientRoute(null);
@@ -637,6 +651,7 @@ export default function HomePage() {
     setNavActive(false);
     setNavCurDist(0);
     setNavConfirm(null);
+    setNavCurrentFloorId(null);
   }
 
   function handleFontUp() {
@@ -710,7 +725,7 @@ export default function HomePage() {
               <span className="text-gray-600 dark:text-gray-400">
                 도착: <span className="font-medium text-red-600 dark:text-red-400">{navEnd ? getNavLabel(navEnd) : '—'}</span>
               </span>
-              <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
+              <button onClick={() => { setNavStart(null); setNavEnd(null); setClientRoute(null); setNavActive(false); setNavCurrentFloorId(null); }} className="text-gray-400 hover:text-red-500 ml-1">&times;</button>
               {clientRoute && !navActive && (
                 <button onClick={startNavigation} className="ml-2 px-2 py-0.5 text-xs font-medium rounded bg-blue-500 text-white hover:bg-blue-600 transition-colors">
                   🧭 네비게이션
