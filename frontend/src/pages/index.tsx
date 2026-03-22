@@ -492,9 +492,13 @@ export default function HomePage() {
     return { navMinDist, navMaxDist };
   }
 
+  // 멀티층 경로 여부
+  const isMultiFloorRoute = clientRoute?.floors && clientRoute.floors.length > 1;
+
   // 네비게이션 시작 — 줌 세팅 + 실선 시작 지점으로 이동
   function startNavigation() {
     if (!clientRoute) return;
+    if (isMultiFloorRoute) return; // 멀티층 네비는 아직 미지원
     const { navMinDist } = getNavRange();
     setNavActive(true);
     navCurDistRef.current = navMinDist;
@@ -600,23 +604,31 @@ export default function HomePage() {
     if (fn) fn();
   }
 
-  // 멀티층 경로: 현재 층 세그먼트만 추출
+  // 현재 층 경로만 추출 (단일층/멀티층 공통)
   const currentFloorRoute = useMemo(() => {
     if (!clientRoute) return null;
-    if (!clientRoute.floorSegments || clientRoute.floorSegments.length <= 1) return clientRoute; // 단일층
-    const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
-    if (!seg || seg.path.length < 2) return null;
-    // 출발 층이면 startExtIdx 유지, 도착 층이면 endExtIdx 유지
-    const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
-    const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
-    return {
-      path: seg.path,
-      distance: seg.distance,
-      startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
-      endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
-      floorSegments: clientRoute.floorSegments,
-      floors: clientRoute.floors,
-    } as typeof clientRoute;
+    // floorSegments가 있으면 현재 층 세그먼트만 추출
+    if (clientRoute.floorSegments && clientRoute.floorSegments.length > 0) {
+      const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
+      if (!seg || seg.path.length < 2) return null;
+      if (clientRoute.floorSegments.length === 1) {
+        // 단일층 — 원래 경로 그대로 (ext 구간 포함)
+        return clientRoute;
+      }
+      // 멀티층 — 현재 층 세그먼트만
+      const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
+      const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
+      return {
+        path: seg.path,
+        distance: seg.distance,
+        startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
+        endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
+        floorSegments: clientRoute.floorSegments,
+        floors: clientRoute.floors,
+      } as typeof clientRoute;
+    }
+    // floorSegments 없으면 (구버전 호환) 그대로
+    return clientRoute;
   }, [clientRoute, selectedFloorId]);
 
   const showMap = !loading && (booths.length > 0 || currentImage !== null);
