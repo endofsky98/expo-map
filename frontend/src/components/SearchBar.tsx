@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, X, Eye, MapPin } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { Booth } from '@/types';
 import { useI18n } from '@/lib/i18n';
 import { searchBooths } from '@/lib/api';
@@ -140,18 +140,16 @@ export default function SearchBar({ booths, onSelect, onView, onSetEnd }: Search
                 <button
                   onClick={(e) => { e.stopPropagation(); onView(booth); setIsOpen(false); }}
                   className="shrink-0 px-2 py-1 text-[10px] font-medium rounded bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
-                  title="보기"
                 >
-                  <Eye className="h-3 w-3" />
+                  보기
                 </button>
               )}
               {onSetEnd && (
                 <button
                   onClick={(e) => { e.stopPropagation(); onSetEnd(booth); setIsOpen(false); }}
                   className="shrink-0 px-2 py-1 text-[10px] font-medium rounded bg-red-50 text-red-600 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40 transition-colors"
-                  title="도착"
                 >
-                  <MapPin className="h-3 w-3" />
+                  도착
                 </button>
               )}
             </div>

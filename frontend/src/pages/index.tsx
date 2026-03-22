@@ -739,7 +739,7 @@ export default function HomePage() {
                 if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                 setTimeout(() => {
                   const panTo = (window as any).__mapViewerPanToWorld;
-                  if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 1.0);
+                  if (panTo) panTo(booth.x + booth.width / 2, booth.y + booth.height / 2, 2.0);
                 }, 200);
               }}
               onSetEnd={(booth) => {
