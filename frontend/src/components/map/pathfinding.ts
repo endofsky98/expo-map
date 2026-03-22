@@ -180,21 +180,48 @@ function buildFloorGraph(rawNodes: RawNode[], rawEdges: RawEdge[], floorId: numb
 }
 
 // ===== 출발점 스냅 (단일층 그래프에서) =====
-function snapToFloorGraph(p: Point, graph: PathGraph, prefix: string): string {
+function snapToFloorGraph(p: Point, graph: PathGraph, prefix: string, allBooths?: Booth[], obstacles?: Obstacle[]): string {
   let bestDist = Infinity;
   let bestNodeId = '';
   let bestPoint: Point = p;
   let bestSeg: GraphSegment | null = null;
 
+  // 후보 수집: 노드
+  const nodeCandidates: { id: string; point: Point; dist: number }[] = [];
   for (const [id, node] of graph.nodes) {
     const d = dist(p, node);
-    if (d < bestDist) { bestDist = d; bestNodeId = id; bestPoint = node; }
+    nodeCandidates.push({ id, point: node, dist: d });
+  }
+  nodeCandidates.sort((a, b) => a.dist - b.dist);
+
+  // 장애물 없는 가장 가까운 노드 선택
+  for (const c of nodeCandidates) {
+    if (allBooths && obstacles && hasObstruction(p, c.point, allBooths, obstacles)) continue;
+    if (c.dist < bestDist) { bestDist = c.dist; bestNodeId = c.id; bestPoint = c.point; }
+    break;
+  }
+  // 노드 후보 없으면 장애물 무시 폴백
+  if (!bestNodeId && nodeCandidates.length > 0) {
+    bestDist = nodeCandidates[0].dist;
+    bestNodeId = nodeCandidates[0].id;
+    bestPoint = nodeCandidates[0].point;
   }
 
+  // 후보 수집: 세그먼트
+  const segCandidates: { point: Point; dist: number; seg: GraphSegment }[] = [];
   for (const seg of graph.segments) {
     const nearest = nearestOnSegment(p, seg.from, seg.to);
     const d = dist(p, nearest);
-    if (d < bestDist) { bestDist = d; bestPoint = nearest; bestSeg = seg; }
+    segCandidates.push({ point: nearest, dist: d, seg });
+  }
+  segCandidates.sort((a, b) => a.dist - b.dist);
+
+  // 장애물 없는 가장 가까운 세그먼트 선택 (상위 8개만 체크)
+  for (const c of segCandidates.slice(0, 8)) {
+    if (c.dist >= bestDist) break;
+    if (allBooths && obstacles && hasObstruction(p, c.point, allBooths, obstacles)) continue;
+    bestDist = c.dist; bestPoint = c.point; bestSeg = c.seg;
+    break;
   }
 
   if (bestSeg) {
@@ -391,7 +418,7 @@ export function findPath(
   // ===== 같은 층 =====
   if (srcFloor === dstFloor) {
     const graph = buildFloorGraph(rawNodes, rawEdges, srcFloor);
-    const startId = snapToFloorGraph(startPoint, graph, 'snap_start');
+    const startId = snapToFloorGraph(startPoint, graph, 'snap_start', allBooths, obstacles);
     if (!startId) return null;
     const destIds = findDestInFloorGraph(destBooth, graph, allBooths, obstacles);
     if (destIds.length === 0) return null;
@@ -411,7 +438,7 @@ export function findPath(
   // ===== 다른 층 =====
   // 출발층 그래프
   const srcGraph = buildFloorGraph(rawNodes, rawEdges, srcFloor);
-  const startId = snapToFloorGraph(startPoint, srcGraph, 'snap_start');
+  const startId = snapToFloorGraph(startPoint, srcGraph, 'snap_start', allBooths, obstacles);
   if (!startId) return null;
 
   // 도착층 그래프
