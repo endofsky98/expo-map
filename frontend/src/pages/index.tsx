@@ -610,9 +610,18 @@ export default function HomePage() {
     if (newDist <= navMinDist && !isFirstSeg && clientRoute?.floorSegments) {
       const prevSeg = clientRoute.floorSegments[currentSegIdx - 1];
       if (prevSeg) {
-        const fn2 = floors?.find(f => f.id === prevSeg.floorId)?.name;
-        const floorLabel2 = typeof fn2 === 'string' ? fn2 : (fn2 ? Object.values(fn2)[0] : `${prevSeg.floorId}층`);
-        setNavFloorTransition({ targetFloorId: prevSeg.floorId, label: floorLabel2, direction: 'backward' });
+        // 이전 방향은 알림 없이 바로 전환
+        setSelectedFloorId(prevSeg.floorId);
+        setNavCurrentFloorId(prevSeg.floorId);
+        setTimeout(() => {
+          navCurDistRef.current = prevSeg.distance;
+          setNavCurDist(prevSeg.distance);
+          const p = prevSeg.path[prevSeg.path.length - 1];
+          if (p) {
+            const animNav = (window as any).__mapViewerAnimateNav;
+            if (animNav) animNav(p.x, p.y, 0, 300);
+          }
+        }, 500);
       }
     }
   }
@@ -856,10 +865,23 @@ export default function HomePage() {
               {clientRoute && (
                 <div className="mt-2 max-w-lg mx-auto">
                   <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (navCurDist / clientRoute.distance) * 100)}%` }} />
+                    <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${Math.min(100, (() => {
+                      let acc = 0;
+                      if (clientRoute.floorSegments && currentSegIdx > 0) {
+                        for (let i = 0; i < currentSegIdx; i++) acc += clientRoute.floorSegments[i].distance;
+                      }
+                      return ((acc + navCurDist) / clientRoute.distance) * 100;
+                    })())}%` }} />
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 text-center mt-1">
-                    {Math.round(navCurDist)}px / {Math.round(clientRoute.distance)}px
+                    {Math.round((() => {
+                      // 이전 세그먼트 거리 합산 + 현재 세그먼트 거리
+                      let accumulated = 0;
+                      if (clientRoute.floorSegments && currentSegIdx > 0) {
+                        for (let i = 0; i < currentSegIdx; i++) accumulated += clientRoute.floorSegments[i].distance;
+                      }
+                      return accumulated + navCurDist;
+                    })())}px / {Math.round(clientRoute.distance)}px
                   </p>
                 </div>
               )}
