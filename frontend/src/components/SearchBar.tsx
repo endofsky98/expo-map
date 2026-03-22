@@ -68,9 +68,13 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [query, doSearch]);
 
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setIsOpen(false);
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        inputRef.current?.blur();
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -93,6 +97,7 @@ export default function SearchBar({ booths, onSelect, onView, onSetStart, onSetE
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
         <input
+          ref={inputRef}
           type="text"
           placeholder={t('search.placeholder')}
           value={query}
