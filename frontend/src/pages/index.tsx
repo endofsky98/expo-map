@@ -852,7 +852,7 @@ export default function HomePage() {
                 </button>
               )}
             </div>
-            {/* 경유지 안내 (계단/에스컬레이터 등) */}
+            {/* 경유지 안내 (계단/에스컬레이터 등) — 일시 비활성화
             {clientRoute?.floorSegments && clientRoute.floorSegments.flatMap(s => s.waypoints ?? []).length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1 pointer-events-none">
                 {clientRoute.floorSegments.flatMap((s, si) =>
@@ -865,6 +865,7 @@ export default function HomePage() {
                 )}
               </div>
             )}
+            */}
           </div>
         )}
 
