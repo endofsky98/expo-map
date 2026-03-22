@@ -740,8 +740,9 @@ export default function MapViewer({
       if (gfx) gfx.destroy();
       gfx = new PIXI.Graphics();
       boothFloorGfxRef.current = gfx;
-      // mainContainer에 추가 — 인덱스 0 (이미지 바로 위, 음영에 안 가리게)
-      mc.addChildAt(gfx, 0);
+      // mainContainer에 추가 — tileLayer 바로 위 (이미지 위, 음영 아래)
+      const tileIdx = mc.children.indexOf(tileLayerRef.current);
+      mc.addChildAt(gfx, tileIdx >= 0 ? tileIdx + 1 : 0);
     }
     gfx.clear();
     for (const b of booths) {
