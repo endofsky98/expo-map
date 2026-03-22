@@ -409,16 +409,7 @@ export default function HomePage() {
 
       if (cancelled) return;
       setClientRoute(result);
-      // 경로 중간점으로 자동 이동 — 줌아웃해서 전체 경로 보이게
-      if (result) {
-        const curSeg = result.floorSegments?.find(s => s.floorId === _navStart.floorId) ?? result.floorSegments?.[0];
-        const midPath = curSeg?.path ?? result.path;
-        if (midPath.length >= 2) {
-          const mid = midPath[Math.floor(midPath.length / 2)];
-          const panTo = (window as any).__mapViewerPanToWorld;
-          if (panTo) setTimeout(() => panTo(mid.x, mid.y, 0.5), 500);
-        }
-      }
+
     }
 
     computeRoute();
@@ -751,9 +742,9 @@ export default function HomePage() {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setSelectedBoothId(null);
                 setNavStart({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
-                if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                // navEnd가 없을 때만 즉시 이동 (경로 있으면 computeRoute에서 midpoint로 이동)
+                // 도착이 없을 때만 보기와 동일하게 이동
                 if (!navEnd) {
+                  if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                   setTimeout(() => {
                     const panTo = (window as any).__mapViewerPanToWorld;
                     if (panTo) panTo(c.x, c.y, 0.5);
@@ -764,9 +755,9 @@ export default function HomePage() {
                 const c = { x: booth.x + booth.width / 2, y: booth.y + booth.height / 2 };
                 setSelectedBoothId(null);
                 setNavEnd({ boothId: booth.id, x: c.x, y: c.y, floorId: booth.floor_id });
-                if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
-                // navStart가 없을 때만 즉시 이동
+                // 출발이 없을 때만 보기와 동일하게 이동
                 if (!navStart) {
+                  if (booth.floor_id && booth.floor_id !== selectedFloorId) setSelectedFloorId(booth.floor_id);
                   setTimeout(() => {
                     const panTo = (window as any).__mapViewerPanToWorld;
                     if (panTo) panTo(c.x, c.y, 0.5);
