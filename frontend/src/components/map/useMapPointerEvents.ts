@@ -94,10 +94,12 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
       dragStart = { x: e.clientX - t.x, y: e.clientY - t.y };
       pointerDownInfo = { x: e.clientX, y: e.clientY, time: Date.now() };
       lastDragX = e.clientX; lastDragY = e.clientY; lastDragTime = Date.now();
-      // 롱프레스 시작 — pointerdown 시점의 world 좌표를 즉시 계산
+      // 롱프레스 시작 — 마우스 좌클릭은 제외 (터치 + 마우스 외 버튼만)
       longPressFired = false;
       if (longPressTimer) clearTimeout(longPressTimer);
-      {
+      if (e.pointerType === 'mouse' && e.button === 0) {
+        // 마우스 좌클릭: 롱프레스 안 함 (우클릭은 contextmenu에서 처리)
+      } else {
         // handleClick과 동일하게 el(컨테이너) 기준 좌표 사용
         const t0 = transformRef.current;
         const sc0 = t0.scale;
