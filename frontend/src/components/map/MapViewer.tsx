@@ -996,30 +996,46 @@ export default function MapViewer({
     const halls = hallsRef.current;
     if (halls.length === 0) return null;
 
-    // 부스 중심 좌표로 포함된 홀/구역 판단 (가장 작은 영역 우선 = 구역 > 홀)
-    function findBoothHall(booth: Booth): Hall | null {
+    // 부스 중심 좌표가 포함된 모든 홀/구역 수집
+    function findBoothHalls(booth: Booth): Hall[] {
       const { cx, cy } = getBoothCenter(booth);
-      let best: Hall | null = null;
-      let bestArea = Infinity;
+      const result: Hall[] = [];
       for (const h of halls) {
         if (h.area_x == null || h.area_y == null || h.area_width == null || h.area_height == null) continue;
         if (cx >= h.area_x && cx <= h.area_x + h.area_width && cy >= h.area_y && cy <= h.area_y + h.area_height) {
-          const area = h.area_width * h.area_height;
-          if (area < bestArea) { best = h; bestArea = area; }
+          result.push(h);
         }
       }
-      return best;
+      return result;
     }
 
-    // 모든 부스가 같은 홀/구역에 속하는지 확인
-    let commonHall: Hall | null = null;
+    // 모든 부스가 공통으로 속한 홀/구역 찾기 (가장 작은 공통 영역 우선)
+    let commonHalls: Set<number> | null = null;
     for (const bid of boothIds) {
       const booth = boothMapRef.current.get(bid);
       if (!booth) return null;
-      const hall = findBoothHall(booth);
-      if (!hall) return null;
-      if (commonHall === null) commonHall = hall;
-      else if (hall.id !== commonHall.id) return null;
+      const boothHalls = findBoothHalls(booth);
+      if (boothHalls.length === 0) return null;
+      const hallIdSet = new Set(boothHalls.map(h => h.id));
+      if (commonHalls === null) commonHalls = hallIdSet;
+      else {
+        // 교집합
+        for (const id of commonHalls) {
+          if (!hallIdSet.has(id)) commonHalls.delete(id);
+        }
+      }
+      if (commonHalls.size === 0) return null;
+    }
+    if (!commonHalls || commonHalls.size === 0) return null;
+    // 공통 홀 중 가장 작은 영역 선택 (구역 > 홀)
+    let commonHall: Hall | null = null;
+    let smallestArea = Infinity;
+    for (const hid of commonHalls) {
+      const h = halls.find(hh => hh.id === hid);
+      if (h && h.area_width != null && h.area_height != null) {
+        const area = h.area_width * h.area_height;
+        if (area < smallestArea) { smallestArea = area; commonHall = h; }
+      }
     }
     if (!commonHall || commonHall.area_x == null || commonHall.area_y == null || commonHall.area_width == null || commonHall.area_height == null) return null;
 
@@ -1269,7 +1285,9 @@ export default function MapViewer({
             }
           }
           const bestBooth = boothMapRef.current.get(bestId);
-          const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
+          let name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
+          const hallName0 = getClusterHallName(filteredIds);
+          if (hallName0) name = hallName0;
           newIds.add(bestId);
           clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
         } else if (routeCorners) {
