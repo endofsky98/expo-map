@@ -371,31 +371,18 @@ export default function HomePage() {
   useEffect(() => {
     if (!navStart || !navEnd) { setClientRoute(null); return; }
 
-    const isMultiFloor = navStart.floorId != null && navEnd.floorId != null && navStart.floorId !== navEnd.floorId;
-
     const _navStart = navStart;
     const _navEnd = navEnd;
     async function computeRoute() {
       if (!_navStart || !_navEnd) return;
-      let useNodes = pathNodes;
-      let useEdges = pathEdges;
-      let useBooths = allBooths;
-      let useObstacles = obstacles;
-
-      if (isMultiFloor) {
-        // 모든 층의 노드/엣지/부스/장애물을 합침
-        const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
-        const [allNodes, allEdges, allBths, allObs] = await Promise.all([
-          fetch(`${API_BASE}/api/path-nodes`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/path-edges`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/booths`).then(r => r.json()).catch(() => []),
-          fetch(`${API_BASE}/api/obstacles`).then(r => r.json()).catch(() => []),
-        ]);
-        useNodes = allNodes;
-        useEdges = allEdges;
-        useBooths = allBths;
-        useObstacles = allObs;
-      }
+      // 항상 전체 노드/엣지/부스/장애물을 페치 (findPath가 내부에서 층별 분리)
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+      const [useNodes, useEdges, useBooths, useObstacles] = await Promise.all([
+        fetch(`${API_BASE}/api/path-nodes`).then(r => r.json()).catch(() => pathNodes),
+        fetch(`${API_BASE}/api/path-edges`).then(r => r.json()).catch(() => pathEdges),
+        fetch(`${API_BASE}/api/booths`).then(r => r.json()).catch(() => allBooths),
+        fetch(`${API_BASE}/api/obstacles`).then(r => r.json()).catch(() => obstacles),
+      ]);
 
       const destBooth = _navEnd.boothId ? useBooths.find((b: any) => b.id === _navEnd.boothId) : null;
       
@@ -407,29 +394,37 @@ export default function HomePage() {
         result = findPath({ x: _navStart.x, y: _navStart.y }, fakeBooth, useNodes, useEdges, useBooths, useObstacles, _navStart.floorId, _navEnd.floorId);
       }
       
-      // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
-      if (result && result.path.length > 0) {
-        const last = result.path[result.path.length - 1];
-        const dx = _navEnd.x - last.x, dy = _navEnd.y - last.y;
-        const extra = Math.sqrt(dx * dx + dy * dy);
-        if (extra > 2) {
-          result.endExtIdx = result.path.length - 1;
-          result.path.push({ x: _navEnd.x, y: _navEnd.y });
-          result.distance += extra;
+      // 경로 끝/시작에서 실제 마커 위치까지 연장 (점선 구간) — floorSegments도 함께 업데이트
+      if (result && result.floorSegments && result.floorSegments.length > 0) {
+        const lastSeg = result.floorSegments[result.floorSegments.length - 1];
+        if (lastSeg.path.length > 0) {
+          const last = lastSeg.path[lastSeg.path.length - 1];
+          const dx = _navEnd.x - last.x, dy = _navEnd.y - last.y;
+          const extra = Math.sqrt(dx * dx + dy * dy);
+          if (extra > 2) {
+            result.endExtIdx = lastSeg.path.length - 1;
+            lastSeg.path.push({ x: _navEnd.x, y: _navEnd.y });
+            lastSeg.distance += extra;
+            result.distance += extra;
+          }
         }
-      }
-      // 경로 시작에서 실제 출발 마커 위치까지 선 연장 (점선 구간)
-      if (result && result.path.length > 0) {
-        const first = result.path[0];
-        const dx = _navStart.x - first.x, dy = navStart.y - first.y;
-        const extra = Math.sqrt(dx * dx + dy * dy);
-        if (extra > 2) {
-          result.path.unshift({ x: _navStart.x, y: _navStart.y });
-          result.distance += extra;
-          result.startExtIdx = 1;
-          if (result.endExtIdx != null) result.endExtIdx += 1;
+        const firstSeg = result.floorSegments[0];
+        if (firstSeg.path.length > 0) {
+          const first = firstSeg.path[0];
+          const dx = _navStart.x - first.x, dy = _navStart.y - first.y;
+          const extra = Math.sqrt(dx * dx + dy * dy);
+          if (extra > 2) {
+            firstSeg.path.unshift({ x: _navStart.x, y: _navStart.y });
+            firstSeg.distance += extra;
+            result.distance += extra;
+            result.startExtIdx = 1;
+            if (result.endExtIdx != null && result.floorSegments.length === 1) result.endExtIdx += 1;
+          }
         }
+        // path = 모든 세그먼트 합침
+        result.path = result.floorSegments.flatMap(s => s.path);
       }
+
       setClientRoute(result);
       // 현재 층 세그먼트의 중간 지점으로 자동 이동
       if (result) {
@@ -446,43 +441,21 @@ export default function HomePage() {
     computeRoute();
   }, [navStart, navEnd]);
 
-  // 현재 층 경로만 추출 (단일층/멀티층 공통)
+  // 현재 층 경로만 추출 (floorSegments 기반)
   const currentFloorRoute = useMemo(() => {
-    if (!clientRoute) return null;
-    console.log('[currentFloorRoute] selectedFloorId:', selectedFloorId,
-      'floorSegments:', clientRoute.floorSegments?.map(s => `f${s.floorId}(${s.path.length}pts)`),
-      'floors:', clientRoute.floors);
-    if (clientRoute.floorSegments && clientRoute.floorSegments.length > 0) {
-      const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
-      if (!seg) return null;
-      // 1포인트 세그먼트: 출발/도착 핀까지 연장해서 최소 2포인트로
-      if (seg.path.length < 2) {
-        const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
-        const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
-        const extPath = [...seg.path];
-        if (isStartFloor && navStart) {
-          extPath.unshift({ x: navStart.x, y: navStart.y });
-        }
-        if (isEndFloor && navEnd) {
-          extPath.push({ x: navEnd.x, y: navEnd.y });
-        }
-        if (extPath.length < 2) return null;
-        const extDist = extPath.reduce((acc, p, i) => i === 0 ? 0 : acc + Math.hypot(p.x - extPath[i-1].x, p.y - extPath[i-1].y), 0);
-        return { path: extPath, distance: extDist, floorSegments: clientRoute.floorSegments, floors: clientRoute.floors } as typeof clientRoute;
-      }
-      if (clientRoute.floorSegments.length === 1) return clientRoute;
-      const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
-      const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
-      return {
-        path: seg.path,
-        distance: seg.distance,
-        startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
-        endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
-        floorSegments: clientRoute.floorSegments,
-        floors: clientRoute.floors,
-      } as typeof clientRoute;
-    }
-    return clientRoute;
+    if (!clientRoute?.floorSegments) return null;
+    const seg = clientRoute.floorSegments.find(s => s.floorId === selectedFloorId);
+    if (!seg || seg.path.length < 2) return null;
+    const isStartFloor = clientRoute.floorSegments[0]?.floorId === selectedFloorId;
+    const isEndFloor = clientRoute.floorSegments[clientRoute.floorSegments.length - 1]?.floorId === selectedFloorId;
+    return {
+      path: seg.path,
+      distance: seg.distance,
+      startExtIdx: isStartFloor ? clientRoute.startExtIdx : undefined,
+      endExtIdx: isEndFloor ? clientRoute.endExtIdx : undefined,
+      floorSegments: clientRoute.floorSegments,
+      floors: clientRoute.floors,
+    } as typeof clientRoute;
   }, [clientRoute, selectedFloorId]);
 
   // 경로 위 거리 d에서의 좌표 (현재 층 기준)
