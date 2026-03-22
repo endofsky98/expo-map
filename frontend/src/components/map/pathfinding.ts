@@ -319,6 +319,10 @@ function reconstructPath(cameFrom: Map<string, string>, current: string): string
 export interface PathResult {
   path: Point[];
   distance: number;
+  /** 출발 연장 구간: path[0]~path[startExtIdx] (점선) */
+  startExtIdx?: number;
+  /** 도착 연장 구간: path[endExtIdx]~path[끝] (점선) */
+  endExtIdx?: number;
 }
 
 export function findPath(

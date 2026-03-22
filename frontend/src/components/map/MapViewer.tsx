@@ -828,11 +828,45 @@ export default function MapViewer({
 
     if (!clientRoute || clientRoute.path.length < 2) return;
     const path = clientRoute.path;
+    const startExt = clientRoute.startExtIdx ?? -1; // path[0]~path[startExt] 점선
+    const endExt = clientRoute.endExtIdx ?? path.length; // path[endExt]~끝 점선
 
-    // 빨간 실선 (테두리 없음, 두꺼운)
+    // 실선 구간
+    const solidStart = startExt >= 0 ? startExt : 0;
+    const solidEnd = endExt < path.length ? endExt : path.length - 1;
     gfx.lineStyle(28, 0xe53e3e, 0.85);
-    gfx.moveTo(path[0].x, path[0].y);
-    for (let i = 1; i < path.length; i++) gfx.lineTo(path[i].x, path[i].y);
+    gfx.moveTo(path[solidStart].x, path[solidStart].y);
+    for (let i = solidStart + 1; i <= solidEnd; i++) gfx.lineTo(path[i].x, path[i].y);
+
+    // 점선 헬퍼: 두 점 사이를 점선으로
+    const drawDashed = (ax: number, ay: number, bx: number, by: number, dashLen: number, gapLen: number) => {
+      const dx = bx - ax, dy = by - ay;
+      const totalLen = Math.sqrt(dx * dx + dy * dy);
+      if (totalLen < 1) return;
+      const ux = dx / totalLen, uy = dy / totalLen;
+      let drawn = 0;
+      while (drawn < totalLen) {
+        const segEnd = Math.min(drawn + dashLen, totalLen);
+        gfx.moveTo(ax + ux * drawn, ay + uy * drawn);
+        gfx.lineTo(ax + ux * segEnd, ay + uy * segEnd);
+        drawn = segEnd + gapLen;
+      }
+    };
+
+    // 출발 점선 구간
+    if (startExt >= 0) {
+      gfx.lineStyle(20, 0xe53e3e, 0.5);
+      for (let i = 0; i < startExt; i++) {
+        drawDashed(path[i].x, path[i].y, path[i + 1].x, path[i + 1].y, 30, 20);
+      }
+    }
+    // 도착 점선 구간
+    if (endExt < path.length - 1) {
+      gfx.lineStyle(20, 0xe53e3e, 0.5);
+      for (let i = endExt; i < path.length - 1; i++) {
+        drawDashed(path[i].x, path[i].y, path[i + 1].x, path[i + 1].y, 30, 20);
+      }
+    }
 
     // 애니메이션 데이터 준비
     const segLens: number[] = [0];

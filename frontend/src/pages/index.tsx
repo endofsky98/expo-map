@@ -324,17 +324,18 @@ export default function HomePage() {
       const fakeBooth = { id: -1, booth_number: '', x: navEnd.x - 1, y: navEnd.y - 1, width: 2, height: 2, is_active: true } as any;
       result = findPath({ x: navStart.x, y: navStart.y }, fakeBooth, pathNodes, pathEdges, allBooths, obstacles);
     }
-    // 경로 끝에서 실제 도착 마커 위치까지 선 연장
+    // 경로 끝에서 실제 도착 마커 위치까지 선 연장 (점선 구간)
     if (result && result.path.length > 0) {
       const last = result.path[result.path.length - 1];
       const dx = navEnd.x - last.x, dy = navEnd.y - last.y;
       const extra = Math.sqrt(dx * dx + dy * dy);
-      if (extra > 2) { // 2px 이상 차이면 연장
+      if (extra > 2) {
+        result.endExtIdx = result.path.length - 1; // 여기부터 끝까지 점선
         result.path.push({ x: navEnd.x, y: navEnd.y });
         result.distance += extra;
       }
     }
-    // 경로 시작에서 실제 출발 마커 위치까지 선 연장
+    // 경로 시작에서 실제 출발 마커 위치까지 선 연장 (점선 구간)
     if (result && result.path.length > 0) {
       const first = result.path[0];
       const dx = navStart.x - first.x, dy = navStart.y - first.y;
@@ -342,6 +343,9 @@ export default function HomePage() {
       if (extra > 2) {
         result.path.unshift({ x: navStart.x, y: navStart.y });
         result.distance += extra;
+        result.startExtIdx = 1; // path[0]~path[1]이 점선
+        // endExtIdx가 있으면 1 증가 (unshift로 인덱스 밀림)
+        if (result.endExtIdx != null) result.endExtIdx += 1;
       }
     }
     setClientRoute(result);
