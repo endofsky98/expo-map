@@ -772,9 +772,6 @@ export default function HomePage() {
               onFloorSwitch={(floorId) => { setSelectedFloorId(floorId); }}
             />
             <LanguageSelector />
-            <Link href="/admin" className="shrink-0 p-2 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-gray-100/80 dark:text-gray-400 dark:hover:text-indigo-400 dark:hover:bg-[#2a2a2a]/80 transition-colors" title={t('nav.admin')}>
-              <Settings className="h-5 w-5" />
-            </Link>
           </div>
 
           {/* Row 2: Search bar — 80% width */}
