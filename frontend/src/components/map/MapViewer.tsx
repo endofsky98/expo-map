@@ -1145,20 +1145,57 @@ export default function MapViewer({
     if (clusterGfx) {
       clusterGfx.clear();
 
-      // 홀/구역 음영 제거 — DuGu 요청: 평소에 안 보이게
+      // 클러스터 음영 + 불투명 점선 테두리
       for (const c of clusters) {
         if (c.isCluster && c.count > 1) {
           const pad = 20;
-          clusterGfx.lineStyle(1.5, 0x4f46e5, 0.2);
+          const x = c.bboxX - pad, y = c.bboxY - pad;
+          const w = c.bboxW + pad * 2, h = c.bboxH + pad * 2;
+          const r = 12;
+          // 배경 음영
+          clusterGfx.lineStyle(0);
           clusterGfx.beginFill(0x4f46e5, 0.08);
-          clusterGfx.drawRoundedRect(
-            c.bboxX - pad,
-            c.bboxY - pad,
-            c.bboxW + pad * 2,
-            c.bboxH + pad * 2,
-            12,
-          );
+          clusterGfx.drawRoundedRect(x, y, w, h, r);
           clusterGfx.endFill();
+          // 불투명 점선 테두리
+          const dash = 15, gap = 10;
+          clusterGfx.lineStyle(1.5, 0x4f46e5, 0.7);
+          // 둥근 사각형 경로를 점선으로 그리기
+          const pts: { x: number; y: number }[] = [];
+          // top: left+r → right-r
+          for (let px = x + r; px <= x + w - r; px += 1) pts.push({ x: px, y });
+          // top-right arc
+          for (let a = -Math.PI / 2; a <= 0; a += 0.1) pts.push({ x: x + w - r + Math.cos(a) * r, y: y + r + Math.sin(a) * r });
+          // right: top+r → bottom-r
+          for (let py = y + r; py <= y + h - r; py += 1) pts.push({ x: x + w, y: py });
+          // bottom-right arc
+          for (let a = 0; a <= Math.PI / 2; a += 0.1) pts.push({ x: x + w - r + Math.cos(a) * r, y: y + h - r + Math.sin(a) * r });
+          // bottom: right-r → left+r
+          for (let px = x + w - r; px >= x + r; px -= 1) pts.push({ x: px, y: y + h });
+          // bottom-left arc
+          for (let a = Math.PI / 2; a <= Math.PI; a += 0.1) pts.push({ x: x + r + Math.cos(a) * r, y: y + h - r + Math.sin(a) * r });
+          // left: bottom-r → top+r
+          for (let py = y + h - r; py >= y + r; py -= 1) pts.push({ x, y: py });
+          // top-left arc
+          for (let a = Math.PI; a <= Math.PI * 1.5; a += 0.1) pts.push({ x: x + r + Math.cos(a) * r, y: y + r + Math.sin(a) * r });
+          // 점선 렌더
+          let dist = 0;
+          let drawing = true;
+          let segDist = 0;
+          for (let i = 0; i < pts.length; i++) {
+            if (i === 0) { clusterGfx.moveTo(pts[0].x, pts[0].y); continue; }
+            const dx = pts[i].x - pts[i - 1].x, dy = pts[i].y - pts[i - 1].y;
+            const d = Math.hypot(dx, dy);
+            dist += d;
+            segDist += d;
+            const limit = drawing ? dash : gap;
+            if (segDist >= limit) {
+              segDist = 0;
+              drawing = !drawing;
+            }
+            if (drawing) clusterGfx.lineTo(pts[i].x, pts[i].y);
+            else clusterGfx.moveTo(pts[i].x, pts[i].y);
+          }
         }
       }
     }
