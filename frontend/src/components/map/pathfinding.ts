@@ -14,7 +14,7 @@ interface GraphEdge { from: string; to: string; cost: number }
 interface Point { x: number; y: number }
 
 const SNAP_RADIUS = 50;    // 근접 연결 반경 (px)
-const DEST_RADIUS = 200;   // 도착 후보 탐색 반경 (px)
+// 도착 후보 탐색 거리 제한 없음 — 가장 가까운 엣지로 스냅
 
 // ===== 유틸 =====
 function dist(a: Point, b: Point): number {
@@ -236,7 +236,6 @@ export function findDestCandidates(
   for (const seg of segments) {
     const nearest = nearestOnSegment(center, seg.from, seg.to);
     const d = dist(center, nearest);
-    if (d > DEST_RADIUS) continue;
     if (hasObstruction(center, nearest, allBooths, obstacles, booth.id)) continue;
 
     const segKey = [seg.fromId, seg.toId].sort().join('-');
