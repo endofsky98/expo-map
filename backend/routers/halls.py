@@ -24,6 +24,7 @@ def _parse_hall(hall: Hall) -> dict:
         "shape": hall.shape if hall.shape is not None else "rectangle",
         "points": hall.points,
         "type": hall.type if hall.type is not None else "hall",
+        "display_name": hall.display_name,
         "created_at": hall.created_at,
         "floor": None,
     }

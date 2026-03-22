@@ -35,6 +35,7 @@ def _parse_booth(booth: Booth) -> dict:
         "radius_x": booth.radius_x,
         "radius_y": booth.radius_y,
         "rotation": booth.rotation if booth.rotation is not None else 0,
+        "display_name": booth.display_name,
         "created_at": booth.created_at,
         "company": None,
         "category": None,
