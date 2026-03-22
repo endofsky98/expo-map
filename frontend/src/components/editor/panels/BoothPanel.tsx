@@ -48,7 +48,7 @@ export function BoothPanel({ booth, categories, companies, onSave, onDelete }: B
   function handleSave() {
     const data: Partial<EditorBooth> = {
       booth_number: form.booth_number,
-      display_name: form.display_name || undefined,
+      display_name: form.display_name || null,
       x: form.x, y: form.y,
       category_id: form.category_id ?? undefined,
       is_active: form.is_active,
