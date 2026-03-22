@@ -52,8 +52,8 @@ export default function MapViewer({
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   // 글자 크기 상태 (기본 24px, 클러스터 반경 = fontSize * 3)
-  const [markerFontSize, setMarkerFontSize] = useState(24);
-  const markerFontSizeRef = useRef(24);
+  const [markerFontSize, setMarkerFontSize] = useState(16);
+  const markerFontSizeRef = useRef(16);
   markerFontSizeRef.current = markerFontSize;
 
 
@@ -1034,7 +1034,7 @@ export default function MapViewer({
     }
 
     // Supercluster 기반 줌 레벨별 클러스터링 (전체 visible 부스)
-    const clusters = clusterBooths(visibleBooths, worldToScreen, 0, sc, boothsRef.current);
+    const clusters = clusterBooths(visibleBooths, worldToScreen, 0, sc, boothsRef.current, markerFontSizeRef.current);
 
     // Draw PIXI shading: 홀/구역 음영 + 클러스터 음영
     if (clusterGfx) {
