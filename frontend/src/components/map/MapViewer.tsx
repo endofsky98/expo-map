@@ -10,7 +10,7 @@ import {
 } from './mapTypes';
 import { attachPointerEvents } from './useMapPointerEvents';
 import { TileStateManager } from './TileState';
-import { clusterBooths, selectRepresentative, getBoothDisplayName, getBoothCenter, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS, setMapDimensions } from './clusterUtils';
+import { clusterBooths, selectRepresentative, getBoothDisplayName, getBoothCenter, CLUSTER_MAX_ZOOM, CLUSTER_ANIM_MS, setMapDimensions, invalidateClusterIndex } from './clusterUtils';
 // import dynamic from 'next/dynamic';
 // Three.js 3D 벽 오버레이 — 필요 시 주석 해제. 상세 사용법: WallOverlay.tsx 참고.
 // const WallOverlay = dynamic(() => import('./WallOverlay'), { ssr: false });
@@ -196,6 +196,7 @@ export default function MapViewer({
     const m = new Map<number, Booth>();
     for (const b of booths) m.set(b.id, b);
     boothMapRef.current = m;
+    invalidateClusterIndex(); // 층 전환 시 supercluster 재생성
   }, [booths]);
   visibleFacilitiesRef.current = visibleFacilities;
   const currentFloorIdRef = useRef(currentFloorId);
