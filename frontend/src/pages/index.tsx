@@ -18,6 +18,31 @@ import PathfindingUI from '@/components/PathfindingUI';
 
 const MapViewer = dynamic(() => import('@/components/map/MapViewer'), { ssr: false });
 
+// DEBUG: 화면에 에러 표시 (모바일 디버깅)
+if (typeof window !== 'undefined') {
+  const _debugErrors: string[] = [];
+  const _origError = console.error;
+  console.error = (...args: unknown[]) => {
+    _debugErrors.push(args.map(a => (a instanceof Error ? a.message + '\n' + a.stack : String(a))).join(' '));
+    if (_debugErrors.length > 10) _debugErrors.shift();
+    const el = document.getElementById('__debug_overlay');
+    if (el) el.textContent = _debugErrors.join('\n---\n');
+    _origError.apply(console, args);
+  };
+  window.addEventListener('error', (e) => {
+    _debugErrors.push(`[window.error] ${e.message} at ${e.filename}:${e.lineno}:${e.colno}`);
+    if (_debugErrors.length > 10) _debugErrors.shift();
+    const el = document.getElementById('__debug_overlay');
+    if (el) el.textContent = _debugErrors.join('\n---\n');
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    _debugErrors.push(`[unhandledrejection] ${e.reason}`);
+    if (_debugErrors.length > 10) _debugErrors.shift();
+    const el = document.getElementById('__debug_overlay');
+    if (el) el.textContent = _debugErrors.join('\n---\n');
+  });
+}
+
 interface CurrentPosition {
   x: number;
   y: number;
@@ -524,6 +549,8 @@ export default function HomePage() {
   return (
     <>
       <Head><title>{t('app.title')}</title></Head>
+      {/* DEBUG overlay — 에러 표시 */}
+      <div id="__debug_overlay" style={{position:'fixed',bottom:0,left:0,right:0,maxHeight:'30vh',overflow:'auto',background:'rgba(0,0,0,0.85)',color:'#ff4444',fontSize:'10px',fontFamily:'monospace',zIndex:99999,padding:'4px',whiteSpace:'pre-wrap',pointerEvents:'auto',display:'none'}} ref={(el) => { if (el) { const mo = new MutationObserver(() => { el.style.display = el.textContent ? 'block' : 'none'; }); mo.observe(el, { childList: true, characterData: true, subtree: true }); } }} />
       <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden">
         {/* Top bar — transparent overlay */}
         <div className="absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none">
