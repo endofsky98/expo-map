@@ -188,6 +188,8 @@ export default function MapViewer({
   hallsRef.current = halls;
   const routePathRef = useRef(routePath);
   routePathRef.current = routePath;
+  const clientRouteRef = useRef(clientRoute);
+  clientRouteRef.current = clientRoute;
   const boothMapRef = useRef<Map<number, Booth>>(new Map());
   const visibleFacilitiesRef = useRef(visibleFacilities);
   useEffect(() => {
@@ -989,7 +991,10 @@ export default function MapViewer({
     }
 
     // 경로 코너(꺾이는 점) 추출 — 클러스터 대표 선택에 사용
-    const rp = routePathRef.current;
+    // routePath(서버 경로) 또는 clientRoute(A* 경로) 둘 다 참조
+    const rpServer = routePathRef.current;
+    const rpClient = clientRouteRef.current?.path;
+    const rp = rpServer || rpClient || null;
     let routeCorners: { x: number; y: number }[] | null = null;
     if (rp && rp.length >= 2) {
       routeCorners = [rp[0]]; // 시작점
