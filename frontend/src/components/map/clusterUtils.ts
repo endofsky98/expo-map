@@ -34,7 +34,7 @@ export interface ClusterItem {
 
 // ===== Cluster parameters =====
 export const CLUSTER_MAX_ZOOM = 2.5;     // 이 줌 이상이면 항상 개별 표시
-export const CLUSTER_ANIM_MS = 80;       // 클러스터 재계산 딜레이 (ms)
+export const CLUSTER_ANIM_MS = 0;        // 클러스터 재계산 딜레이 없음 (즉시)
 export const CLUSTER_MIN_SIZE = 40;      // 클러스터 원 최소 크기 px
 export const CLUSTER_MAX_SIZE = 80;      // 클러스터 원 최대 크기 px
 

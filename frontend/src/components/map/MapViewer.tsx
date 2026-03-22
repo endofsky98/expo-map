@@ -1238,7 +1238,7 @@ export default function MapViewer({
         const displayName = booth.display_name || lnFn(booth.company?.name) || '';
         nameEl.textContent = displayName || booth.booth_number;
         nameEl.style.whiteSpace = booth.display_name ? 'pre-line' : 'nowrap';
-        nameEl.style.lineHeight = '1.05';
+        nameEl.style.lineHeight = '0.8';
         nameEl.style.fontSize = `${markerFontSizeRef.current}px`;
         // 표기이름/회사명 있으면 부스번호 표시, 없으면 숨기기
         if (numEl) {
@@ -1357,7 +1357,7 @@ export default function MapViewer({
         label.setAttribute('data-label', '');
         label.style.textAlign = 'center';
         label.style.marginTop = '1px';
-        label.style.lineHeight = '1.05';
+        label.style.lineHeight = '0.8';
 
         // 부스번호 (위, 작은 글씨)
         const numSpan = document.createElement('div');
@@ -1379,7 +1379,7 @@ export default function MapViewer({
         nameSpan.style.fontFamily = 'Inter, sans-serif';
         nameSpan.style.color = '#1f2937';
         nameSpan.style.whiteSpace = booth.display_name ? 'pre-line' : 'nowrap';
-        nameSpan.style.lineHeight = '1.05';
+        nameSpan.style.lineHeight = '0.8';
         nameSpan.style.overflow = 'visible';
         nameSpan.style.textShadow = '-1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff, 0 0 4px #fff';
 
