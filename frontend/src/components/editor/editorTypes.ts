@@ -63,7 +63,8 @@ export interface EditorObstacle {
 
 // ===== Amenity =====
 export type AmenityType =
-  | 'restroom' | 'nursing_room' | 'info_desk' | 'first_aid'
+  | 'restroom' | 'restroom_male' | 'restroom_female'
+  | 'nursing_room' | 'info_desk' | 'first_aid'
   | 'locker' | 'atm' | 'cafe' | 'charging' | 'wifi'
   | 'smoking' | 'emergency_exit';
 
@@ -164,6 +165,8 @@ export const PATH_NODE_COLORS: Record<PathNodeType, number> = {
 
 export const AMENITY_COLORS: Record<AmenityType, number> = {
   restroom:       0x3b82f6,
+  restroom_male:  0x3b82f6,
+  restroom_female:0xec4899,
   nursing_room:   0xec4899,
   info_desk:      0x06b6d4,
   first_aid:      0xef4444,
@@ -178,6 +181,8 @@ export const AMENITY_COLORS: Record<AmenityType, number> = {
 
 export const AMENITY_LABELS: Record<AmenityType, string> = {
   restroom:       '화장실',
+  restroom_male:  '남자화장실',
+  restroom_female:'여자화장실',
   nursing_room:   '수유실',
   info_desk:      '안내데스크',
   first_aid:      '응급처치',

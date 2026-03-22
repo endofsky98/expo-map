@@ -73,6 +73,8 @@ export function maxMarkersForScale(scale: number): number {
 
 export const FACILITY_STYLES: Record<string, { color: number; label: string }> = {
   restroom: { color: 0x3b82f6, label: 'WC' },
+  restroom_male: { color: 0x3b82f6, label: '🚹' },
+  restroom_female: { color: 0xec4899, label: '🚺' },
   emergency_exit: { color: 0xef4444, label: 'EXIT' },
   stairs: { color: 0x22c55e, label: 'S' },
   elevator: { color: 0xf59e0b, label: 'EV' },

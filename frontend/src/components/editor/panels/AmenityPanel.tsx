@@ -9,7 +9,7 @@ interface AmenityPanelProps {
 }
 
 const AMENITY_TYPE_OPTIONS: AmenityType[] = [
-  'restroom', 'nursing_room', 'info_desk', 'first_aid',
+  'restroom', 'restroom_male', 'restroom_female', 'nursing_room', 'info_desk', 'first_aid',
   'locker', 'atm', 'cafe', 'charging', 'wifi',
   'smoking', 'emergency_exit',
 ];
