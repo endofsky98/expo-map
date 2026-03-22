@@ -219,8 +219,7 @@ export default function MapViewer({
   navEndPointRef.current = navEndPoint;
   const clusterBadgesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const clusterBadgeWorldRef = useRef<Map<string, { wx: number; wy: number }>>(new Map());
-  const hallLabelsRef = useRef<Map<number, HTMLDivElement>>(new Map());
-  const hallLabelWorldRef = useRef<Map<number, { wx: number; wy: number }>>(new Map());
+
   // 대표 부스 → 클러스터 중앙 world 좌표 (boothId → {wx, wy})
   const clusterRepCenterRef = useRef<Map<number, { wx: number; wy: number }>>(new Map());
   const clusterNameMapRef = useRef<Map<number, string>>(new Map());
@@ -562,9 +561,7 @@ export default function MapViewer({
       for (const [, el] of clusterBadgesRef.current) el?.remove?.();
       clusterBadgesRef.current.clear();
       clusterBadgeWorldRef.current.clear();
-      for (const [, el] of hallLabelsRef.current) el?.remove?.();
-      hallLabelsRef.current.clear();
-      hallLabelWorldRef.current.clear();
+
       try { app.destroy(true); } catch { /* DOM already removed by React */ }
       pixiApp.current = null;
       mainContainerRef.current = null;
@@ -992,6 +989,37 @@ export default function MapViewer({
 
   // ===== Booths (HTML DOM markers — Mapbox style) =====
 
+  // 클러스터 내 부스들이 모두 같은 홀/구역에 속하고, 해당 홀/구역 전체가 화면에 보이면 홀/구역 이름 반환
+  function getClusterHallName(boothIds: number[]): string | null {
+    if (boothIds.length === 0) return null;
+    const { width: cvW, height: cvH } = canvasDimsRef.current;
+    // 모든 부스의 hall_id 수집
+    let commonHallId: number | null = null;
+    for (const bid of boothIds) {
+      const booth = boothMapRef.current.get(bid);
+      if (!booth || booth.hall_id == null) return null;
+      if (commonHallId === null) commonHallId = booth.hall_id;
+      else if (booth.hall_id !== commonHallId) return null; // 다른 홀 → 불가
+    }
+    if (commonHallId === null) return null;
+    const hall = hallsRef.current.find(h => h.id === commonHallId);
+    if (!hall || hall.area_x == null || hall.area_y == null || hall.area_width == null || hall.area_height == null) return null;
+    // 홀 네 꼭짓점 화면 좌표
+    const tl = worldToScreen(hall.area_x, hall.area_y);
+    const tr = worldToScreen(hall.area_x + hall.area_width, hall.area_y);
+    const bl = worldToScreen(hall.area_x, hall.area_y + hall.area_height);
+    const br = worldToScreen(hall.area_x + hall.area_width, hall.area_y + hall.area_height);
+    const allX = [tl.sx, tr.sx, bl.sx, br.sx];
+    const allY = [tl.sy, tr.sy, bl.sy, br.sy];
+    const minSx = Math.min(...allX), maxSx = Math.max(...allX);
+    const minSy = Math.min(...allY), maxSy = Math.max(...allY);
+    const margin = -20;
+    if (minSx < margin || maxSx > cvW - margin || minSy < margin || maxSy > cvH - margin) return null;
+    // 전체 보임 → 홀/구역 이름 반환
+    const name = hall.display_name || (typeof hall.name === 'string' ? hall.name : (hall.name ? Object.values(hall.name)[0] : null));
+    return name || null;
+  }
+
   // recalcMarkers: called after interaction settles (debounced ~300ms)
   // Clusters visible booths → PIXI shading + DOM pin markers with optional count badge
   function recalcMarkers() {
@@ -1240,14 +1268,20 @@ export default function MapViewer({
             }
           }
           const bestBooth = boothMapRef.current.get(bestId);
-          const name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
+          let name = bestBooth ? (getBoothDisplayName(bestBooth) || bestBooth.booth_number) : undefined;
+          // 홀/구역 이름으로 덮어쓰기 (전체 보일 때)
+          const hallName = getClusterHallName(filteredIds);
+          if (hallName) name = hallName;
           newIds.add(bestId);
           clusterReps.set(c.id, { boothId: bestId, count: effectiveCount, name });
         } else {
           const rep = selectRepresentative(filteredIds, boothsRef.current, hallsRef.current);
           if (rep.booth) {
+            let repName = rep.name;
+            const hallName = getClusterHallName(filteredIds);
+            if (hallName) repName = hallName;
             newIds.add(rep.booth.id);
-            clusterReps.set(c.id, { boothId: rep.booth.id, count: effectiveCount, name: rep.name });
+            clusterReps.set(c.id, { boothId: rep.booth.id, count: effectiveCount, name: repName });
           } else if (filteredIds.length > 0) {
             newIds.add(filteredIds[0]);
             clusterReps.set(c.id, { boothId: filteredIds[0], count: effectiveCount });
@@ -1357,72 +1391,6 @@ export default function MapViewer({
           badge?.remove?.();
           badges.delete(cid);
           badgeWorlds.delete(cid);
-        }
-      }
-    }
-
-    // 홀/구역 라벨: 홀 전체가 화면에 보일 때만 이름 표시
-    const hallLabels = hallLabelsRef.current;
-    const hallLabelWorlds = hallLabelWorldRef.current;
-    const activeHallIds = new Set<number>();
-    const { width: cvW, height: cvH } = canvasDimsRef.current;
-    if (overlay) {
-      for (const hall of hallsRef.current) {
-        if (hall.area_x == null || hall.area_y == null || hall.area_width == null || hall.area_height == null) continue;
-        const hallName = hall.display_name || (typeof hall.name === 'string' ? hall.name : (hall.name ? Object.values(hall.name)[0] : ''));
-        if (!hallName) continue;
-        // 홀 네 꼭짓점을 화면 좌표로 변환
-        const tl = worldToScreen(hall.area_x, hall.area_y);
-        const tr = worldToScreen(hall.area_x + hall.area_width, hall.area_y);
-        const bl = worldToScreen(hall.area_x, hall.area_y + hall.area_height);
-        const br = worldToScreen(hall.area_x + hall.area_width, hall.area_y + hall.area_height);
-        const allX = [tl.sx, tr.sx, bl.sx, br.sx];
-        const allY = [tl.sy, tr.sy, bl.sy, br.sy];
-        const minSx = Math.min(...allX), maxSx = Math.max(...allX);
-        const minSy = Math.min(...allY), maxSy = Math.max(...allY);
-        // 전체가 화면에 보이는지 확인 (약간의 여유)
-        const margin = -20;
-        const fullyVisible = minSx >= margin && maxSx <= cvW - margin && minSy >= margin && maxSy <= cvH - margin;
-        if (!fullyVisible) {
-          // 안 보이면 기존 라벨 숨김
-          const existing = hallLabels.get(hall.id);
-          if (existing) existing.style.display = 'none';
-          continue;
-        }
-        activeHallIds.add(hall.id);
-        const cx = (minSx + maxSx) / 2;
-        const cy = (minSy + maxSy) / 2;
-        let label = hallLabels.get(hall.id);
-        if (!label) {
-          label = document.createElement('div');
-          label.style.cssText =
-            'position:absolute;left:0;top:0;pointer-events:none;' +
-            'color:rgba(0,0,0,0.35);' +
-            'font-weight:800;font-family:Inter,sans-serif;' +
-            'white-space:nowrap;z-index:1;' +
-            'text-align:center;';
-          overlay.appendChild(label);
-          hallLabels.set(hall.id, label);
-        }
-        label.textContent = hallName;
-        // 홀 크기에 비례하는 폰트 크기 (화면상 홀 너비의 1/5, 최소 10px, 최대 40px)
-        const hallScreenW = maxSx - minSx;
-        const dynamicFontSize = Math.max(10, Math.min(40, Math.round(hallScreenW / hallName.length * 0.8)));
-        label.style.fontSize = `${dynamicFontSize}px`;
-        label.style.transform = `translate(${cx}px, ${cy}px) translate(-50%, -50%)`;
-        label.style.display = 'block';
-        // world 좌표 저장
-        hallLabelWorlds.set(hall.id, {
-          wx: hall.area_x + hall.area_width / 2,
-          wy: hall.area_y + hall.area_height / 2,
-        });
-      }
-      // 사라진 홀 라벨 제거
-      for (const [hid, label] of hallLabels) {
-        if (!activeHallIds.has(hid)) {
-          label?.remove?.();
-          hallLabels.delete(hid);
-          hallLabelWorlds.delete(hid);
         }
       }
     }
@@ -1582,38 +1550,6 @@ export default function MapViewer({
         const sp = worldToScreen(wc.wx, wc.wy);
         badge.style.transform = `translate(${sp.sx}px, ${sp.sy}px) translate(-50%, -50%)`;
       }
-    }
-
-    // 홀 라벨 위치 업데이트
-    const { width: cvW2, height: cvH2 } = canvasDimsRef.current;
-    for (const [hid, label] of hallLabelsRef.current) {
-      const hall = hallsRef.current.find(h => h.id === hid);
-      if (!hall || hall.area_x == null || hall.area_y == null || hall.area_width == null || hall.area_height == null) {
-        label.style.display = 'none';
-        continue;
-      }
-      const tl = worldToScreen(hall.area_x, hall.area_y);
-      const tr = worldToScreen(hall.area_x + hall.area_width, hall.area_y);
-      const bl = worldToScreen(hall.area_x, hall.area_y + hall.area_height);
-      const br = worldToScreen(hall.area_x + hall.area_width, hall.area_y + hall.area_height);
-      const allX = [tl.sx, tr.sx, bl.sx, br.sx];
-      const allY = [tl.sy, tr.sy, bl.sy, br.sy];
-      const minSx = Math.min(...allX), maxSx = Math.max(...allX);
-      const minSy = Math.min(...allY), maxSy = Math.max(...allY);
-      const margin = -20;
-      const fullyVisible = minSx >= margin && maxSx <= cvW2 - margin && minSy >= margin && maxSy <= cvH2 - margin;
-      if (!fullyVisible) {
-        label.style.display = 'none';
-        continue;
-      }
-      const cx = (minSx + maxSx) / 2;
-      const cy = (minSy + maxSy) / 2;
-      const hallName = label.textContent || '';
-      const hallScreenW = maxSx - minSx;
-      const dynamicFontSize = Math.max(10, Math.min(40, Math.round(hallScreenW / Math.max(hallName.length, 1) * 0.8)));
-      label.style.fontSize = `${dynamicFontSize}px`;
-      label.style.transform = `translate(${cx}px, ${cy}px) translate(-50%, -50%)`;
-      label.style.display = 'block';
     }
 
     // Save current visible set for next frame comparison
