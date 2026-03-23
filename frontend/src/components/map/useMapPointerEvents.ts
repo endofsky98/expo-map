@@ -368,6 +368,10 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
 
   const onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
+    // 포인터 상태 정리 — contextmenu로 pointerup을 놓칠 수 있음
+    pointers.clear();
+    isDragging = false;
+    mouseButton = null;
     // 우클릭 드래그로 회전했거나 0.5초 이상 누르고 있었으면 팝업 무시
     if (rightDragMoved) { rightDragMoved = false; return; }
     if (Date.now() - rightDownTime > 500) return;

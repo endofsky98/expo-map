@@ -782,7 +782,7 @@ export default function HomePage() {
       <Head><title>{t('app.title')}</title></Head>
       {/* DEBUG overlay — 에러 표시 */}
 
-      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none' }}>
+      <div className="h-screen w-screen relative bg-gray-100 dark:bg-[#141414] overflow-hidden select-none" style={{ WebkitUserSelect: 'none' }} onContextMenu={(e) => e.preventDefault()}>
         {/* Top bar — transparent overlay */}
         <div className={`absolute top-0 left-0 right-0 z-20 px-4 py-3 pointer-events-none transition-opacity duration-200 ${uiHidden ? 'opacity-0 pointer-events-none' : ''}`}>
           {/* Row 1: Logo + Floor selector + utilities — opaque background */}
