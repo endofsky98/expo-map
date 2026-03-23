@@ -454,11 +454,27 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     }
   }
 
+  // 포인터 캡처 강제 해제 시 상태 정리
+  const onLostPointerCapture = (e: PointerEvent) => {
+    if (pointers.has(e.pointerId)) {
+      pointers.delete(e.pointerId);
+      if (pointers.size === 0) {
+        isDragging = false;
+        mouseButton = null;
+        firstTwoIds = null;
+        lastDist = 0; lastAngle = 0; startDist = 0;
+        lastPoints = null; startVector = null;
+        pitchActive = false; zoomActive = false; rotateActive = false;
+      }
+    }
+  };
+
   // Attach
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerCancel);
+  canvas.addEventListener('lostpointercapture', onLostPointerCapture);
   canvas.addEventListener('contextmenu', onContextMenu);
   canvas.addEventListener('wheel', onWheel, { passive: false });
 
@@ -468,6 +484,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     canvas.removeEventListener('pointermove', onPointerMove);
     canvas.removeEventListener('pointerup', onPointerUp);
     canvas.removeEventListener('pointercancel', onPointerCancel);
+    canvas.removeEventListener('lostpointercapture', onLostPointerCapture);
     canvas.removeEventListener('contextmenu', onContextMenu);
     canvas.removeEventListener('wheel', onWheel);
   };
