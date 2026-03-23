@@ -82,9 +82,19 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   let twoFingerTapMoved = false;
 
   const onPointerDown = (e: PointerEvent) => {
-    e.preventDefault();
+    // 우클릭은 preventDefault하지 않음 — pointerup 정상 수신 보장
+    if (e.button !== 2) e.preventDefault();
     stopInertia();
     if (animZoomRafRef.current) { cancelAnimationFrame(animZoomRafRef.current); animZoomRafRef.current = 0; }
+    // 새 포인터가 들어올 때 기존 꼬인 상태 정리
+    if (e.pointerType === 'mouse' && pointers.size > 0) {
+      // 마우스는 동시 포인터 1개만 가능 — 이전 꼬인 포인터 클리어
+      for (const id of pointers.keys()) {
+        try { el.releasePointerCapture(id); } catch {}
+      }
+      pointers.clear();
+      isDragging = false;
+    }
     el.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     mouseButton = (e.pointerType === 'mouse') ? e.button : null;
