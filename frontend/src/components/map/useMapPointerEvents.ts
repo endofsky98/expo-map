@@ -85,7 +85,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     e.preventDefault();
     stopInertia();
     if (animZoomRafRef.current) { cancelAnimationFrame(animZoomRafRef.current); animZoomRafRef.current = 0; }
-    canvas.setPointerCapture(e.pointerId);
+    el.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     mouseButton = (e.pointerType === 'mouse') ? e.button : null;
     if (mouseButton === 2) { rightDragMoved = false; rightDownTime = Date.now(); }
@@ -284,7 +284,7 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
   };
 
   const onPointerUp = (e: PointerEvent) => {
-    canvas.releasePointerCapture(e.pointerId);
+    el.releasePointerCapture(e.pointerId);
     pointers.delete(e.pointerId);
     // 롱프레스 타이머 취소
     if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
@@ -469,23 +469,24 @@ export function attachPointerEvents(deps: PointerEventDeps): () => void {
     }
   };
 
-  // Attach
-  canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerCancel);
-  canvas.addEventListener('lostpointercapture', onLostPointerCapture);
-  canvas.addEventListener('contextmenu', onContextMenu);
-  canvas.addEventListener('wheel', onWheel, { passive: false });
+  // Attach to container div (el) instead of canvas — 
+  // CSS 3D transform on canvas breaks pointer hit-testing
+  el.addEventListener('pointerdown', onPointerDown);
+  el.addEventListener('pointermove', onPointerMove);
+  el.addEventListener('pointerup', onPointerUp);
+  el.addEventListener('pointercancel', onPointerCancel);
+  el.addEventListener('lostpointercapture', onLostPointerCapture);
+  el.addEventListener('contextmenu', onContextMenu);
+  el.addEventListener('wheel', onWheel, { passive: false });
 
   // Return cleanup
   return () => {
-    canvas.removeEventListener('pointerdown', onPointerDown);
-    canvas.removeEventListener('pointermove', onPointerMove);
-    canvas.removeEventListener('pointerup', onPointerUp);
-    canvas.removeEventListener('pointercancel', onPointerCancel);
-    canvas.removeEventListener('lostpointercapture', onLostPointerCapture);
-    canvas.removeEventListener('contextmenu', onContextMenu);
-    canvas.removeEventListener('wheel', onWheel);
+    el.removeEventListener('pointerdown', onPointerDown);
+    el.removeEventListener('pointermove', onPointerMove);
+    el.removeEventListener('pointerup', onPointerUp);
+    el.removeEventListener('pointercancel', onPointerCancel);
+    el.removeEventListener('lostpointercapture', onLostPointerCapture);
+    el.removeEventListener('contextmenu', onContextMenu);
+    el.removeEventListener('wheel', onWheel);
   };
 }
