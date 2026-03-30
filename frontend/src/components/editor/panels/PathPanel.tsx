@@ -77,7 +77,7 @@ function NodeEditor({
     const local = pathNodes.find(n => n.id === node.linked_node_id);
     if (local) { setLinkedNode(local); return; }
     // 없으면 API에서 로드
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
     fetch(`${API_BASE}/api/path-nodes/${node.linked_node_id}`)
       .then(r => r.ok ? r.json() : null)
       .then(data => setLinkedNode(data || undefined))
@@ -100,7 +100,7 @@ function NodeEditor({
     if (floorId === '') { setTargetFloorNodes([]); return; }
     setLoadingTargetNodes(true);
     try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
       const res = await fetch(`${API_BASE}/api/path-nodes?floor_id=${floorId}`);
       const nodes: PathNode[] = await res.json();
       // 같은 타입만 필터 + 자기 자신 제외

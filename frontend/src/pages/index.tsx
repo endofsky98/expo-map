@@ -409,7 +409,7 @@ export default function HomePage() {
     async function computeRoute() {
       if (!_navStart || !_navEnd) return;
       // 항상 전체 노드/엣지/부스/장애물을 페치 (findPath가 내부에서 층별 분리)
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '';
       const [useNodes, useEdges, useBooths, useObstacles] = await Promise.all([
         fetch(`${API_BASE}/api/path-nodes`).then(r => r.json()).catch(() => pathNodes),
         fetch(`${API_BASE}/api/path-edges`).then(r => r.json()).catch(() => pathEdges),

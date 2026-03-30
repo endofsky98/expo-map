@@ -827,7 +827,7 @@ export default function CorridorVisualEditor({
       layer.addChild(g);
       return;
     }
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
     // 원본 사이즈 이미지 사용 (level 0 = 원본, high_path = 고해상도)
     const zoomLevels = parseZoomLevels(currentImage);
     let imageUrl = '';

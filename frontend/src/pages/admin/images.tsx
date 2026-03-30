@@ -185,7 +185,7 @@ export default function ImagesPage() {
   }, []);
 
   const currentImg = images.find((img) => img.is_current);
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   function resolveUrl(path: string) {
     if (!path) return '';

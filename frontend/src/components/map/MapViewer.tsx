@@ -99,7 +99,7 @@ export default function MapViewer({
   const velocityRef = useRef({ vx: 0, vy: 0 });
   const canvasPadRef = useRef({ left: 0, top: 0 }); // canvas overscan offset for tilt headroom
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? '';
 
   function resolveImageUrl(path: string): string {
     if (!path) return '';

@@ -1,7 +1,7 @@
 import { Booth, Category, Company, MapImage, Floor, Hall, Facility, CorridorNode, CorridorEdge, Obstacle, Setting } from '@/types';
 import { getToken, clearToken } from '@/lib/auth';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 const REQUEST_TIMEOUT = 5000;
 
 function authHeaders(): Record<string, string> {

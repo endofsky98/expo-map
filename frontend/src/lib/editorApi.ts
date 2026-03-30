@@ -5,7 +5,7 @@
 import type { PathNode, PathEdge, Amenity } from '@/components/editor/editorTypes';
 import { getToken } from '@/lib/auth';
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 
 async function req<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

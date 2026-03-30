@@ -113,7 +113,7 @@ export default function EditorPage() {
     setHalls(h as any[]); setBooths(b as any[]); setPathNodes(pn); setPathEdges(pe); setObstacles(o as any[]); setAmenities(a);
     const currentImg = (imgs as any[]).find((i: any) => i.is_current);
     if (currentImg) {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8008';
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL ?? '';
       const path = currentImg.medium_path || currentImg.high_path || currentImg.file_path;
       setImageUrl(`${baseUrl}${path}`);
       setImageWidth(currentImg.width || 7481); setImageHeight(currentImg.height || 9843);

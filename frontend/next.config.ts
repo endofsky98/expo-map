@@ -24,6 +24,11 @@ const nextConfig: NextConfig = {
         hostname: '3.36.108.114',
         port: '8008',
       },
+      {
+        protocol: 'http',
+        hostname: 'backend',
+        port: '8000',
+      },
     ],
   },
 };
